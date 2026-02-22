@@ -1,0 +1,19 @@
+{
+  "name": "tgg-bot",
+  "version": "1.0.0",
+  "description": "Discord autorole sync service",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "sync": "node index.js",
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.3.1"
+  }
+}
