@@ -24,7 +24,7 @@ async function main() {
   const client = createClient();
   const PREFIX = '.';
 
-  client.once('ready', () => {
+  client.once('clientReady', () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
   });
 
@@ -67,133 +67,16 @@ async function main() {
 
     if (!command) return;
 
-    // .nickname command - available to everyone
+    // .nickname command - DISABLED FOR NOW
     if (command === 'nickname') {
-      if (args.length < 2) {
-        return message.reply({
-          embeds: [
-            createErrorEmbed(
-              'Argumentos Insuficientes',
-              'Use: `.nickname <newName>`\nExemplo: `.nickname aurafarming67`'
-            ),
-          ],
-        });
-      }
-
-      try {
-        await loadCustomNicknames();
-        const newDiscordName = args[1];
-
-        // Get the member object for the command author
-        const member = message.member;
-        if (!member) {
-          return message.reply({
-            embeds: [createErrorEmbed('Erro', 'Não foi possível encontrar seu membro no servidor.')],
-          });
-        }
-
-        // Get user from database to find their Brawlhalla ID
-        const user = await getUserByDiscordId(member.id);
-        let brawlhallaName = null; // Don't default to username
-
-        if (user && user.brawlhalla_id) {
-          // Load clan cache to find the authoritative Brawlhalla name
-          let clanData = await loadClanCache();
-          if (!clanData) {
-            // If no cache, fetch from API
-            clanData = await fetchBrawlhallaClanData();
-          }
-
-          // Find this user's Brawlhalla name in the clan
-          // Convert both to numbers to ensure proper comparison
-          const userBrawlhallaId = parseInt(user.brawlhalla_id);
-          const clanMember = clanData.clan?.find((m) => m.brawlhalla_id === userBrawlhallaId);
-          if (clanMember) {
-            brawlhallaName = clanMember.name;
-            console.log(`[NICKNAME] Using Brawlhalla name from cache: "${brawlhallaName}"`);
-          }
-        }
-
-        // If no Brawlhalla name found, cannot proceed
-        if (!brawlhallaName) {
-          return message.reply({
-            embeds: [createErrorEmbed(
-              'Erro',
-              'Seu ID Brawlhalla não foi encontrado na lista do clã. Verifique se você está no servidor Team TGG.'
-            )],
-          });
-        }
-
-        // Build the new nickname with the Brawlhalla name
-        // If newDiscordName is provided, use format: brawlhallaName/newDiscordName
-        // Otherwise, just use brawlhallaName
-        const newNickname = buildNickname(brawlhallaName, newDiscordName);
-        if (!newNickname) {
-          const attemptedFormat = newDiscordName && newDiscordName.trim() !== '' 
-            ? `${brawlhallaName}/${newDiscordName}` 
-            : brawlhallaName;
-          return message.reply({
-            embeds: [createErrorEmbed(
-              'Apelido Muito Longo',
-              `"${attemptedFormat}" exceeds 32 characters limit`
-            )],
-          });
-        }
-
-        // Update nickname
-        try {
-          await member.setNickname(newNickname);
-        } catch (nickErr) {
-          console.error(`[NICKNAME ERROR] Failed to set nickname:`, nickErr.message);
-          
-          // Check if it's a permissions error
-          if (nickErr.message.includes('Missing Permissions')) {
-            return message.reply({
-              embeds: [createErrorEmbed(
-                'no perms haha'
-              )],
-            });
-          }
-          
-          // Other errors
-          throw nickErr;
-        }
-        
-        const { setCustomNickname, saveCustomNicknames } = await import('./src/customNicknames.js');
-        
-        // Only save custom nickname if a Discord name was provided
-        if (newDiscordName && newDiscordName.trim() !== '') {
-          setCustomNickname(member.id, newDiscordName);
-        } else {
-          // If no Discord name, remove any custom nickname override
-          setCustomNickname(member.id, null);
-        }
-        await saveCustomNicknames();
-
-        message.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(0x57f287)
-              .setTitle('✅ Apelido Atualizado')
-              .addFields(
-                { name: 'Anterior', value: member.nickname ? `\`${member.nickname}\`` : 'Nenhum', inline: false },
-                { name: 'Novo', value: `\`${newNickname}\``, inline: false },
-                { name: 'Brawlhalla', value: `*${brawlhallaName}*`, inline: true },
-                { 
-                  name: 'Discord', 
-                  value: (newDiscordName && newDiscordName.trim() !== '') ? `*${newDiscordName}*` : '*Nenhum*', 
-                  inline: true 
-                }
-              )
-              .setTimestamp(),
-          ],
-        });
-      } catch (err) {
-        message.reply({
-          embeds: [createErrorEmbed('Erro ao Atualizar Apelido', err.message)],
-        });
-      }
-      return;
+      return message.reply({
+        embeds: [
+          createErrorEmbed(
+            'Comando Desativado',
+            'O comando `.nickname` está desativado no momento.'
+          ),
+        ],
+      });
     }
 
     // Admin check for all other commands

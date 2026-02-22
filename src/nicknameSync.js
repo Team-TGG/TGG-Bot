@@ -123,24 +123,15 @@ export async function loadClanCache() {
 }
 
 /**
- * Build the new nickname in format: brawlhallaName/discordName or just brawlhallaName
+ * Build the new nickname in format: just brawlhallaName (Brawlhalla only)
  * Ensures it doesn't exceed Discord's 32-character limit
  * @param {string} brawlhallaName - The Brawlhalla name from API
- * @param {string} discordName - The Discord username or custom name (optional)
+ * @param {string} discordName - DEPRECATED: Discord name is no longer used
  * @returns {string|null} The formatted nickname or null if it's too long
  */
 export function buildNickname(brawlhallaName, discordName) {
-  // If no Discord name provided, just use Brawlhalla name
-  if (!discordName || discordName.trim() === '') {
-    return brawlhallaName.length > 32 ? null : brawlhallaName;
-  }
-  
-  // If Discord name provided, use format: brawlhallaName/discordName
-  const nickname = `${brawlhallaName}/${discordName}`;
-  if (nickname.length > 32) {
-    return null; // Too long
-  }
-  return nickname;
+  // Only use Brawlhalla name (Discord name portion disabled)
+  return brawlhallaName.length > 32 ? null : brawlhallaName;
 }
 
 
@@ -221,28 +212,54 @@ export async function syncNicknames(client, guildId) {
     console.log(`Users matched in database: ${userMappings.size}\n`);
 
     // Sync each clan member
+    let processedCount = 0;
+    let skippedCount = 0;
     for (const clanMember of clanMembers) {
-      const { brawlhalla_id, name: brawlhallaName } = clanMember;
+      let { brawlhalla_id, name: brawlhallaName } = clanMember;
+      
+      // Normalize brawlhalla_id to string to handle type mismatches between API and DB
+      const brawlhallaIdStr = String(brawlhalla_id);
 
       // Check if this clan member exists in our database
-      const userMapping = userMappings.get(brawlhalla_id);
+      // Try both numeric and string keys to handle type mismatches
+      let userMapping = userMappings.get(brawlhalla_id);
       if (!userMapping) {
+        userMapping = userMappings.get(brawlhallaIdStr);
+      }
+      if (!userMapping) {
+        skippedCount++;
         // console.warn(`[SKIP] Brawlhalla ID ${brawlhalla_id} not in database`);
         continue;
       }
+      
+      processedCount++;
 
       const discord_id = userMapping.discord_id;
 
       try {
         // Fetch member from guild
-        const member = await guild.members.fetch(discord_id).catch(() => null);
+        let member;
+        try {
+          member = await guild.members.fetch(discord_id);
+        } catch (fetchErr) {
+          console.warn(`[NOT IN GUILD] Discord ID ${discord_id} (Brawlhalla: "${brawlhallaName}") - ${fetchErr.message}`);
+          results.errors.push({
+            discord_id,
+            brawlhalla_id,
+            brawlhallaName,
+            error: `Member not in guild: ${fetchErr.message}`
+          });
+          results.failed++;
+          continue;
+        }
+        
         if (!member) {
           console.warn(`[NOT IN GUILD] Discord ID ${discord_id} (Brawlhalla: "${brawlhallaName}")`);
           results.errors.push({
             discord_id,
             brawlhalla_id,
             brawlhallaName,
-            error: 'Member not in guild'
+            error: 'Member not in guild (null returned)'
           });
           results.failed++;
           continue;
@@ -273,9 +290,15 @@ export async function syncNicknames(client, guildId) {
           results.unchanged++;
         } else {
           // Update nickname
-          await member.setNickname(newNickname);
-          console.log(`[UPDATE] ${member.user.tag} (${discord_id}): "${currentNickname || member.user.username}" → "${newNickname}"`);
-          results.updated++;
+          try {
+            await member.setNickname(newNickname);
+            console.log(`[UPDATE] ${member.user.tag} (${discord_id}): "${currentNickname || member.user.username}" → "${newNickname}"`);
+            results.updated++;
+          } catch (setNickErr) {
+            console.error(`[NICKNAME SET ERROR] ${member.user.tag} (${discord_id}): ${setNickErr.message}`);
+            console.error(`[NICKNAME SET ERROR] Attempted: "${newNickname}"`);
+            throw setNickErr;
+          }
         }
 
         results.synced++;
@@ -288,7 +311,10 @@ export async function syncNicknames(client, guildId) {
           status: currentNickname === newNickname ? 'unchanged' : 'updated'
         });
       } catch (err) {
-        console.error(`[SYNC ERROR] Discord ${discord_id}: ${err.message}`);
+        console.error(`[SYNC ERROR] Discord ${discord_id} (Brawlhalla: ${brawlhalla_id}): ${err.message}`);
+        if (err.stack) {
+          console.error(`[SYNC ERROR] Stack: ${err.stack}`);
+        }
         results.errors.push({
           discord_id,
           brawlhalla_id,
@@ -299,6 +325,8 @@ export async function syncNicknames(client, guildId) {
     }
 
     console.log('\n--- Nickname Sync Summary ---');
+    console.log(`Processed from database: ${processedCount}`);
+    console.log(`Skipped (not in database): ${skippedCount}`);
     console.log(`Total synced: ${results.synced}`);
     console.log(`Updated: ${results.updated}`);
     console.log(`Unchanged: ${results.unchanged}`);
@@ -306,8 +334,8 @@ export async function syncNicknames(client, guildId) {
     const dataSource = clanResponse._fromCache ? '📦 Cache' : '🔄 Brawlhalla API';
     console.log(`Data source: ${dataSource}`);
     if (results.errors.length > 0) {
-      console.log(`\nErrors:`);
-      results.errors.forEach((e) => console.log(`  • ${e.discord_id}: ${e.error}`));
+      console.log(`\nErrors (showing first 10):`);
+      results.errors.slice(0, 10).forEach((e) => console.log(`  • ${e.discord_id}: ${e.error}`));
     }
     console.log('--- Sync Done ---\n');
   } catch (err) {
