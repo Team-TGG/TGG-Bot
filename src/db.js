@@ -36,37 +36,57 @@ export async function getUsers() {
 }
 
 /**
- * Fetch discord_id + ELO (initial_elo_1v1) for users that have player_elo_missions.
- * Joins users (brawlhalla_id, discord_id) with player_elo_missions; uses max(initial_elo_1v1) per user.
+ * Fetch discord_id + highest peak elo (1v1, 2v2 or 3v3) per user.
+ * Uses player_elo_history and returns the highest peak among all modes.
  */
 export async function getUsersWithElo() {
   const supabase = getClient();
-  const { data: missions, error: missionsError } = await supabase
-    .from('player_elo_missions')
-    .select('brawlhalla_id, initial_elo_1v1');
-  if (missionsError) throw missionsError;
 
+  // Busca histórico de elo
+  const { data: history, error: historyError } = await supabase
+    .from('player_elo_history')
+    .select('brawlhalla_id, peak_1v1, peak_2v2, peak_3v3');
+  if (historyError) throw historyError;
+
+  // Busca usuários
   const { data: users, error: usersError } = await supabase
     .from('users')
     .select('discord_id, brawlhalla_id');
   if (usersError) throw usersError;
 
-  // brawlhalla_id -> max elo
+  // brawlhalla_id -> maior elo entre todos os peaks
   const eloByBrawlhalla = new Map();
-  for (const row of missions ?? []) {
+
+  for (const row of history ?? []) {
     const id = row.brawlhalla_id;
-    const elo = row.initial_elo_1v1 != null ? Number(row.initial_elo_1v1) : 0;
-    const cur = eloByBrawlhalla.get(id);
-    eloByBrawlhalla.set(id, cur == null ? elo : Math.max(cur, elo));
+
+    const peak1 = row.peak_1v1 != null ? Number(row.peak_1v1) : 0;
+    const peak2 = row.peak_2v2 != null ? Number(row.peak_2v2) : 0;
+    const peak3 = row.peak_3v3 != null ? Number(row.peak_3v3) : 0;
+
+    const highestPeak = Math.max(peak1, peak2, peak3);
+
+    const current = eloByBrawlhalla.get(id);
+    eloByBrawlhalla.set(
+      id,
+      current == null ? highestPeak : Math.max(current, highestPeak)
+    );
   }
 
   const result = [];
+
   for (const u of users ?? []) {
-    if (u.discord_id == null || u.discord_id === '') continue;
+    if (!u.discord_id) continue;
+
     const elo = eloByBrawlhalla.get(u.brawlhalla_id);
     if (elo == null) continue;
-    result.push({ discord_id: u.discord_id, elo });
+
+    result.push({
+      discord_id: u.discord_id,
+      elo,
+    });
   }
+
   return result;
 }
 

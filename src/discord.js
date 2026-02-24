@@ -31,6 +31,16 @@ const ROLE_ID_TO_NAME = {
 // Tiers: Diamond 2000+, Platinum 5→1, Gold 5→1, Silver 5→1, Bronze 5→1, Tin 5→0.
 // We assign the highest tier where elo >= minElo.
 const ELO_ROLES = [
+  { minElo: 3000, roleId: '1445053516144971776', name: 'Diamond 10' },
+  { minElo: 2900, roleId: '1445053513251164160', name: 'Diamond 9' },
+  { minElo: 2800, roleId: '1445053510495502377', name: 'Diamond 8' },
+  { minElo: 2700, roleId: '1445053505760133270', name: 'Diamond 7' },
+  { minElo: 2600, roleId: '1445053265703207132', name: 'Diamond 6' },
+  { minElo: 2500, roleId: '1445053263790608524', name: 'Diamond 5' },
+  { minElo: 2400, roleId: '1445053261265502299', name: 'Diamond 4' },
+  { minElo: 2300, roleId: '1445053258916696124', name: 'Diamond 3' },
+  { minElo: 2200, roleId: '1445053255091752971', name: 'Diamond 2' },
+  { minElo: 2100, roleId: '1445053243662270545', name: 'Diamond 1' },
   { minElo: 2000, roleId: '1437505069166629030', name: 'Diamond' },
   { minElo: 1936, roleId: '1448450833120231484', name: 'Platinum 5' },
   { minElo: 1872, roleId: '1448450845082386462', name: 'Platinum 4' },
