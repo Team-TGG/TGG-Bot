@@ -1,35 +1,39 @@
 /**
- * Guild Activity API: fetch movement logs and post to Discord channel via embeds.
- * Uses the movimentacao endpoint since guild-activity.php doesn't exist.
+ * Guild Activity API: fetch latest guild report and post to Discord channel via embeds.
+ * Uses the guild-report.php endpoint to get the latest activity.
  */
 
 import { EmbedBuilder } from 'discord.js';
 import { guildActivity as config } from '../config/index.js';
 
 const ACTIVITY_URL = () => {
-  if (!config.url || !config.key) return null;
-  const u = new URL(config.url);
-  // No parameters needed, just basic fetch with X-API-Key header
-  return u.toString();
+  if (!config.baseUrl || !config.endpoint) return null;
+  return `${config.baseUrl}${config.endpoint}`;
 };
 
 /**
- * Run the guild activity sync (fetch from movimentacao API with X-API-Key header).
- * @returns {Promise<{ ok: boolean, movimentacao?: object, resumo?: object, periodo?: object }>}
+ * Run the guild activity sync (fetch from guild-report API with Bearer authentication).
+ * @returns {Promise<{ ok: boolean, success?: boolean, data?: object }>}
  */
 export async function runGuildActivitySync() {
   const url = ACTIVITY_URL();
-  if (!url) {
-    throw new Error('TGG_API_URL and TGG_API_KEY must be set in .env');
+  if (!url || !config.apiKey) {
+    throw new Error('TGG_API_URL, TGG_GUILD_REPORT_ENDPOINT, and TGG_API_KEY must be set in .env');
   }
 
   console.log('[GuildActivity] Fetching from:', url);
+  console.log('[GuildActivity] API Key present:', !!config.apiKey, `(${config.apiKey?.length} chars)`);
+  
+  const headers = {
+    'Authorization': `Bearer ${config.apiKey}`,
+    'Accept': 'application/json',
+  };
+  
+  console.log('[GuildActivity] Headers:', { ...headers, 'Authorization': headers.Authorization.substring(0, 20) + '...' });
   
   const res = await fetch(url, {
     method: 'GET',
-    headers: {
-      'X-API-Key': config.key,
-    },
+    headers,
   });
 
   console.log('[GuildActivity] Response status:', res.status);
@@ -38,17 +42,22 @@ export async function runGuildActivitySync() {
   
   if (!res.ok || !data) {
     console.error('[GuildActivity] Error response:', data);
+    console.error('[GuildActivity] Response text:', await res.text().catch(() => 'N/A'));
     throw new Error(data?.message || `API returned ${res.status}`);
   }
 
-  console.log('[GuildActivity] Success:', data.success, 'Total registros:', data.movimentacao?.total_registros);
+  if (!data.success) {
+    throw new Error(data?.error || 'API returned unsuccessful response');
+  }
+
+  console.log('[GuildActivity] Success - fetched guild report with latest activity');
   
   return data;
 }
 
 /**
- * Build Discord embeds from API response (movimentacao format).
- * @param {object} data - API response from movimentacao endpoint
+ * Build Discord embeds from API response (guild-report format).
+ * @param {object} data - API response from guild-report endpoint
  * @returns {EmbedBuilder[]}
  */
 export function buildEmbedsFromGuildActivity(data) {
@@ -66,8 +75,8 @@ export function buildEmbedsFromGuildActivity(data) {
     ponto: '<:g_ponto_white_RR:1305837905624698880>',
   };
 
-  // Handle movimentacao response structure
-  if (!data || !data.resumo) {
+  // Handle guild-report response structure
+  if (!data || !data.data) {
     return [
       new EmbedBuilder()
         .setColor(0x95a5a6)
@@ -77,9 +86,16 @@ export function buildEmbedsFromGuildActivity(data) {
     ];
   }
 
-  const resumo = data.resumo;
-  const periodo = data.periodo || {};
-  const totalChanges = (resumo.entrou || 0) + (resumo.saiu || 0) + (resumo.promovido || 0) + (resumo.rebaixado || 0);
+  const reportData = data.data;
+  const timestamp = reportData.timestamp || new Date().toISOString();
+  
+  // Count activities
+  const entrou = reportData.entrou?.length || 0;
+  const saiu = reportData.saiu?.length || 0;
+  const promovido = reportData.promovido?.length || 0;
+  const rebaixado = reportData.rebaixado?.length || 0;
+  const nomeAlterado = reportData.nome_alterado?.filter(p => p.nome_antigo && p.nome_novo).length || 0;
+  const totalChanges = entrou + saiu + promovido + rebaixado + nomeAlterado;
 
   if (totalChanges === 0) {
     return [
@@ -87,7 +103,7 @@ export function buildEmbedsFromGuildActivity(data) {
         .setColor(0x95a5a6)
         .setTitle(`${EMOJIS.info} Sincronização da Guild`)
         .setDescription('Nenhuma alteração detectada.')
-        .setFooter({ text: `${EMOJIS.time} Período: ${periodo.data_inicio || 'N/A'} a ${periodo.data_fim || 'N/A'}` })
+        .setFooter({ text: `${EMOJIS.time} ${timestamp}` })
         .setTimestamp(),
     ];
   }
@@ -97,16 +113,89 @@ export function buildEmbedsFromGuildActivity(data) {
     .setColor(0x5865f2)
     .setTitle(`${EMOJIS.info} Sincronização da Guild`)
     .addFields(
-      { name: `${EMOJIS.entrou} Entradas`, value: `${EMOJIS.ponto} ${resumo.entrou || 0} membros`, inline: true },
-      { name: `${EMOJIS.saiu} Saídas`, value: `${EMOJIS.ponto} ${resumo.saiu || 0} membros`, inline: true },
-      { name: `${EMOJIS.promovido} Promoções`, value: `${EMOJIS.ponto} ${resumo.promovido || 0} membros`, inline: true },
-      { name: `${EMOJIS.rebaixado} Rebaixamentos`, value: `${EMOJIS.ponto} ${resumo.rebaixado || 0} membros`, inline: true },
-      { name: `${EMOJIS.ponto} Saldo Líquido`, value: `${EMOJIS.seta} ${resumo.saldo_liquido || 0}`, inline: true }
+      { name: `${EMOJIS.entrou} Entradas`, value: `${EMOJIS.ponto} ${entrou} membros`, inline: true },
+      { name: `${EMOJIS.saiu} Saídas`, value: `${EMOJIS.ponto} ${saiu} membros`, inline: true },
+      { name: `${EMOJIS.promovido} Promoções`, value: `${EMOJIS.ponto} ${promovido} membros`, inline: true },
+      { name: `${EMOJIS.rebaixado} Rebaixamentos`, value: `${EMOJIS.ponto} ${rebaixado} membros`, inline: true },
+      { name: `${EMOJIS.info} Nomes Alterados`, value: `${EMOJIS.ponto} ${nomeAlterado} membros`, inline: true }
     )
-    .setFooter({ text: `${EMOJIS.time} Período: ${periodo.data_inicio || 'N/A'} a ${periodo.data_fim || 'N/A'}` })
+    .setFooter({ text: `${EMOJIS.time} ${timestamp}` })
     .setTimestamp();
 
   embeds.push(embed);
+  
+  // Add detailed embeds for each activity type
+  if (entrou > 0) {
+    const desc = reportData.entrou
+      .map(p => `${EMOJIS.ponto} **${p.nome}** (${p.brawlhalla_id}) - ${p.rank}`)
+      .join('\n')
+      .slice(0, 4096);
+    embeds.push(
+      new EmbedBuilder()
+        .setColor(0x57f287)
+        .setTitle(`${EMOJIS.entrou} Entraram (${entrou})`)
+        .setDescription(desc)
+        .setTimestamp()
+    );
+  }
+  
+  if (saiu > 0) {
+    const desc = reportData.saiu
+      .map(p => `${EMOJIS.ponto} **${p.nome}** (${p.brawlhalla_id}) - ${p.rank}`)
+      .join('\n')
+      .slice(0, 4096);
+    embeds.push(
+      new EmbedBuilder()
+        .setColor(0xed4245)
+        .setTitle(`${EMOJIS.saiu} Saíram (${saiu})`)
+        .setDescription(desc)
+        .setTimestamp()
+    );
+  }
+  
+  if (promovido > 0) {
+    const desc = reportData.promovido
+      .map(p => `${EMOJIS.ponto} **${p.nome}** - ${p.rank_antigo} → ${p.rank_novo}`)
+      .join('\n')
+      .slice(0, 4096);
+    embeds.push(
+      new EmbedBuilder()
+        .setColor(0xfee75c)
+        .setTitle(`${EMOJIS.promovido} Promovidos (${promovido})`)
+        .setDescription(desc)
+        .setTimestamp()
+    );
+  }
+  
+  if (rebaixado > 0) {
+    const desc = reportData.rebaixado
+      .map(p => `${EMOJIS.ponto} **${p.nome}** - ${p.rank_antigo} → ${p.rank_novo}`)
+      .join('\n')
+      .slice(0, 4096);
+    embeds.push(
+      new EmbedBuilder()
+        .setColor(0xd946ef)
+        .setTitle(`${EMOJIS.rebaixado} Rebaixados (${rebaixado})`)
+        .setDescription(desc)
+        .setTimestamp()
+    );
+  }
+  
+  if (nomeAlterado > 0) {
+    const desc = reportData.nome_alterado
+      .filter(p => p.nome_antigo && p.nome_novo)
+      .map(p => `${EMOJIS.ponto} **${p.nome_antigo}** → **${p.nome_novo}**`)
+      .join('\n')
+      .slice(0, 4096);
+    embeds.push(
+      new EmbedBuilder()
+        .setColor(0x9c27b0)
+        .setTitle(`${EMOJIS.info} Nomes Alterados (${nomeAlterado})`)
+        .setDescription(desc)
+        .setTimestamp()
+    );
+  }
+  
   return embeds;
 }
 
@@ -134,6 +223,28 @@ export async function postGuildActivityToDiscord(client, data, channelId) {
 }
 
 /**
+ * Calculate summary from guild report data
+ * @param {object} reportData - Data from guild-report endpoint
+ * @returns {object} Summary with counts
+ */
+function calculateSummary(reportData) {
+  const entrou = reportData.entrou?.length || 0;
+  const saiu = reportData.saiu?.length || 0;
+  const promovido = reportData.promovido?.length || 0;
+  const rebaixado = reportData.rebaixado?.length || 0;
+  const nome_alterado = reportData.nome_alterado?.filter(p => p.nome_antigo && p.nome_novo).length || 0;
+  
+  return {
+    entrou,
+    saiu,
+    promovido,
+    rebaixado,
+    nome_alterado,
+    saldo_liquido: entrou - saiu, // Net balance (entries - exits)
+  };
+}
+
+/**
  * Run sync, then post to Discord if channel is configured.
  * @param {import('discord.js').Client} client
  * @returns {{ ok: boolean, summary?: object, posted: boolean, error?: string }}
@@ -142,14 +253,17 @@ export async function runAndPostGuildActivity(client) {
   const channelId = config.channelId || null;
   try {
     const data = await runGuildActivitySync();
+    
+    // Calculate summary from report data
+    const summary = calculateSummary(data.data || {});
+    
     if (channelId) {
       await postGuildActivityToDiscord(client, data, channelId);
     }
     return {
       ok: true,
-      summary: data.resumo || data.summary || {},
+      summary,
       posted: !!channelId,
-      run_at: data.run_at,
     };
   } catch (err) {
     console.error('[GuildActivity]', err);

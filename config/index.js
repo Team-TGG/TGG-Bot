@@ -18,22 +18,26 @@ export const supabase = {
   anonKey: process.env.SUPABASE_ANON_KEY,
 };
 
-/** Guild Activity API (fetch movement logs from movimentacao endpoint) */
+/** Guild Activity API (fetch latest guild report from guild-report.php) */
 export const guildActivity = {
-  /** Full URL to guild-movimentacao.php */
-  url: process.env.TGG_API_URL,
-  /** X-API-Key header value */
-  key: process.env.TGG_API_KEY,
+  /** Base API URL */
+  baseUrl: process.env.TGG_API_URL,
+  /** Guild Report endpoint */
+  endpoint: process.env.TGG_GUILD_REPORT_ENDPOINT || '/TGG/api/guild-report.php',
+  /** Bearer token for authentication */
+  apiKey: process.env.TGG_API_KEY,
   /** Discord channel ID where to post embeds */
   channelId: process.env.GUILD_ACTIVITY_CHANNEL_ID || null,
 };
 
-/** Guild Movimentacao API (fetch movement logs) */
+/** Guild Movimentacao API (fetch movement logs with date range) */
 export const movimentacao = {
-  /** Full URL to guild-movimentacao.php */
-  url: process.env.TGG_API_URL,
-  /** X-API-Key header value */
-  key: process.env.TGG_API_KEY,
+  /** Base API URL */
+  baseUrl: process.env.TGG_API_URL,
+  /** Movimentacao endpoint */
+  endpoint: process.env.TGG_MOVIMENTACAO_ENDPOINT || '/TGG/api/guild-movimentacao.php',
+  /** Bearer token for authentication */
+  apiKey: process.env.TGG_API_KEY,
 };
 
 /** Brawlhalla API configuration */

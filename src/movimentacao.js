@@ -7,18 +7,48 @@ import { movimentacao as config } from '../config/index.js';
 
 /**
  * Build the API URL with query parameters
- * @param {string} startDate - YYYY-MM-DD format (optional, defaults to 7 days ago)
- * @param {string} endDate - YYYY-MM-DD format (optional, defaults to today)
- * @param {number} limit - Max records (default 5000, max 5000)
+ * @param {Object} options - Query parameters
+ * @param {string} options.date - Specific date in YYYY-MM-DD format (takes precedence over start/end)
+ * @param {string} options.startDate - Start date in YYYY-MM-DD format
+ * @param {string} options.endDate - End date in YYYY-MM-DD format
+ * @param {string} options.action - Filter by action (entrou, saiu, promovido, rebaixado)
+ * @param {string} options.search - Search by player name
+ * @param {number} options.limit - Max records (default 5000, max 5000)
  * @returns {string}
  */
-function buildMovimentacaoUrl(startDate = null, endDate = null, limit = 5000) {
-  if (!config.url || !config.key) return null;
+function buildMovimentacaoUrl(options = {}) {
+  if (!config.baseUrl || !config.endpoint) return null;
   
-  const u = new URL(config.url);
+  let {
+    date = null,
+    startDate = null,
+    endDate = null,
+    action = null,
+    search = null,
+    limit = 5000,
+  } = options;
   
-  if (startDate) u.searchParams.set('start', startDate);
-  if (endDate) u.searchParams.set('end', endDate);
+  // Apply default date range if neither date nor startDate/endDate is provided
+  if (!date && !startDate && !endDate) {
+    const now = new Date();
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    startDate = sevenDaysAgo.toISOString().split('T')[0];
+    endDate = now.toISOString().split('T')[0];
+  }
+  
+  const u = new URL(config.baseUrl);
+  u.pathname = config.endpoint;
+  
+  if (date) {
+    u.searchParams.set('date', date);
+  } else {
+    if (startDate) u.searchParams.set('start', startDate);
+    if (endDate) u.searchParams.set('end', endDate);
+  }
+  
+  if (action) u.searchParams.set('action', action);
+  if (search) u.searchParams.set('search', search);
   if (limit) u.searchParams.set('limit', Math.min(limit, 5000));
   
   return u.toString();
@@ -26,25 +56,39 @@ function buildMovimentacaoUrl(startDate = null, endDate = null, limit = 5000) {
 
 /**
  * Fetch guild movimentacao data from API
- * @param {string} startDate - YYYY-MM-DD format (optional)
- * @param {string} endDate - YYYY-MM-DD format (optional)
- * @param {number} limit - Max records (default 5000)
- * @returns {Promise<{ ok: boolean, data?: array, message?: string }>}
+ * @param {Object} options - Query options
+ * @param {string} options.date - Specific date in YYYY-MM-DD format
+ * @param {string} options.startDate - Start date in YYYY-MM-DD format
+ * @param {string} options.endDate - End date in YYYY-MM-DD format
+ * @param {string} options.action - Filter by action (entrou, saiu, promovido, rebaixado)
+ * @param {string} options.search - Search by player name
+ * @param {number} options.limit - Max records (default 5000)
+ * @returns {Promise<{ ok: boolean, data?: array, summary?: object, message?: string }>}
  */
-export async function fetchMovimentacao(startDate = null, endDate = null, limit = 5000) {
-  const url = buildMovimentacaoUrl(startDate, endDate, limit);
-  if (!url) {
-    throw new Error('TGG_MOVIMENTACAO_URL and TGG_MOVIMENTACAO_API_KEY must be set in .env');
+export async function fetchMovimentacao(options = {}) {
+  // Support both old signature (startDate, endDate, limit) and new object signature
+  const queryOptions = typeof options === 'string' 
+    ? { startDate: options, endDate: arguments[1], limit: arguments[2] }
+    : options;
+    
+  const url = buildMovimentacaoUrl(queryOptions);
+  if (!url || !config.apiKey) {
+    throw new Error('TGG_API_URL, TGG_MOVIMENTACAO_ENDPOINT, and TGG_API_KEY must be set in .env');
   }
 
   console.log('[Movimentacao] Fetching from:', url);
-  console.log('[Movimentacao] Using API Key:', config.key ? '✓ Present' : '✗ Missing');
+  console.log('[Movimentacao] API Key present:', !!config.apiKey, `(${config.apiKey?.length} chars)`);
+  
+  const headers = {
+    'Authorization': `Bearer ${config.apiKey}`,
+    'Accept': 'application/json',
+  };
+  
+  console.log('[Movimentacao] Headers:', { ...headers, 'Authorization': headers.Authorization.substring(0, 20) + '...' });
 
   const res = await fetch(url, {
     method: 'GET',
-    headers: {
-      'X-API-Key': config.key,
-    },
+    headers,
   });
 
   console.log('[Movimentacao] Response status:', res.status);
@@ -53,32 +97,50 @@ export async function fetchMovimentacao(startDate = null, endDate = null, limit 
   
   if (!res.ok || !data) {
     console.error('[Movimentacao] Error:', data);
+    console.error('[Movimentacao] Response text:', await res.text().catch(() => 'N/A'));
     throw new Error(data?.message || `API returned ${res.status}`);
   }
 
-  // Handle API response structure: movimentacao.registros contains the records
-  let records = [];
-  if (data.movimentacao && data.movimentacao.registros) {
-    // registros might be an object with error data or an array
-    const registros = data.movimentacao.registros;
-    if (Array.isArray(registros)) {
-      records = registros;
-    } else if (registros && !registros.code && !registros.message) {
-      // If it's not an array and not an error object, convert to array
-      records = [registros];
-    }
-    // If it has code/message, it's an error object; skip it (records remains [])
-  } else if (data.data && Array.isArray(data.data)) {
-    // Fallback for other response structures
-    records = data.data;
+  if (!data.success) {
+    throw new Error(data?.error || 'API returned unsuccessful response');
   }
 
+  // Handle API response structure from guild-movimentacao endpoint
+  let records = Array.isArray(data.data) ? data.data : [];
+  
+  // Normalize records to fix field name inconsistencies
+  records = records.map(record => ({
+    id: record.id,
+    brawlhalla_id: record.brawlhalla_id || record.brawlhallaid, // Fix typo
+    nome: record.nome || record.player_name,
+    rank: record.rank || record.new_rank,
+    action: record.action,
+    occurred_at: record.occurred_at || record.timestamp,
+  }));
+
   return {
-    ok: data.success !== false,
+    ok: true,
     data: records,
-    resumo: data.resumo || {},
-    periodo: data.periodo || {},
+    summary: data.summary || {},
   };
+}
+
+/**
+ * Calculate total embed size in characters
+ * @param {EmbedBuilder} embed
+ * @returns {number}
+ */
+function calculateEmbedSize(embed) {
+  let size = 0;
+  if (embed.data.title) size += embed.data.title.length;
+  if (embed.data.description) size += embed.data.description.length;
+  if (embed.data.footer?.text) size += embed.data.footer.text.length;
+  if (embed.data.fields) {
+    embed.data.fields.forEach(f => {
+      size += (f.name?.length || 0) + (f.value?.length || 0);
+    });
+  }
+  return size;
 }
 
 /**
@@ -86,45 +148,57 @@ export async function fetchMovimentacao(startDate = null, endDate = null, limit 
  * @param {array} records - Movement records
  * @param {string} startDate
  * @param {string} endDate
- * @returns {EmbedBuilder[]}
+ * @returns {{ embeds: EmbedBuilder[], needsFile: boolean, json: object }}
  */
 export function buildMovimentacaoEmbeds(records, startDate, endDate) {
   const embeds = [];
   
-  // Custom emoji IDs
+  // Custom emoji IDs - Using working emojis from the server
   const EMOJIS = {
-    entrou: '<:icon_v:825250296987910144>',
-    saiu: '<:icon_x:872277999687442472>',
-    promovido: '<:icon_up:1471913779280351316>',
-    rebaixado: '<:icon_down:1471913822280355921>',
-    time: '<:time2:1406766019589967924>',
-    seta: '<a:seta:851206127471034378>',
-    ponto: '<:g_ponto_white_RR:1305837905624698880>',
+    entrou: '<:check:1475806856722120838>',
+    saiu: '<:xis:1475807109554896966>',
+    promovido: '<:cima:1475807892782317578>',
+    rebaixado: '<:baixo:1475807866714718239>',
+    time: '<:clock:1475829939122212874>',
+    loading: '<a:loading:1475806256366358633>',
+    seta: '<:arrowright:1475806826833383456>',
+    ponto: '<:symboldash:1475807293323870238>',
   };
 
   if (!records || records.length === 0) {
-    return [
-      new EmbedBuilder()
-        .setColor(0x95a5a6)
-        .setTitle(`${EMOJIS.ponto} Guild Movimentação`)
-        .setDescription('Nenhum registro encontrado no período especificado.')
-        .setFooter({ text: `${EMOJIS.time} Período: ${startDate || 'N/A'} a ${endDate || 'N/A'}` }),
-    ];
+    return {
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x95a5a6)
+          .setTitle(`${EMOJIS.ponto} Guild Movimentação`)
+          .setDescription('Nenhum registro encontrado no período especificado.')
+          .setFooter({ text: `Período: ${startDate || 'N/A'} a ${endDate || 'N/A'}` }),
+      ],
+      needsFile: false,
+      json: { data: [], summary: {} },
+    };
   }
 
-  // Filter out error records (check for 'code' and 'message' properties)
+  // Filter out error records (check for valid structure with required fields)
   const validRecords = Array.isArray(records)
-    ? records.filter((r) => !r.code && !r.message)
+    ? records.filter((r) => {
+        // Must have required fields and not be an error object
+        return r && r.nome && r.action && !r.code && !r.message && r.action !== 'error';
+      })
     : [];
 
   if (validRecords.length === 0) {
-    return [
-      new EmbedBuilder()
-        .setColor(0x95a5a6)
-        .setTitle(`${EMOJIS.ponto} Guild Movimentação`)
-        .setDescription('Nenhum registro encontrado no período especificado.')
-        .setFooter({ text: `${EMOJIS.time} Período: ${startDate || 'N/A'} a ${endDate || 'N/A'}` }),
-    ];
+    return {
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x95a5a6)
+          .setTitle(`${EMOJIS.ponto} Guild Movimentação`)
+          .setDescription('Nenhum registro encontrado no período especificado.')
+          .setFooter({ text: `Período: ${startDate || 'N/A'} a ${endDate || 'N/A'}` }),
+      ],
+      needsFile: false,
+      json: { data: [], summary: {} },
+    };
   }
 
   // Group records by action type
@@ -143,7 +217,7 @@ export function buildMovimentacaoEmbeds(records, startDate, endDate) {
     unknown: 0x95a5a6,
   };
 
-  // Build embed for each action type
+  // Build embeds for each action type, chunking if needed
   Object.entries(groupedByAction).forEach(([action, items]) => {
     const color = actionColors[action] || 0x95a5a6;
     const emoji = EMOJIS[action] || EMOJIS.ponto;
@@ -154,25 +228,62 @@ export function buildMovimentacaoEmbeds(records, startDate, endDate) {
       rebaixado: 'Rebaixamentos',
     }[action] || action;
 
-    const description = items
-      .map((item) => {
-        const name = item.player_name || item.nome || 'Unknown';
-        const rank = item.rank || item.new_rank || 'N/A';
-        const date = item.occurred_at || item.timestamp || '';
-        return `${EMOJIS.ponto} **${name}** ${EMOJIS.seta} ${rank} ${date ? `(${EMOJIS.time} ${date})` : ''}`;
-      })
-      .join('\n');
+    // Split items into chunks to avoid embed size limits
+    const itemsPerEmbed = 50; // Conservative limit to stay under 6000 chars
+    const itemChunks = [];
+    for (let i = 0; i < items.length; i += itemsPerEmbed) {
+      itemChunks.push(items.slice(i, i + itemsPerEmbed));
+    }
 
-    const embed = new EmbedBuilder()
-      .setColor(color)
-      .setTitle(`${emoji} ${actionLabel} — ${items.length} registros`)
-      .setDescription(description.slice(0, 4096)) // Discord embed limit
-      .setFooter({ text: `${EMOJIS.time} Período: ${startDate || 'N/A'} a ${endDate || 'N/A'}` });
+    itemChunks.forEach((chunk, chunkIndex) => {
+      const description = chunk
+        .map((item) => {
+          const name = item.nome || 'Unknown';
+          const rank = item.rank || 'N/A';
+          const date = item.occurred_at || '';
+          return `${EMOJIS.ponto} **${name}** ${EMOJIS.seta} ${rank} ${date ? `(${EMOJIS.time} ${date})` : ''}`;
+        })
+        .join('\n');
 
-    embeds.push(embed);
+      const chunkLabel = itemChunks.length > 1 ? `${actionLabel} (${chunkIndex + 1}/${itemChunks.length})` : actionLabel;
+      const dateDisplay = startDate === endDate ? startDate : `${startDate} a ${endDate}`;
+      const embed = new EmbedBuilder()
+        .setColor(color)
+        .setTitle(`${emoji} ${chunkLabel} — ${chunk.length} registros`)
+        .setDescription(description.slice(0, 4096)) // Discord embed limit
+        .setFooter({ text: `Período: ${dateDisplay}` });
+
+      embeds.push(embed);
+    });
   });
 
-  return embeds;
+  // Check if total size exceeds Discord limits (safely under MAX_EMBED_SIZE)
+  let totalSize = 0;
+  let needsFile = false;
+  embeds.forEach(embed => {
+    totalSize += calculateEmbedSize(embed);
+  });
+
+  // If total exceeds safe limit, mark for file output
+  if (totalSize > 5500 || embeds.length > 10) {
+    needsFile = true;
+  }
+
+  return {
+    embeds: needsFile ? [] : embeds,
+    needsFile,
+    json: {
+      period: { start: startDate, end: endDate },
+      summary: {
+        entrou: groupedByAction.entrou?.length || 0,
+        saiu: groupedByAction.saiu?.length || 0,
+        promovido: groupedByAction.promovido?.length || 0,
+        rebaixado: groupedByAction.rebaixado?.length || 0,
+        total: validRecords.length,
+      },
+      data: groupedByAction,
+    },
+  };
 }
 
 /**
@@ -201,4 +312,95 @@ export function isValidDate(dateStr) {
   if (!regex.test(dateStr)) return false;
   const date = new Date(dateStr);
   return date instanceof Date && !isNaN(date);
+}
+
+/**
+ * Fetch movimentacao data for a specific date
+ * @param {string} date - YYYY-MM-DD format
+ * @returns {Promise<{ ok: boolean, data?: array, summary?: object }>}
+ */
+export async function fetchMovimentacaoByDate(date) {
+  return fetchMovimentacao({ date });
+}
+
+/**
+ * Fetch movimentacao data for a date range
+ * @param {string} startDate - YYYY-MM-DD format
+ * @param {string} endDate - YYYY-MM-DD format
+ * @returns {Promise<{ ok: boolean, data?: array, summary?: object }>}
+ */
+export async function fetchMovimentacaoByDateRange(startDate, endDate) {
+  return fetchMovimentacao({ startDate, endDate });
+}
+
+/**
+ * Fetch movimentacao data filtered by action
+ * @param {string} action - Action type (entrou, saiu, promovido, rebaixado)
+ * @param {string} date - Optional specific date in YYYY-MM-DD format
+ * @returns {Promise<{ ok: boolean, data?: array, summary?: object }>}
+ */
+export async function fetchMovimentacaoByAction(action, date = null) {
+  return fetchMovimentacao({ date, action });
+}
+
+/**
+ * Search movimentacao data by player name
+ * @param {string} playerName - Player name to search
+ * @param {string} date - Optional specific date in YYYY-MM-DD format
+ * @returns {Promise<{ ok: boolean, data?: array, summary?: object }>}
+ */
+export async function fetchMovimentacaoBySearch(playerName, date = null) {
+  return fetchMovimentacao({ date, search: playerName });
+}
+
+/**
+ * Export movimentacao data for a file (txt format)
+ * @param {object} json - JSON data returned from buildMovimentacaoEmbeds
+ * @returns {string}
+ */
+export function formatMovimentacaoAsText(json) {
+  if (!json || !json.data) return '';
+
+  const { period, summary, data } = json;
+  let text = '';
+
+  text += `═══════════════════════════════════════════\n`;
+  text += `GUILD MOVIMENTAÇÃO - ${period.start} a ${period.end}\n`;
+  text += `═══════════════════════════════════════════\n\n`;
+
+  // Summary
+  text += `RESUMO:\n`;
+  text += `├─ Entradas: ${summary.entrou}\n`;
+  text += `├─ Saídas: ${summary.saiu}\n`;
+  text += `├─ Promoções: ${summary.promovido}\n`;
+  text += `├─ Rebaixamentos: ${summary.rebaixado}\n`;
+  text += `└─ Total: ${summary.total}\n\n`;
+
+  // Detailed records by action
+  const actionLabels = {
+    entrou: 'ENTRADAS',
+    saiu: 'SAÍDAS',
+    promovido: 'PROMOÇÕES',
+    rebaixado: 'REBAIXAMENTOS',
+  };
+
+  Object.entries(actionLabels).forEach(([action, label]) => {
+    if (data[action] && Array.isArray(data[action]) && data[action].length > 0) {
+      text += `───────────────────────────────────────────\n`;
+      text += `${label} (${data[action].length})\n`;
+      text += `───────────────────────────────────────────\n`;
+
+      data[action].forEach((record, idx) => {
+        const num = String(idx + 1).padStart(3, ' ');
+        const name = record.nome || 'Unknown';
+        const rank = record.rank || 'N/A';
+        const date = record.occurred_at || '';
+        text += `${num}. ${name} -> Rank: ${rank} (${date})\n`;
+      });
+
+      text += '\n';
+    }
+  });
+
+  return text;
 }

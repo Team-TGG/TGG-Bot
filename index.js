@@ -5,11 +5,11 @@
  */
 
 import 'dotenv/config';
-import { EmbedBuilder } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder } from 'discord.js';
 import { getUsers, getUsersWithElo } from './src/db.js';
 import { createClient, runSync, runEloSync } from './src/discord.js';
 import { runAndPostGuildActivity } from './src/guildActivity.js';
-import { fetchMovimentacao, buildMovimentacaoEmbeds, getDefaultDateRange, isValidDate } from './src/movimentacao.js';
+import { fetchMovimentacao, buildMovimentacaoEmbeds, getDefaultDateRange, isValidDate, formatMovimentacaoAsText } from './src/movimentacao.js';
 import { syncNicknames, updateMemberNicknameDiscordPortion, parseNickname, buildNickname, fetchBrawlhallaClanData, loadClanCache } from './src/nicknameSync.js';
 import { loadCustomNicknames } from './src/customNicknames.js';
 import { discord as discordConfig, ALLOWED_USER_IDS } from './config/index.js';
@@ -24,408 +24,327 @@ async function main() {
   const client = createClient();
   const PREFIX = '.';
 
-  client.once('clientReady', () => {
+  const COMMAND_ALIASES = {
+    'sync-guild': 'sync-guild-roles',
+    'sync-guild-roles': 'sync-guild-roles',
+    'sync-roles': 'sync-guild-roles',
+    'sync-elo': 'sync-elo-roles',
+    'sync-elo-roles': 'sync-elo-roles',
+    'sync': 'sync',
+    'guild-activity': 'guild-activity',
+    'activity': 'guild-activity',
+    'mov': 'movimentacao',
+    'movimentacao': 'movimentacao',
+    'sync-nick': 'sync-nicknames',
+    'sync-nicknames': 'sync-nicknames',
+    'refresh-cache': 'refresh-clan-cache',
+    'refresh-clan-cache': 'refresh-clan-cache',
+    'help': 'help',
+  };
+
+  // Emoji constants (custom/server emojis and unicode)
+  const EMOJIS = {
+    arrowLeft: '<:arrowleft:1475806697162539059>',
+    arrowRight: '<:arrowright:1475806826833383456>',
+    check: '<:check:1475806856722120838>',
+    checkbox: '<:checkbox:1475806904482660476>',
+    loading: '<a:loading:1475806256366358633>',
+    square: '<:square:1475807057830744074>',
+    symboldash: '<:symboldash:1475807293323870238>',
+    greaterthan: '<:greaterthan:1475807008010534942>',
+    xis2: '<:xis2:1475807173291278369>',
+    xis: '<:xis:1475807109554896966>',
+    clipboard: '<:clipboard:1475806180621287527>',
+    lessthan: '<:lessthan:1475806956437635082>',
+    baixo: '<:baixo:1475807866714718239>',
+    cima: '<:cima:1475807892782317578>',
+    clock: '<:clock:1475829939122212874>',
+    success: '<:check:1475806856722120838>',
+  };
+
+  client.once('ready', () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
   });
 
-  /**
-   * Check if user is admin
-   */
   function isAdmin(userId) {
     return ALLOWED_USER_IDS.includes(userId);
   }
 
-  /**
-   * Create error embed
-   */
   function createErrorEmbed(title, message) {
     return new EmbedBuilder()
       .setColor(0xed4245)
-      .setTitle(`<:icon_x:872277999687442472> ${title}`)
+      .setTitle(`${EMOJIS.xis} ${title}`)
       .setDescription(message)
       .setTimestamp();
   }
 
-  /**
-   * Create success embed with footer
-   */
   function createSuccessEmbed(title, description) {
     return new EmbedBuilder()
       .setColor(0x57f287)
-      .setTitle(`<:icon_v:825250296987910144> ${title}`)
+      .setTitle(`${EMOJIS.success} ${title}`)
       .setDescription(description)
       .setTimestamp();
   }
 
-  // Message handler for prefix commands
   client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
     if (!message.content.startsWith(PREFIX)) return;
 
     const args = message.content.slice(PREFIX.length).trim().split(/\s+/);
-    const command = args[0]?.toLowerCase();
+    const rawCommand = args[0]?.toLowerCase();
+    const command = COMMAND_ALIASES[rawCommand] || rawCommand;
 
-    if (!command) return;
-
-    // .nickname command - DISABLED FOR NOW
-    if (command === 'nickname') {
-      return message.reply({
-        embeds: [
-          createErrorEmbed(
-            'Comando Desativado',
-            'O comando `.nickname` está desativado no momento.'
-          ),
-        ],
-      });
-    }
 
     // Admin check for all other commands
     if (!isAdmin(message.author.id)) {
-      const embed = createErrorEmbed(
-        'Acesso Negado',
-        'Apenas administradores podem usar estes comandos.'
-      );
-      return message.reply({ embeds: [embed] });
+      return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar estes comandos.')] });
     }
 
     try {
-      // .help command
       if (command === 'help') {
-        const helpEmbed = new EmbedBuilder()
+        const page1 = new EmbedBuilder()
           .setColor(0x5865f2)
-          .setTitle('<:g_ponto_white_RR:1305837905624698880> Comandos Disponíveis')
+          .setTitle(`${EMOJIS.clipboard} Sincronização`)
           .addFields(
-            {
-              name: '<a:seta:851206127471034378> .sync-guild-roles',
-              value: 'Sincronizar ranks da guild (recruit/member/officer)',
-              inline: false,
-            },
-            {
-              name: '<a:seta:851206127471034378> .sync-elo-roles',
-              value: 'Sincronizar roles de ELO dos jogadores',
-              inline: false,
-            },
-            {
-              name: '<a:seta:851206127471034378> .sync-nicknames',
-              value: 'Sincronizar apelidos com clan Brawlhalla (formato: brawlhallaName/discordName)\nUsa cache quando disponível, chama API apenas se necessário',
-              inline: false,
-            },
-            {
-              name: '<a:seta:851206127471034378> .refresh-clan-cache',
-              value: 'Atualiza o cache do clan direto da Brawlhalla API',
-              inline: false,
-            },
-            {
-              name: '<a:seta:851206127471034378> .nickname <newName>',
-              value: '**[PARA TODOS]** Mudar apenas a parte Discord do apelido (mantém o nome Brawlhalla da API)\nExemplo: `.nickname disneyritozx`\nAntes: `yaya_s2/oldname` → Depois: `yaya_s2/disneyritozx`',
-              inline: false,
-            },
-            {
-              name: '<a:seta:851206127471034378> .guild-activity',
-              value: 'Sincronizar e postar atividade da guild',
-              inline: false,
-            },
-            {
-              name: '<:time2:1406766019589967924> .movimentacao [start_date] [end_date]',
-              value: 'Buscar movimentação da guild\nFormato: YYYY-MM-DD (ex: .movimentacao 2025-02-01 2025-02-22)',
-              inline: false,
-            },
-            {
-              name: '<a:seta:851206127471034378> .help',
-              value: 'Mostrar esta mensagem',
-              inline: false,
-            }
+            { name: `${EMOJIS.arrowRight} .sync`, value: 'Sincronização completa (ranks + ELO)', inline: false },
+            { name: `${EMOJIS.arrowRight} .sync-guild`, value: 'Sincronizar ranks da guild', inline: false },
+            { name: `${EMOJIS.arrowRight} .sync-elo`, value: 'Sincronizar roles de ELO', inline: false },
+            { name: `${EMOJIS.arrowRight} .sync-nick`, value: 'Sincronizar apelidos Brawlhalla', inline: false },
+            { name: `${EMOJIS.arrowRight} .refresh-cache`, value: 'Atualizar cache do clan', inline: false }
           )
-          .setFooter({ text: 'em minha defesa a ia fez o embed' })
+          .setFooter({ text: 'Selecione uma categoria no dropdown' })
           .setTimestamp();
-        return message.reply({ embeds: [helpEmbed] });
-      }
+        
+        const page2 = new EmbedBuilder()
+          .setColor(0x5865f2)
+          .setTitle(`${EMOJIS.clipboard} Informações`)
+          .addFields(
+            { name: `${EMOJIS.arrowRight} .guild-activity`, value: 'Sincronizar atividade da guild', inline: false },
+            { name: `${EMOJIS.arrowRight} .mov [data-início] [data-fim]`, value: 'Buscar movimentação (YYYY-MM-DD)', inline: false },
+            { name: `${EMOJIS.arrowRight} .help`, value: 'Mostrar esta mensagem', inline: false }
+          )
+          .setFooter({ text: 'Selecione uma categoria no dropdown' })
+          .setTimestamp();
 
-      // .sync-guild-roles command
-      if (command === 'sync-guild-roles') {
-        const loading = await message.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(0xfaa61a)
-              .setTitle('⏳ Sincronizando...')
-              .setDescription('Sincronizando ranks da guild...'),
-          ],
+        const selectMenu = new StringSelectMenuBuilder()
+          .setCustomId('help_menu')
+          .setPlaceholder('Escolha uma categoria...')
+          .addOptions(
+            { label: 'Sincronização', value: 'sync', emoji: EMOJIS.arrowRight, description: 'Comandos de sincronização' },
+            { label: 'Informações', value: 'info', emoji: EMOJIS.clipboard, description: 'Comandos de informação' }
+          );
+
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+        const helpMsg = await message.reply({ embeds: [page1], components: [row] });
+
+        // Create a collector for the select menu
+        const collector = helpMsg.createMessageComponentCollector({ time: 60000 });
+
+        collector.on('collect', async (interaction) => {
+          if (interaction.user.id !== message.author.id) {
+            return interaction.reply({ content: 'Você não pode usar este menu', ephemeral: true });
+          }
+
+          if (interaction.customId === 'help_menu') {
+            const selected = interaction.values[0];
+            const embedToShow = selected === 'sync' ? page1 : page2;
+            await interaction.update({ embeds: [embedToShow], components: [row] });
+          }
         });
 
+        collector.on('end', () => {
+          helpMsg.delete().catch(() => {});
+        });
+      }
+
+      // The rest of the existing command handlers (sync, sync-guild-roles, sync-elo-roles, guild-activity,
+      // movimentacao, sync-nicknames, refresh-clan-cache) are implemented below — reuse the existing
+      // functions imported at top (getUsers, runSync, runEloSync, runAndPostGuildActivity, etc.).
+
+      // .sync-guild-roles
+      if (command === 'sync-guild-roles') {
+        const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando...`).setDescription('Sincronizando ranks...')] });
         try {
           const users = await getUsers();
           const result = await runSync(client, users);
-          const resultEmbed = new EmbedBuilder()
-            .setColor(0x57f287)
-            .setTitle('✅ Sincronização de Ranks Concluída')
-            .addFields(
-              { name: 'Sincronizados', value: `${result.synced}`, inline: true },
-              { name: 'Ignorados', value: `${result.skipped}`, inline: true },
-              { name: 'Erros', value: `${result.errors}`, inline: true }
-            )
-            .setTimestamp();
+          const resultEmbed = createSuccessEmbed('Ranks Sincronizados', `${EMOJIS.check} ${result.synced} | ${EMOJIS.checkbox} ${result.skipped} | ${EMOJIS.xis} ${result.errors}`);
           await loading.edit({ embeds: [resultEmbed] });
         } catch (err) {
-          await loading.edit({
-            embeds: [createErrorEmbed('Erro de Sincronização', err.message)],
-          });
+          await message.reply({ embeds: [createErrorEmbed('Erro de Sincronização', err.message)] });
         }
       }
 
-      // .sync-elo-roles command
+      // .sync-elo-roles
       if (command === 'sync-elo-roles') {
-        const loading = await message.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(0xfaa61a)
-              .setTitle('⏳ Sincronizando...')
-              .setDescription('Sincronizando roles de ELO...'),
-          ],
-        });
-
+        const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando...`).setDescription('Sincronizando ELO...')] });
         try {
           const usersWithElo = await getUsersWithElo();
           const result = await runEloSync(client, usersWithElo);
-          const resultEmbed = new EmbedBuilder()
-            .setColor(0x57f287)
-            .setTitle('✅ Sincronização de ELO Concluída')
-            .addFields(
-              { name: 'Sincronizados', value: `${result.synced}`, inline: true },
-              { name: 'Ignorados', value: `${result.skipped}`, inline: true },
-              { name: 'Erros', value: `${result.errors}`, inline: true }
-            )
-            .setTimestamp();
+          const resultEmbed = createSuccessEmbed('ELO Sincronizado', `${EMOJIS.check} ${result.synced} | ${EMOJIS.checkbox} ${result.skipped} | ${EMOJIS.xis} ${result.errors}`);
           await loading.edit({ embeds: [resultEmbed] });
         } catch (err) {
-          await loading.edit({
-            embeds: [createErrorEmbed('Erro de Sincronização', err.message)],
-          });
+          await message.reply({ embeds: [createErrorEmbed('Erro de Sincronização', err.message)] });
         }
       }
 
-      // .guild-activity command
+      // .guild-activity
       if (command === 'guild-activity') {
-        const loading = await message.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(0xfaa61a)
-              .setTitle('⏳ Sincronizando...')
-              .setDescription('Buscando atividade da guild...'),
-          ],
-        });
-
+        const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando...`).setDescription('Buscando atividade da guild...')] });
         try {
           const result = await runAndPostGuildActivity(client);
           if (result.ok) {
             const summary = result.summary || {};
             const resultEmbed = new EmbedBuilder()
               .setColor(0x57f287)
-              .setTitle('✅ Sincronização de Atividade Concluída')
+              .setTitle(`${EMOJIS.check} Atividade Sincronizada`)
               .addFields(
-                { name: 'Entradas', value: `${summary.entrou ?? 0}`, inline: true },
-                { name: 'Saídas', value: `${summary.saiu ?? 0}`, inline: true },
-                { name: 'Promoções', value: `${summary.promovido ?? 0}`, inline: true },
-                { name: 'Rebaixamentos', value: `${summary.rebaixado ?? 0}`, inline: true },
-                { name: 'Saldo Líquido', value: `${summary.saldo_liquido ?? 0}`, inline: true },
-                { name: 'Postado', value: result.posted ? 'Sim' : 'Não configurado', inline: true }
+                { name: `${EMOJIS.cima} Entradas`, value: `${summary.entrou ?? 0}`, inline: true },
+                { name: `${EMOJIS.baixo} Sa\u00eddas`, value: `${summary.saiu ?? 0}`, inline: true },
+                { name: `${EMOJIS.arrowRight} Saldo`, value: `${summary.saldo_liquido ?? 0}`, inline: true }
               )
               .setTimestamp();
             await loading.edit({ embeds: [resultEmbed] });
           } else {
-            await loading.edit({
-              embeds: [createErrorEmbed('Erro na Sincronização', result.error)],
-            });
+            await loading.edit({ embeds: [createErrorEmbed('Erro na Sincronização', result.error)] });
           }
         } catch (err) {
-          await loading.edit({
-            embeds: [createErrorEmbed('Erro na Sincronização', err.message)],
-          });
+          await message.reply({ embeds: [createErrorEmbed('Erro na Sincronização', err.message)] });
         }
       }
 
-      // .movimentacao command
-      if (command === 'movimentacao') {
-        const loading = await message.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(0xfaa61a)
-              .setTitle('⏳ Buscando...')
-              .setDescription('Carregando dados de movimentação...'),
-          ],
-        });
-
+      // .movimentacao
+      if (command === 'movimentacao' || command === 'mov') {
+        const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Buscando...`).setDescription('Carregando dados de movimentação...')] });
         try {
-          let startDate, endDate;
-
-          // Parse date arguments
+          let startDate, endDate, queryType = 'range';
+          
           if (args.length >= 3) {
+            // Two dates provided: date range
             startDate = args[1];
             endDate = args[2];
-
             if (!isValidDate(startDate) || !isValidDate(endDate)) {
-              return loading.edit({
-                embeds: [
-                  createErrorEmbed(
-                    'Formato de Data Inválido',
-                    'Use formato YYYY-MM-DD\nExemplo: `.movimentacao 2025-02-01 2025-02-22`'
-                  ),
-                ],
-              });
+              return loading.edit({ embeds: [createErrorEmbed('Data Inválida', 'Formato: YYYY-MM-DD')] });
             }
+            queryType = 'range';
+          } else if (args.length === 2) {
+            // One date provided: single day
+            startDate = args[1];
+            if (!isValidDate(startDate)) {
+              return loading.edit({ embeds: [createErrorEmbed('Data Inválida', 'Formato: YYYY-MM-DD')] });
+            }
+            endDate = startDate; // Same day
+            queryType = 'day';
           } else {
-            // Default to last 7 days
+            // No dates provided: default to last 7 days
             const range = getDefaultDateRange();
             startDate = range.startDate;
             endDate = range.endDate;
+            queryType = 'range';
           }
-
-          console.log(`[Command] .movimentacao called with dates: ${startDate} to ${endDate}`);
-          const data = await fetchMovimentacao(startDate, endDate, 5000);
-          console.log(`[Command] API returned successfully, building embeds...`);
-          const embeds = buildMovimentacaoEmbeds(data.data || [], startDate, endDate);
-
-          // Send in chunks of 10 embeds per message
-          const EMBEDS_PER_MESSAGE = 10;
-          for (let i = 0; i < embeds.length; i += EMBEDS_PER_MESSAGE) {
-            const chunk = embeds.slice(i, i + EMBEDS_PER_MESSAGE);
-            if (i === 0) {
-              await loading.edit({ embeds: chunk });
-            } else {
-              await message.reply({ embeds: chunk });
+          
+          const data = await fetchMovimentacao({ date: queryType === 'day' ? startDate : null, startDate: queryType === 'range' ? startDate : null, endDate: queryType === 'range' ? endDate : null });
+          const result = buildMovimentacaoEmbeds(data.data || [], startDate, endDate);
+          
+          if (result.needsFile) {
+            // Send data as text file if embeds would be too large
+            const textContent = formatMovimentacaoAsText(result.json);
+            const attachment = new AttachmentBuilder(Buffer.from(textContent), {
+              name: `movimentacao_${startDate}_${endDate}.txt`,
+            });
+            const dateDisplay = startDate === endDate ? startDate : `${startDate} a ${endDate}`;
+            await loading.edit({
+              embeds: [
+                new EmbedBuilder()
+                  .setColor(0xfaa61a)
+                  .setTitle(`${EMOJIS.ponto} Guild Movimentação (Arquivo)`)
+                  .setDescription(`Dados de ${dateDisplay}\n\nOs dados foram salvos em arquivo de texto pois ultrapassaram o limite de tamanho.`)
+                  .addFields([
+                    { name: 'Entradas', value: String(result.json.summary.entrou), inline: true },
+                    { name: 'Saídas', value: String(result.json.summary.saiu), inline: true },
+                    { name: 'Total', value: String(result.json.summary.total), inline: true },
+                    { name: 'Promoções', value: String(result.json.summary.promovido), inline: true },
+                    { name: 'Rebaixamentos', value: String(result.json.summary.rebaixado), inline: true },
+                  ])
+                  .setFooter({ text: `Período: ${dateDisplay}` }),
+              ],
+              files: [attachment],
+            });
+          } else {
+            // Send data as embeds
+            const EMBEDS_PER_MESSAGE = 10;
+            for (let i = 0; i < result.embeds.length; i += EMBEDS_PER_MESSAGE) {
+              const chunk = result.embeds.slice(i, i + EMBEDS_PER_MESSAGE);
+              if (i === 0) await loading.edit({ embeds: chunk }); else await message.reply({ embeds: chunk });
             }
           }
         } catch (err) {
-          console.error('[Command] Error:', err.message);
-          await loading.edit({
-            embeds: [createErrorEmbed('Erro na API', err.message)],
-          });
+          await loading.edit({ embeds: [createErrorEmbed('Erro na API', err.message)] });
         }
       }
 
-      // .sync command (runs both guild and ELO sync)
+      // .sync (both guild and elo)
       if (command === 'sync') {
-        const loading = await message.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(0xfaa61a)
-              .setTitle('⏳ Sincronizando...')
-              .setDescription('Executando sincronização completa...'),
-          ],
-        });
-
+        const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando...`).setDescription('Executando sincronização completa...')] });
         try {
           const users = await getUsers();
           const guildResult = await runSync(client, users);
           const usersWithElo = await getUsersWithElo();
           const eloResult = await runEloSync(client, usersWithElo);
-
           const resultEmbed = new EmbedBuilder()
             .setColor(0x57f287)
-            .setTitle('✅ Sincronização Completa Concluída')
+            .setTitle(`${EMOJIS.check} Sincronização Completa`)
             .addFields(
-              {
-                name: 'Ranks da Guild',
-                value: `Sincronizados: ${guildResult.synced} | Ignorados: ${guildResult.skipped} | Erros: ${guildResult.errors}`,
-                inline: false,
-              },
-              {
-                name: 'Roles de ELO',
-                value: `Sincronizados: ${eloResult.synced} | Ignorados: ${eloResult.skipped} | Erros: ${eloResult.errors}`,
-                inline: false,
-              }
+              { name: 'Ranks', value: `${EMOJIS.check} ${guildResult.synced} | ${EMOJIS.checkbox} ${guildResult.skipped} | ${EMOJIS.xis} ${guildResult.errors}`, inline: true },
+              { name: 'ELO', value: `${EMOJIS.check} ${eloResult.synced} | ${EMOJIS.checkbox} ${eloResult.skipped} | ${EMOJIS.xis} ${eloResult.errors}`, inline: true }
             )
             .setTimestamp();
           await loading.edit({ embeds: [resultEmbed] });
         } catch (err) {
-          await loading.edit({
-            embeds: [createErrorEmbed('Erro de Sincronização', err.message)],
-          });
+          await loading.edit({ embeds: [createErrorEmbed('Erro de Sincronização', err.message)] });
         }
       }
 
-      // .sync-nicknames command
-      if (command === 'sync-nicknames') {
-        const loading = await message.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(0xfaa61a)
-              .setTitle('⏳ Sincronizando...')
-              .setDescription('Sincronizando apelidos com clan Brawlhalla...'),
-          ],
-        });
-
+      // .sync-nicknames
+      if (command === 'sync-nicknames' || command === 'sync-nick') {
+        const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando...`).setDescription('Sincronizando apelidos com clan Brawlhalla...')] });
         try {
           await loadCustomNicknames();
           const result = await syncNicknames(client, discordConfig.guildId);
-          
           const resultEmbed = new EmbedBuilder()
             .setColor(0x57f287)
-            .setTitle('✅ Sincronização de Apelidos Concluída')
+            .setTitle(`${EMOJIS.check} Apelidos Sincronizados`)
             .addFields(
-              { name: 'Sincronizados', value: `${result.synced}`, inline: true },
-              { name: 'Atualizados', value: `${result.updated}`, inline: true },
-              { name: 'Sem Alteração', value: `${result.unchanged}`, inline: true },
-              { name: 'Erros', value: `${result.failed}`, inline: true }
+              { name: `${EMOJIS.check} Sincronizados`, value: `${result.synced}`, inline: true },
+              { name: `${EMOJIS.cima} Atualizados`, value: `${result.updated}`, inline: true },
+              { name: `${EMOJIS.square} Inalterados`, value: `${result.unchanged}`, inline: true },
+              { name: `${EMOJIS.xis} Erros`, value: `${result.failed}`, inline: true }
             )
             .setTimestamp();
-          
-          if (result.errors.length > 0 && result.errors.length <= 5) {
+          if (result.errors && result.errors.length > 0 && result.errors.length <= 5) {
             const errorList = result.errors.map((e) => `• ${e.error}`).join('\n');
             resultEmbed.addFields({ name: 'Próximos erros', value: errorList, inline: false });
           }
-          
           await loading.edit({ embeds: [resultEmbed] });
         } catch (err) {
-          await loading.edit({
-            embeds: [createErrorEmbed('Erro de Sincronização', err.message)],
-          });
+          await loading.edit({ embeds: [createErrorEmbed('Erro de Sincronização', err.message)] });
         }
       }
 
-      // .refresh-clan-cache command (refresh clan data from API)
-      if (command === 'refresh-clan-cache') {
-        const loading = await message.reply({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(0xfaa61a)
-              .setTitle('⏳ Atualizando...')
-              .setDescription('Atualizando cache do clan Brawlhalla...'),
-          ],
-        });
-
+      // .refresh-clan-cache
+      if (command === 'refresh-clan-cache' || command === 'refresh-cache') {
+        const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Atualizando...`).setDescription('Atualizando cache do clan Brawlhalla...')] });
         try {
           const clanData = await fetchBrawlhallaClanData();
-          
-          message.reply({
-            embeds: [
-              new EmbedBuilder()
-                .setColor(0x57f287)
-                .setTitle('✅ Cache Atualizado')
-                .setDescription(`Cache do clan atualizado com ${clanData.clan?.length || 0} membros`)
-                .addFields(
-                  { name: 'Clan ID', value: `${clanData.clan_id}`, inline: true },
-                  { name: 'Clan Name', value: `${clanData.clan_name}`, inline: true },
-                  { name: 'Membros', value: `${clanData.clan?.length || 0}`, inline: true }
-                )
-                .setTimestamp(),
-            ],
-          });
-          
+          await message.reply({ embeds: [new EmbedBuilder().setColor(0x57f287).setTitle(`${EMOJIS.check} Cache Atualizado`).setDescription(`${clanData.clan?.length || 0} membros`).addFields({ name: 'Clan', value: `${clanData.clan_name} (${clanData.clan_id})`, inline: true }).setTimestamp()] });
           await loading.delete();
         } catch (err) {
-          await loading.edit({
-            embeds: [createErrorEmbed('Erro ao Atualizar Cache', err.message)],
-          });
+          await loading.edit({ embeds: [createErrorEmbed('Erro ao Atualizar Cache', err.message)] });
         }
       }
 
-      } catch (err) {
-        console.error('[Command Error]', err);
-      const embed = createErrorEmbed(
-        'Erro Interno',
-        `Um erro inesperado ocorreu: ${err.message}`
-      );
-      await message.reply({ embeds: [embed] }).catch(() => {});
+    } catch (err) {
+      console.error('[Command Error]', err);
+      await message.reply({ embeds: [createErrorEmbed('Erro Interno', `Um erro inesperado ocorreu: ${err.message}`)] }).catch(() => {});
     }
   });
 
