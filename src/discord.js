@@ -14,17 +14,21 @@ const ROLE_MAP = {
 };
 
 // All guild rank role IDs (we remove any of these before adding the correct one)
-const ALL_GUILD_ROLE_IDS = [
-  '1437427750209327297',
-  '1437427716805890191',
-  '1437427655950467242',
-];
+export const ALL_GUILD_ROLE_IDS = Object.values(ROLE_MAP);
+
+// System roles that are independent of guild rank
+export const SYSTEM_ROLES = {
+  TGG: '1437441679572471940',
+  VISITOR: '1437447173896802395',
+};
 
 // Human-readable role names for debug logs
 const ROLE_ID_TO_NAME = {
   '1437427750209327297': 'recruit',
   '1437427716805890191': 'member',
   '1437427655950467242': 'officer',
+  '1437441679572471940': 'TGG',
+  '1437447173896802395': 'Visitante',
 };
 
 // --- ELO roles (from player_elo_missions.initial_elo_1v1) ---
@@ -93,23 +97,74 @@ export function createClient() {
  * - If not: remove any other guild role and add the correct one.
  * Returns { added, removed, unchanged } for debug reporting.
  */
-export async function syncMemberRoles(member, dbRole) {
+export async function syncMemberRoles(member, dbRole, active) {
+  const TGG_ROLE_ID = SYSTEM_ROLES.TGG;
+  const VISITOR_ROLE_ID = SYSTEM_ROLES.VISITOR;
+
   const targetRoleId = ROLE_MAP[dbRole];
   const targetRoleName = ROLE_ID_TO_NAME[targetRoleId] ?? targetRoleId;
+
   const tag = member.user.tag;
   const id = member.id;
 
+  // Se o user estiver inativo, tira TGG e rank e deixa só visitante
+  if (active === false) {
+    const rolesToRemove = [
+      TGG_ROLE_ID,
+      ...ALL_GUILD_ROLE_IDS,
+    ];
+
+    const removedNames = [];
+
+    for (const roleId of rolesToRemove) {
+      if (member.roles.cache.has(roleId)) {
+        const name = ROLE_ID_TO_NAME[roleId] ?? roleId;
+        removedNames.push(name);
+        await member.roles.remove(roleId);
+      }
+    }
+
+    if (removedNames.length) {
+      console.log(`[REMOVE] ${tag} (${id}): removed ${removedNames.join(', ')}`);
+    }
+
+    if (!member.roles.cache.has(VISITOR_ROLE_ID)) {
+      await member.roles.add(VISITOR_ROLE_ID);
+      console.log(`[VISITOR] ${tag} (${id}): set as visitor`);
+    }
+
+    return { added: true, removed: removedNames, unchanged: false };
+  }
+
+  // Se o usuário estiver ativo
   if (!targetRoleId) {
     console.warn(`[SKIP] Unknown role "${dbRole}" for ${tag} (${id})`);
     return { added: false, removed: [], unchanged: false };
   }
 
-  const alreadyHas = member.roles.cache.has(targetRoleId);
-  if (alreadyHas) {
+  // Remove visitante se tiver
+  if (member.roles.cache.has(VISITOR_ROLE_ID)) {
+    await member.roles.remove(VISITOR_ROLE_ID);
+    console.log(
+      `[REMOVE] ${tag} (${id}): removed ${ROLE_ID_TO_NAME[VISITOR_ROLE_ID] ?? VISITOR_ROLE_ID}`
+    );
+  }
+
+  // Garante TGG
+  if (!member.roles.cache.has(TGG_ROLE_ID)) {
+    await member.roles.add(TGG_ROLE_ID);
+    console.log(
+      `[ADD] ${tag} (${id}): added ${ROLE_ID_TO_NAME[TGG_ROLE_ID] ?? TGG_ROLE_ID} (Active user)`
+    );
+  }
+
+  // Se já tiver o rank correto
+  if (member.roles.cache.has(targetRoleId)) {
     console.log(`[OK] ${tag} (${id}): already has ${targetRoleName}, skip`);
     return { added: false, removed: [], unchanged: true };
   }
 
+  // Remove outros ranks
   const toRemove = member.roles.cache.filter((role) =>
     ALL_GUILD_ROLE_IDS.includes(role.id)
   );
@@ -122,7 +177,7 @@ export async function syncMemberRoles(member, dbRole) {
   if (removedNames.length) {
     console.log(`[REMOVE] ${tag} (${id}): removed ${removedNames.join(', ')}`);
   }
-
+  // Adiciona rank correto
   await member.roles.add(targetRoleId);
   console.log(`[ADD] ${tag} (${id}): added ${targetRoleName} (DB role: ${dbRole})`);
   return { added: true, removed: removedNames, unchanged: false };
@@ -159,7 +214,7 @@ export async function runSync(client, users) {
         skippedNotInGuild.push({ discord_id: user.discord_id, role: user.role });
         continue;
       }
-      await syncMemberRoles(member, user.role);
+      await syncMemberRoles(member, user.role, user.active);
       synced.push({ discord_id: user.discord_id, role: user.role, tag: member.user.tag });
     } catch (err) {
       console.error(`[ERROR] ${user.discord_id}:`, err.message);

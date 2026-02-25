@@ -30,7 +30,7 @@ export async function getUsers() {
   const supabase = getClient();
   const { data, error } = await supabase
     .from('users')
-    .select('discord_id, role');
+    .select('discord_id, role, active');
   if (error) throw error;
   return data ?? [];
 }
