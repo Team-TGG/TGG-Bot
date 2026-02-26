@@ -6,13 +6,13 @@
 
 import 'dotenv/config';
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder } from 'discord.js';
-import { getUsers, getUsersWithElo } from './src/db.js';
+import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers } from './src/db.js';
 import { createClient, runSync, runEloSync } from './src/discord.js';
 import { runAndPostGuildActivity } from './src/guildActivity.js';
 import { fetchMovimentacao, buildMovimentacaoEmbeds, getDefaultDateRange, isValidDate, formatMovimentacaoAsText } from './src/movimentacao.js';
 import { syncNicknames, updateMemberNicknameDiscordPortion, parseNickname, buildNickname, fetchBrawlhallaClanData, loadClanCache } from './src/nicknameSync.js';
 import { loadCustomNicknames } from './src/customNicknames.js';
-import { discord as discordConfig, ALLOWED_USER_IDS } from './config/index.js';
+import { discord as discordConfig, ALLOWED_USER_IDS, inactivePlayers as inactivePlayersConfig } from './config/index.js';
 import { getUserByDiscordId } from './src/db.js';
 
 async function main() {
@@ -40,6 +40,11 @@ async function main() {
     'refresh-cache': 'refresh-clan-cache',
     'refresh-clan-cache': 'refresh-clan-cache',
     'help': 'help',
+    'active': 'active',
+    'inac': 'inac',
+    'unac': 'unac',
+    'inac-list': 'inac-list',
+    'inac-test': 'inac-test',
   };
 
   // Emoji constants (custom/server emojis and unicode)
@@ -94,9 +99,11 @@ async function main() {
     const rawCommand = args[0]?.toLowerCase();
     const command = COMMAND_ALIASES[rawCommand] || rawCommand;
 
-
-    // Admin check for all other commands
-    if (!isAdmin(message.author.id)) {
+    // Commands that don't require admin access
+    const publicCommands = ['active'];
+    
+    // Admin check for admin-only commands
+    if (!publicCommands.includes(command) && !isAdmin(message.author.id)) {
       return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar estes comandos.')] });
     }
 
@@ -126,12 +133,26 @@ async function main() {
           .setFooter({ text: 'Selecione uma categoria no dropdown' })
           .setTimestamp();
 
+        const page3 = new EmbedBuilder()
+          .setColor(0x5865f2)
+          .setTitle(`${EMOJIS.clipboard} Inativos`)
+          .addFields(
+            { name: `${EMOJIS.arrowRight} .inac [@user]`, value: 'Marcar jogador como inativo nesta semana', inline: false },
+            { name: `${EMOJIS.arrowRight} .active [@user]`, value: 'Remover jogador da lista de inativos', inline: false },
+            { name: `${EMOJIS.arrowRight} .unac [@user]`, value: 'Forçar remoção de jogador da lista de inativos', inline: false },
+            { name: `${EMOJIS.arrowRight} .inac-list`, value: 'Listar todos os jogadores inativos desta semana', inline: false },
+            { name: `${EMOJIS.arrowRight} .inac-test`, value: 'Enviar mensagem de teste com usuários inativos', inline: false }
+          )
+          .setFooter({ text: 'Selecione uma categoria no dropdown' })
+          .setTimestamp();
+
         const selectMenu = new StringSelectMenuBuilder()
           .setCustomId('help_menu')
           .setPlaceholder('Escolha uma categoria...')
           .addOptions(
             { label: 'Sincronização', value: 'sync', emoji: EMOJIS.arrowRight, description: 'Comandos de sincronização' },
-            { label: 'Informações', value: 'info', emoji: EMOJIS.clipboard, description: 'Comandos de informação' }
+            { label: 'Informações', value: 'info', emoji: EMOJIS.clipboard, description: 'Comandos de informação' },
+            { label: 'Inativos', value: 'inac', emoji: EMOJIS.xis, description: 'Comandos de inatividade' }
           );
 
         const row = new ActionRowBuilder().addComponents(selectMenu);
@@ -147,7 +168,9 @@ async function main() {
 
           if (interaction.customId === 'help_menu') {
             const selected = interaction.values[0];
-            const embedToShow = selected === 'sync' ? page1 : page2;
+            let embedToShow = page1;
+            if (selected === 'info') embedToShow = page2;
+            if (selected === 'inac') embedToShow = page3;
             await interaction.update({ embeds: [embedToShow], components: [row] });
           }
         });
@@ -342,11 +365,256 @@ async function main() {
         }
       }
 
+      // .active <discord_id> - Mark user as active (remove from inactive list and remove role)
+      if (command === 'active') {
+        try {
+          if (args.length < 2 && message.mentions.size === 0) {
+            return message.reply({ embeds: [createErrorEmbed('Parâmetro Inválido', 'Uso: `.active <@user>` ou `.active <discord_id>`')] });
+          }
+          
+          let discord_id = args[1];
+          const mentionMatch = message.content.match(/<@!?(\d+)>/);
+          if (mentionMatch) {
+            discord_id = mentionMatch[1];
+          }
+          const guild = client.guilds.cache.get(discordConfig.guildId);
+          if (!guild) throw new Error('Guild não encontrada');
+          
+          const member = await guild.members.fetch(discord_id).catch(() => null);
+          if (!member) {
+            return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', `Usuário com ID ${discord_id} não encontrado na guild`)] });
+          }
+
+          // Remove inactive role
+          const inactiveRoleId = inactivePlayersConfig.inactiveRoleId;
+          if (member.roles.cache.has(inactiveRoleId)) {
+            await member.roles.remove(inactiveRoleId);
+          }
+
+          // Remove from database
+          await removeInactivePlayer(discord_id);
+
+          const resultEmbed = createSuccessEmbed('Ativado', `${member.user.tag} foi marcado como ativo novamente.`);
+          await message.reply({ embeds: [resultEmbed] });
+        } catch (err) {
+          await message.reply({ embeds: [createErrorEmbed('Erro ao Ativar Usuário', err.message)] });
+        }
+      }
+
+      // .inac <discord_id> - Mark user as inactive (admin only)
+      if (command === 'inac') {
+        try {
+          if (args.length < 2 && message.mentions.size === 0) {
+            return message.reply({ embeds: [createErrorEmbed('Parâmetro Inválido', 'Uso: `.inac <@user>` ou `.inac <discord_id>`')] });
+          }
+          
+          let discord_id = args[1];
+          const mentionMatch = message.content.match(/<@!?(\d+)>/);
+          if (mentionMatch) {
+            discord_id = mentionMatch[1];
+          }
+          const guild = client.guilds.cache.get(discordConfig.guildId);
+          if (!guild) throw new Error('Guild não encontrada');
+          
+          const member = await guild.members.fetch(discord_id).catch(() => null);
+          if (!member) {
+            return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', `Usuário com ID ${discord_id} não encontrado na guild`)] });
+          }
+
+          // Add to database
+          await addInactivePlayer(discord_id);
+
+          // Add inactive role
+          const inactiveRoleId = inactivePlayersConfig.inactiveRoleId;
+          if (!member.roles.cache.has(inactiveRoleId)) {
+            await member.roles.add(inactiveRoleId);
+          }
+
+          const resultEmbed = createSuccessEmbed('Marcado como Inativo', `${member.user.tag} foi adicionado à lista de inativos.`);
+          await message.reply({ embeds: [resultEmbed] });
+        } catch (err) {
+          await message.reply({ embeds: [createErrorEmbed('Erro ao Marcar Inativo', err.message)] });
+        }
+      }
+
+      // .unac <discord_id> - Force remove user from inactive (admin only)
+      if (command === 'unac') {
+        try {
+          if (args.length < 2 && message.mentions.size === 0) {
+            return message.reply({ embeds: [createErrorEmbed('Parâmetro Inválido', 'Uso: `.unac <@user>` ou `.unac <discord_id>`')] });
+          }
+          
+          let discord_id = args[1];
+          const mentionMatch = message.content.match(/<@!?(\d+)>/);
+          if (mentionMatch) {
+            discord_id = mentionMatch[1];
+          }
+          const guild = client.guilds.cache.get(discordConfig.guildId);
+          if (!guild) throw new Error('Guild não encontrada');
+          
+          const member = await guild.members.fetch(discord_id).catch(() => null);
+          if (!member) {
+            return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', `Usuário com ID ${discord_id} não encontrado na guild`)] });
+          }
+
+          // Remove inactive role
+          const inactiveRoleId = inactivePlayersConfig.inactiveRoleId;
+          if (member.roles.cache.has(inactiveRoleId)) {
+            await member.roles.remove(inactiveRoleId);
+          }
+
+          // Remove from database
+          await removeInactivePlayer(discord_id);
+
+          const resultEmbed = createSuccessEmbed('Removido de Inativos', `${member.user.tag} foi removido da lista de inativos.`);
+          await message.reply({ embeds: [resultEmbed] });
+        } catch (err) {
+          await message.reply({ embeds: [createErrorEmbed('Erro ao Remover de Inativos', err.message)] });
+        }
+      }
+
+      // .inac-list - List all inactive players and how long they've been inactive (admin only)
+      if (command === 'inac-list') {
+        try {
+          const inactivePlayers = await getInactivePlayers();
+          
+          if (inactivePlayers.length === 0) {
+            return message.reply({ embeds: [createErrorEmbed('Sem Inativos', 'Nenhum usuário marcado como inativo no momento')] });
+          }
+
+          const embeds = [];
+          let currentEmbed = new EmbedBuilder()
+            .setColor(0xfaa61a)
+            .setTitle(`📋 Usuários Inativos (${inactivePlayers.length})`);
+
+          for (let i = 0; i < inactivePlayers.length; i++) {
+            const player = inactivePlayers[i];
+            const user = await client.users.fetch(player.discord_id).catch(() => null);
+            const createdAt = new Date(player.created_at);
+            const daysInactive = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
+            const timeStr = daysInactive === 0 ? 'Hoje' : `${daysInactive}d atrás`;
+            
+            const fieldValue = `${user?.tag || 'Usuário Desconhecido'} (ID: ${player.discord_id})\nMarcado: ${timeStr}`;
+            
+            if (currentEmbed.data.fields?.length >= 10) {
+              embeds.push(currentEmbed);
+              currentEmbed = new EmbedBuilder()
+                .setColor(0xfaa61a)
+                .setTitle(`📋 Usuários Inativos - Página ${embeds.length + 1}`);
+            }
+            
+            currentEmbed.addFields({ name: `${i + 1}. ${user?.tag || 'Desconhecido'}`, value: `ID: ${player.discord_id}\nMarcado: ${timeStr}`, inline: false });
+          }
+          
+          embeds.push(currentEmbed);
+          
+          const EMBEDS_PER_MESSAGE = 1;
+          for (let i = 0; i < embeds.length; i += EMBEDS_PER_MESSAGE) {
+            const chunk = embeds.slice(i, i + EMBEDS_PER_MESSAGE);
+            if (i === 0) {
+              await message.reply({ embeds: chunk });
+            } else {
+              await message.channel.send({ embeds: chunk });
+            }
+          }
+        } catch (err) {
+          await message.reply({ embeds: [createErrorEmbed('Erro ao Listar Inativos', err.message)] });
+        }
+      }
+
+      // .inac-test - Send test message with inactive users (admin only)
+      if (command === 'inac-test') {
+        try {
+          const channelId = inactivePlayersConfig.channelId;
+          if (!channelId) {
+            return message.reply({ embeds: [createErrorEmbed('Erro de Configuração', 'INACTIVE_PLAYERS_CHANNEL_ID não configurado')] });
+          }
+
+          const channel = client.channels.cache.get(channelId);
+          if (!channel) {
+            return message.reply({ embeds: [createErrorEmbed('Canal Não Encontrado', `Canal com ID ${channelId} não encontrado`)] });
+          }
+
+          // Get all inactive players
+          const inactivePlayers = await getInactivePlayers();
+          
+          if (inactivePlayers.length === 0) {
+            return message.reply({ embeds: [createErrorEmbed('Sem Inativos', 'Nenhum usuário marcado como inativo no momento')] });
+          }
+
+          // Build mention string
+          const mentions = inactivePlayers
+            .filter(p => p.discord_id)
+            .map(p => `<@${p.discord_id}>`)
+            .join(' ');
+
+          const embed = new EmbedBuilder()
+            .setColor(0xfaa61a)
+            .setTitle('⚠️ Usuários Inativos')
+            .setDescription(`Olá! Os seguintes usuários estão marcados como inativos:\n\n${mentions}\n\nSe você está ativo e foi adicionado por engano, use o comando \`.active\` para se remover da lista.`)
+            .setTimestamp();
+
+          await channel.send({ embeds: [embed] });
+          await message.reply({ embeds: [createSuccessEmbed('Teste Enviado', `Mensagem de teste enviada para <#${channelId}>`)] });
+        } catch (err) {
+          await message.reply({ embeds: [createErrorEmbed('Erro ao Enviar Teste', err.message)] });
+        }
+      }
+
     } catch (err) {
       console.error('[Command Error]', err);
       await message.reply({ embeds: [createErrorEmbed('Erro Interno', `Um erro inesperado ocorreu: ${err.message}`)] }).catch(() => {});
     }
   });
+
+  // Periodic task to send inactive player messages (weekly by default)
+  async function sendInactivePlayersReminder() {
+    try {
+      const channelId = inactivePlayersConfig.channelId;
+      if (!channelId) {
+        console.log('[Inactive Reminder] INACTIVE_PLAYERS_CHANNEL_ID not configured, skipping');
+        return;
+      }
+
+      const channel = client.channels.cache.get(channelId);
+      if (!channel) {
+        console.log(`[Inactive Reminder] Channel ${channelId} not found`);
+        return;
+      }
+
+      const inactivePlayers = await getInactivePlayers();
+      
+      if (inactivePlayers.length === 0) {
+        console.log('[Inactive Reminder] No inactive players');
+        return;
+      }
+
+      const mentions = inactivePlayers
+        .filter(p => p.discord_id)
+        .map(p => `<@${p.discord_id}>`)
+        .join(' ');
+
+      const embed = new EmbedBuilder()
+        .setColor(0xfaa61a)
+        .setTitle('⚠️ Lembrete: Usuários Inativos')
+        .setDescription(`Olá! Os seguintes usuários estão marcados como inativos:\n\n${mentions}\n\nSe você está ativo e foi adicionado por engano, use o comando \`.active\` para se remover da lista.`)
+        .setTimestamp();
+
+      await channel.send({ embeds: [embed] });
+      console.log(`[Inactive Reminder] Sent message with ${inactivePlayers.length} inactive players`);
+    } catch (err) {
+      console.error('[Inactive Reminder Error]', err);
+    }
+  }
+
+  // Setup periodic task (runs every week by default, or interval as configured)
+  if (inactivePlayersConfig.channelId) {
+    const interval = parseInt(inactivePlayersConfig.messageInterval) || 604800000; // 7 days default
+    console.log(`[Scheduled] Inactive players reminder will run every ${interval}ms (${(interval / 1000 / 60 / 60 / 24).toFixed(1)} days)`);
+    setInterval(sendInactivePlayersReminder, interval);
+    // Run once after 5 seconds to test connectivity on startup
+    setTimeout(sendInactivePlayersReminder, 5000);
+  }
 
   await client.login(discordConfig.token);
 }

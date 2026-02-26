@@ -22,6 +22,16 @@ function getClient() {
 }
 
 /**
+ * Get the week reference for the previous week (7 days ago)
+ * Used to track inactivity from the past week
+ */
+function getLastWeekReference() {
+  const date = new Date();
+  date.setDate(date.getDate() - 7);
+  return date.toISOString().split('T')[0];
+}
+
+/**
  * Fetch all users from the users table.
  * Returns rows with at least: discord_id, role.
  * Caller should skip rows where discord_id is null.
@@ -127,4 +137,116 @@ export async function getUserByDiscordId(discord_id) {
     .single();
   if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
   return data || null;
+}
+/**
+ * Add a user to the weekly_inactive_players table
+ * Uses week_reference as 7 days ago (the past week)
+ * @param {string} discord_id - The Discord user ID
+ * @returns {Promise<Object>} The inserted record
+ */
+export async function addInactivePlayer(discord_id) {
+  const supabase = getClient();
+  
+  // First get the user's brawlhalla_id
+  const user = await getUserByDiscordId(discord_id);
+  if (!user) throw new Error(`Usuário com Discord ID ${discord_id} não encontrado`);
+  
+  const brawlhalla_id = user.brawlhalla_id;
+  const weekReference = getLastWeekReference(); // 7 days ago
+  const today = new Date().toISOString().split('T')[0];
+  
+  // Check if user is already in the table for this week
+  const { data: existing, error: checkError } = await supabase
+    .from('weekly_inactive_players')
+    .select('id')
+    .eq('brawlhalla_id', brawlhalla_id)
+    .eq('week_reference', weekReference)
+    .single();
+  
+  if (existing) {
+    throw new Error(`Usuário já está marcado como inativo nesta semana`);
+  }
+  
+  // Insert new record
+  const { data, error } = await supabase
+    .from('weekly_inactive_players')
+    .insert({
+      brawlhalla_id: String(brawlhalla_id),
+      week_reference: weekReference,
+      created_at: today,
+      note: null,
+    })
+    .select();
+  
+  if (error) throw error;
+  return data?.[0] || null;
+}
+
+/**
+ * Mark a user as active (remove from last week's inactive list)
+ * Instead of deleting, mark with /active command in the note field
+ * @param {string} discord_id - The Discord user ID
+ * @returns {Promise<number>} Number of records updated
+ */
+export async function removeInactivePlayer(discord_id) {
+  const supabase = getClient();
+  
+  // First get the user's brawlhalla_id
+  const user = await getUserByDiscordId(discord_id);
+  if (!user) throw new Error(`Usuário com Discord ID ${discord_id} não encontrado`);
+  
+  const brawlhalla_id = user.brawlhalla_id;
+  const weekReference = getLastWeekReference(); // Only update last week's record
+  
+  const { data, error } = await supabase
+    .from('weekly_inactive_players')
+    .update({ note: 'usou o comando /active' })
+    .eq('brawlhalla_id', brawlhalla_id)
+    .eq('week_reference', weekReference);
+  
+  if (error) throw error;
+  return data?.length || 0;
+}
+
+/**
+ * Get all inactive players from last week with their Discord IDs
+ * Only returns players from the past week (7 days ago) who haven't used /active
+ * @returns {Promise<Array>} Array of objects with discord_id, brawlhalla_id, created_at
+ */
+export async function getInactivePlayers() {
+  const supabase = getClient();
+  const weekReference = getLastWeekReference(); // Only fetch last week's data
+  
+  const { data: inactivePlayers, error: inactiveError } = await supabase
+    .from('weekly_inactive_players')
+    .select('brawlhalla_id, created_at, note')
+    .eq('week_reference', weekReference)
+    .is('note', null); // Only return those who haven't used /active (note is null)
+  
+  if (inactiveError) throw inactiveError;
+  
+  if (!inactivePlayers || inactivePlayers.length === 0) {
+    return [];
+  }
+  
+  const brawlhallaIds = inactivePlayers.map(p => String(p.brawlhalla_id));
+  
+  // Get Discord IDs for these Brawlhalla IDs
+  const { data: users, error: usersError } = await supabase
+    .from('users')
+    .select('discord_id, brawlhalla_id')
+    .in('brawlhalla_id', brawlhallaIds);
+  
+  if (usersError) throw usersError;
+  
+  // Merge created_at from inactivePlayers
+  const result = (users ?? []).map(user => {
+    const inactiveRecord = inactivePlayers.find(p => String(p.brawlhalla_id) === String(user.brawlhalla_id));
+    return {
+      ...user,
+      created_at: inactiveRecord?.created_at || new Date().toISOString(),
+    };
+  });
+  
+  return result;
 }

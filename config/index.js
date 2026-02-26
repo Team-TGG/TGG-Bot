@@ -4,7 +4,7 @@
  */
 
 /** Only these Discord user IDs can run sync slash commands */
-export const ALLOWED_USER_IDS = ['1447168951963353209', '252249131202904074'];
+export const ALLOWED_USER_IDS = ['1447168951963353209', '252249131202904074', '1475984881640280126'];
 
 export const discord = {
   token: process.env.DISCORD_TOKEN,
@@ -45,4 +45,13 @@ export const brawlhalla = {
   apiKey: process.env.BRAWLHALLA_API_KEY,
   /** Clan ID to sync nicknames with */
   clanId: process.env.BRAWLHALLA_CLAN_ID || '396943',
+};
+/** Inactive players management */
+export const inactivePlayers = {
+  /** Role ID for inactive users */
+  inactiveRoleId: process.env.INACTIVE_ROLE_ID || '1468593277363290304',
+  /** Channel ID for posting inactive user messages */
+  channelId: process.env.INACTIVE_PLAYERS_CHANNEL_ID || '1437504463375175936',
+  /** Interval in milliseconds for periodic messages (e.g., 7 days = 604800000) */
+  messageInterval: process.env.INACTIVE_MESSAGE_INTERVAL || 604800000,
 };
