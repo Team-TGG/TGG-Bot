@@ -53,6 +53,22 @@ function sanitizeClanData(clanData) {
 }
 
 /**
+ * Sanitize and normalize text for consistent nickname formatting
+ * @param {*} str - The string to normalize
+ * @returns {string} Normalized string
+ */
+function normalizeText(str) {
+  if (!str) return '';
+
+  return str
+    .normalize('NFKC')
+    .replace(/[\u115F\u1160\u3164]/g, '')     // Hangul fillers (todos)
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '') // zero width
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Fetch clan data from Brawlhalla API and cache it
  * @returns {Promise<Object>} Full clan response with members array
  */
@@ -215,7 +231,8 @@ export async function syncNicknames(client, guildId) {
     let processedCount = 0;
     let skippedCount = 0;
     for (const clanMember of clanMembers) {
-      let { brawlhalla_id, name: brawlhallaName } = clanMember;
+      let { brawlhalla_id, name } = clanMember;
+      const brawlhallaName = normalizeText(name);
       
       // Normalize brawlhalla_id to string to handle type mismatches between API and DB
       const brawlhallaIdStr = String(brawlhalla_id);
@@ -284,8 +301,10 @@ export async function syncNicknames(client, guildId) {
         }
 
         // Check if we need to update
-        const currentNickname = member.nickname;
-        if (currentNickname === newNickname) {
+        const currentNickname = normalizeText(member.nickname || '');
+        const finalNickname   = normalizeText(newNickname);
+
+        if (currentNickname === finalNickname) {
           console.log(`[OK] ${member.user.tag} (${discord_id}): nickname already "${newNickname}"`);
           results.unchanged++;
         } else {

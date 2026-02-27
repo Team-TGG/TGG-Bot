@@ -26,9 +26,21 @@ function getClient() {
  * Used to track inactivity from the past week
  */
 function getLastWeekReference() {
-  const date = new Date();
-  date.setDate(date.getDate() - 7);
-  return date.toISOString().split('T')[0];
+  const today = new Date();
+  
+  // Dia da semana (0 = domingo, 1 = segunda, ..., 3 = quarta)
+  const dayOfWeek = today.getDay();
+  
+  // Calcular diferença até a quarta-feira desta semana
+  const diffToWednesday = dayOfWeek - 3;
+  
+  // Voltar para a quarta desta semana
+  today.setDate(today.getDate() - diffToWednesday);
+  
+  // Agora voltar mais 7 dias (quarta da semana passada)
+  today.setDate(today.getDate() - 7);
+  
+  return today.toISOString().split('T')[0];
 }
 
 /**
@@ -188,19 +200,23 @@ export async function addInactivePlayer(discord_id) {
  * @param {string} discord_id - The Discord user ID
  * @returns {Promise<number>} Number of records updated
  */
-export async function removeInactivePlayer(discord_id) {
+export async function removeInactivePlayer(discord_id, noteText = '') {
   const supabase = getClient();
   
-  // First get the user's brawlhalla_id
   const user = await getUserByDiscordId(discord_id);
   if (!user) throw new Error(`Usuário com Discord ID ${discord_id} não encontrado`);
   
   const brawlhalla_id = user.brawlhalla_id;
-  const weekReference = getLastWeekReference(); // Only update last week's record
-  
+  const weekReference = getLastWeekReference();
+
+  // Se não passar nada, usa texto padrão
+  const finalNote = noteText && noteText.length > 0
+    ? noteText
+    : 'usou o comando /active';
+
   const { data, error } = await supabase
     .from('weekly_inactive_players')
-    .update({ note: 'usou o comando /active' })
+    .update({ note: finalNote })
     .eq('brawlhalla_id', brawlhalla_id)
     .eq('week_reference', weekReference);
   
