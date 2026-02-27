@@ -1,9 +1,3 @@
-/**
- * TGG Bot: Discord bot with prefix commands (.) for role sync and guild management.
- * Admin-only commands (users in ALLOWED_USER_IDS can run these).
- * Commands: .sync-guild-roles, .sync-elo-roles, .guild-activity, .movimentacao, .help
- */
-
 import 'dotenv/config';
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder } from 'discord.js';
 import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers } from './src/db.js';
@@ -23,7 +17,7 @@ async function main() {
 
   const client = createClient();
   const PREFIX = '.';
-
+//think please
   const COMMAND_ALIASES = {
     'sync-guild': 'sync-guild-roles',
     'sync-guild-roles': 'sync-guild-roles',
@@ -46,8 +40,7 @@ async function main() {
     'inac-list': 'inac-list',
     'inac-test': 'inac-test',
   };
-
-  // Emoji constants (custom/server emojis and unicode)
+// emoji constant idek if that is actually useful besides junk code but it help later on ig
   const EMOJIS = {
     arrowLeft: '<:arrowleft:1475806697162539059>',
     arrowRight: '<:arrowright:1475806826833383456>',
@@ -68,7 +61,7 @@ async function main() {
   };
 
   client.once('ready', () => {
-    console.log(`✅ Logged in as ${client.user.tag}`);
+    console.log(`Logged in as ${client.user.tag}`);
   });
 
   function isAdmin(userId) {
@@ -365,7 +358,7 @@ async function main() {
         }
       }
 
-      // .active <discord_id> - Mark user as active (remove from inactive list and remove role)
+      // .active <discord_id>
       if (command === 'active') {
         try {
           if (args.length < 2 && message.mentions.size === 0) {
@@ -401,7 +394,7 @@ async function main() {
         }
       }
 
-      // .inac <discord_id> - Mark user as inactive (admin only)
+      // .inac <discord_id> 
       if (command === 'inac') {
         try {
           if (args.length < 2 && message.mentions.size === 0) {
@@ -437,7 +430,7 @@ async function main() {
         }
       }
 
-      // .unac <discord_id> - Force remove user from inactive (admin only)
+      // .unac <discord_id>
       if (command === 'unac') {
         try {
           if (args.length < 2 && message.mentions.size === 0) {
@@ -473,7 +466,7 @@ async function main() {
         }
       }
 
-      // .inac-list - List all inactive players and how long they've been inactive (admin only)
+      // .inac-list
       if (command === 'inac-list') {
         try {
           const inactivePlayers = await getInactivePlayers();
@@ -522,7 +515,7 @@ async function main() {
         }
       }
 
-      // .inac-test - Send test message with inactive users (admin only)
+      // .inac-test - remove later
       if (command === 'inac-test') {
         try {
           const channelId = inactivePlayersConfig.channelId;
@@ -550,7 +543,7 @@ async function main() {
 
           const embed = new EmbedBuilder()
             .setColor(0xfaa61a)
-            .setTitle('⚠️ Usuários Inativos')
+            .setTitle(`${EMOJIS.clipboard} Usuários Inativos`)
             .setDescription(`Olá! Os seguintes usuários estão marcados como inativos:\n\n${mentions}\n\nSe você está ativo e foi adicionado por engano, use o comando \`.active\` para se remover da lista.`)
             .setTimestamp();
 
@@ -567,7 +560,7 @@ async function main() {
     }
   });
 
-  // Periodic task to send inactive player messages (weekly by default)
+  // task com periodo
   async function sendInactivePlayersReminder() {
     try {
       const channelId = inactivePlayersConfig.channelId;
