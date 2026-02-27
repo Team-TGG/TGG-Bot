@@ -19,12 +19,12 @@ async function main() {
   const PREFIX = '.';
 //think please
   const COMMAND_ALIASES = {
-    'sync-guild': 'sync-guild-roles',
-    'sync-guild-roles': 'sync-guild-roles',
-    'sync-roles': 'sync-guild-roles',
-    'sync-elo': 'sync-elo-roles',
-    'sync-elo-roles': 'sync-elo-roles',
     'sync': 'sync',
+    'sync-guild': 'sync',
+    'sync-guild-roles': 'sync',
+    'sync-roles': 'sync',
+    'sync-elo': 'sync',
+    'sync-elo-roles': 'sync',
     'guild-activity': 'guild-activity',
     'activity': 'guild-activity',
     'mov': 'movimentacao',
@@ -39,6 +39,8 @@ async function main() {
     'unac': 'unac',
     'inac-list': 'inac-list',
     'inac-test': 'inac-test',
+    'regras': 'regras',
+    'rules': 'regras',
   };
 // emoji constant idek if that is actually useful besides junk code but it help later on ig
   const EMOJIS = {
@@ -93,7 +95,7 @@ async function main() {
     const command = COMMAND_ALIASES[rawCommand] || rawCommand;
 
     // Commands that don't require admin access
-    const publicCommands = ['active'];
+    const publicCommands = ['active', 'regras', 'help'];
     
     // Admin check for admin-only commands
     if (!publicCommands.includes(command) && !isAdmin(message.author.id)) {
@@ -107,8 +109,6 @@ async function main() {
           .setTitle(`${EMOJIS.clipboard} Sincronização`)
           .addFields(
             { name: `${EMOJIS.arrowRight} .sync`, value: 'Sincronização completa (ranks + ELO)', inline: false },
-            { name: `${EMOJIS.arrowRight} .sync-guild`, value: 'Sincronizar ranks da guild', inline: false },
-            { name: `${EMOJIS.arrowRight} .sync-elo`, value: 'Sincronizar roles de ELO', inline: false },
             { name: `${EMOJIS.arrowRight} .sync-nick`, value: 'Sincronizar apelidos Brawlhalla', inline: false },
             { name: `${EMOJIS.arrowRight} .refresh-cache`, value: 'Atualizar cache do clan', inline: false }
           )
@@ -121,6 +121,7 @@ async function main() {
           .addFields(
             { name: `${EMOJIS.arrowRight} .guild-activity`, value: 'Sincronizar atividade da guild', inline: false },
             { name: `${EMOJIS.arrowRight} .mov [data-início] [data-fim]`, value: 'Buscar movimentação (YYYY-MM-DD)', inline: false },
+            { name: `${EMOJIS.arrowRight} .regras`, value: 'Mostrar regras da guild', inline: false },
             { name: `${EMOJIS.arrowRight} .help`, value: 'Mostrar esta mensagem', inline: false }
           )
           .setFooter({ text: 'Selecione uma categoria no dropdown' })
@@ -177,31 +178,7 @@ async function main() {
       // movimentacao, sync-nicknames, refresh-clan-cache) are implemented below — reuse the existing
       // functions imported at top (getUsers, runSync, runEloSync, runAndPostGuildActivity, etc.).
 
-      // .sync-guild-roles
-      if (command === 'sync-guild-roles') {
-        const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando...`).setDescription('Sincronizando ranks...')] });
-        try {
-          const users = await getUsers();
-          const result = await runSync(client, users);
-          const resultEmbed = createSuccessEmbed('Ranks Sincronizados', `${EMOJIS.check} ${result.synced} | ${EMOJIS.checkbox} ${result.skipped} | ${EMOJIS.xis} ${result.errors}`);
-          await loading.edit({ embeds: [resultEmbed] });
-        } catch (err) {
-          await message.reply({ embeds: [createErrorEmbed('Erro de Sincronização', err.message)] });
-        }
-      }
 
-      // .sync-elo-roles
-      if (command === 'sync-elo-roles') {
-        const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando...`).setDescription('Sincronizando ELO...')] });
-        try {
-          const usersWithElo = await getUsersWithElo();
-          const result = await runEloSync(client, usersWithElo);
-          const resultEmbed = createSuccessEmbed('ELO Sincronizado', `${EMOJIS.check} ${result.synced} | ${EMOJIS.checkbox} ${result.skipped} | ${EMOJIS.xis} ${result.errors}`);
-          await loading.edit({ embeds: [resultEmbed] });
-        } catch (err) {
-          await message.reply({ embeds: [createErrorEmbed('Erro de Sincronização', err.message)] });
-        }
-      }
 
       // .guild-activity
       if (command === 'guild-activity') {
@@ -454,6 +431,40 @@ async function main() {
             embeds: [createErrorEmbed('Erro ao Ativar Usuário', err.message)]
           });
         }
+      }
+
+      // .regras (Display guild rules)
+      if (command === 'regras') {
+        const rulesEmbed = new EmbedBuilder()
+          .setColor(0x5865f2)
+          .setTitle('📋 Regras da Guild')
+          .setDescription('Bem-vindo à TGG! Aqui estão nossas regras simples para uma comunidade saudável.')
+          .addFields(
+            {
+              name: `${EMOJIS.square} Sem Toxicidade`,
+              value: 'Proibido nomes ofensivos, assédio ou desrespeito.',
+              inline: false
+            },
+            {
+              name: `${EMOJIS.square} Contribuir é Legal`,
+              value: 'Ajude a guilda participando de missões, quests e atividades coletivas.',
+              inline: false
+            },
+            {
+              name: `${EMOJIS.arrowRight} Como Contribuir:`,
+              value: `${EMOJIS.check} Jogar 2v2 amistoso ou ranked com membros da guild\n${EMOJIS.check} Ajudar com missões da guilda`,
+              inline: false
+            },
+            {
+              name: `${EMOJIS.greaterthan} Seja Bem-Vindo!`,
+              value: 'Divirta-se, conheça os membros e aproveite a comunidade. Vamos crescer juntos!',
+              inline: false
+            }
+          )
+          .setFooter({ text: 'Dúvidas? Fale com um membro da staff!' })
+          .setTimestamp();
+
+        await message.reply({ embeds: [rulesEmbed] });
       }
 
       // .inac-all (Give "ina" role to all inactive members)
