@@ -63,7 +63,7 @@ export async function runGuildActivitySync() {
 export function buildEmbedsFromGuildActivity(data) {
   const embeds = [];
   
-  // Custom emoji IDs
+  // arrumar os emojis(todos não funcionam)
   const EMOJIS = {
     entrou: '<:icon_v:825250296987910144>',
     saiu: '<:icon_x:872277999687442472>',
