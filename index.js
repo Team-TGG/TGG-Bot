@@ -35,7 +35,7 @@ async function main() {
     'refresh-clan-cache': 'refresh-clan-cache',
     'help': 'help',
     'active': 'active',
-    'inac': 'inac',
+    'inac-all': 'inac-all',
     'unac': 'unac',
     'inac-list': 'inac-list',
     'inac-test': 'inac-test',
@@ -130,7 +130,7 @@ async function main() {
           .setColor(0x5865f2)
           .setTitle(`${EMOJIS.clipboard} Inativos`)
           .addFields(
-            { name: `${EMOJIS.arrowRight} .inac [@user]`, value: 'Marcar jogador como inativo nesta semana', inline: false },
+            { name: `${EMOJIS.arrowRight} .inac-all`, value: 'Dar o cargo "ina" a todos os players inativos', inline: false },
             { name: `${EMOJIS.arrowRight} .active [@user]`, value: 'Remover jogador da lista de inativos', inline: false },
             { name: `${EMOJIS.arrowRight} .unac [@user]`, value: 'Forçar remoção de jogador da lista de inativos', inline: false },
             { name: `${EMOJIS.arrowRight} .inac-list`, value: 'Listar todos os jogadores inativos desta semana', inline: false },
@@ -360,78 +360,150 @@ async function main() {
 
       // .active <discord_id>
       if (command === 'active') {
-      try {
-        const discord_id = message.author.id;
-
-        // Pega tudo depois do comando como nota
-        const note = args.slice(1).join(' ').trim();
-
-        const guild = client.guilds.cache.get(discordConfig.guildId);
-        if (!guild) throw new Error('Guild não encontrada');
-
-        const member = await guild.members.fetch(discord_id).catch(() => null);
-        if (!member) {
-          return message.reply({ 
-            embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar seu usuário na guild.')] 
-          });
-        }
-
-        // Remove cargo de inativo
-        const inactiveRoleId = inactivePlayersConfig.inactiveRoleId;
-        if (member.roles.cache.has(inactiveRoleId)) {
-          await member.roles.remove(inactiveRoleId);
-        }
-
-        // Atualiza no banco passando a nota (ou null se vazio)
-        await removeInactivePlayer(discord_id, note);
-
-        const resultEmbed = createSuccessEmbed(
-          'Ativado',
-          `${member.user.tag} foi marcado como ativo novamente.`
-        );
-
-        await message.reply({ embeds: [resultEmbed] });
-
-      } catch (err) {
-        await message.reply({ 
-          embeds: [createErrorEmbed('Erro ao Ativar Usuário', err.message)] 
-        });
-      }
-    }
-
-      // .inac <discord_id> 
-      if (command === 'inac') {
         try {
-          if (args.length < 2 && message.mentions.size === 0) {
-            return message.reply({ embeds: [createErrorEmbed('Parâmetro Inválido', 'Uso: `.inac <@user>` ou `.inac <discord_id>`')] });
-          }
-          
-          let discord_id = args[1];
-          const mentionMatch = message.content.match(/<@!?(\d+)>/);
-          if (mentionMatch) {
-            discord_id = mentionMatch[1];
-          }
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
-          
-          const member = await guild.members.fetch(discord_id).catch(() => null);
-          if (!member) {
-            return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', `Usuário com ID ${discord_id} não encontrado na guild`)] });
-          }
 
-          // Add to database
-          await addInactivePlayer(discord_id);
-
-          // Add inactive role
           const inactiveRoleId = inactivePlayersConfig.inactiveRoleId;
-          if (!member.roles.cache.has(inactiveRoleId)) {
-            await member.roles.add(inactiveRoleId);
+
+          let targetId;
+          let note;
+
+          const mentionMatch = message.content.match(/<@!?(\d+)>/);
+
+          // Bloqueia comando se não for admin
+          if (mentionMatch && !isAdmin(message.author.id)) {
+            return message.reply({
+              embeds: [
+                createErrorEmbed(
+                  'Acesso Negado',
+                  'Apenas administradores podem ativar outros usuários.'
+                )
+              ]
+            });
           }
 
-          const resultEmbed = createSuccessEmbed('Marcado como Inativo', `${member.user.tag} foi adicionado à lista de inativos.`);
-          await message.reply({ embeds: [resultEmbed] });
+          // Comando marcando alguém liberado somente pra admin
+          if (isAdmin(message.author.id) && mentionMatch) {
+            targetId = mentionMatch[1];
+
+            const afterMention = message.content.split('>').slice(1).join('>').trim();
+            note = afterMention.length > 0 ? afterMention : 'ativado por administrador';
+          } 
+          // Usuário normal usando .active <motivo>
+          else {
+            targetId = message.author.id;
+            note = args.slice(1).join(' ').trim();
+
+            if (!note || note.length === 0) {
+              note = 'usou o comando /active';
+            }
+          }
+
+          const member = await guild.members.fetch(targetId).catch(() => null);
+          if (!member) {
+            return message.reply({
+              embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')]
+            });
+          }
+
+          // Remove cargo de inativo
+          if (member.roles.cache.has(inactiveRoleId)) {
+            await member.roles.remove(inactiveRoleId);
+          }
+
+          // Atualiza banco passando a justificativa
+          await removeInactivePlayer(targetId, note);
+
+          const embed = createSuccessEmbed(
+            'Ativado',
+            `${member.user.tag} foi marcado como ativo.\nMotivo: ${note}`
+          );
+
+          await message.reply({ embeds: [embed] });
+
+        // Tratamento de erros
         } catch (err) {
-          await message.reply({ embeds: [createErrorEmbed('Erro ao Marcar Inativo', err.message)] });
+
+          // Já está ativo
+          if (err.message.includes('já está ativo')) {
+            return message.reply({
+              embeds: [
+                createErrorEmbed(
+                  'Já está ativo',
+                  'Este usuário já está marcado como ativo nesta semana.'
+                )
+              ]
+            });
+          }
+
+          // Não está marcado como inativo
+          if (err.message.includes('não está marcado como inativo')) {
+            return message.reply({
+              embeds: [
+                createErrorEmbed(
+                  'Não está inativo',
+                  'Este usuário não está marcado como inativo nesta semana.'
+                )
+              ]
+            });
+          }
+
+          // Fallback dos erros
+          await message.reply({
+            embeds: [createErrorEmbed('Erro ao Ativar Usuário', err.message)]
+          });
+        }
+      }
+
+      // .inac-all (Give "ina" role to all inactive members)
+      if (command === 'inac-all') {
+        try {
+          const guild = client.guilds.cache.get(discordConfig.guildId);
+          if (!guild) throw new Error('Guild não encontrada');
+
+          const inactiveRoleId = inactivePlayersConfig.inactiveRoleId;
+
+          const inactivePlayers = await getInactivePlayers();
+
+          if (inactivePlayers.length === 0) {
+            return message.reply({
+              embeds: [createErrorEmbed('Sem Inativos', 'Nenhum jogador com note NULL encontrado.')]
+            });
+          }
+
+          let applied = 0;
+          let failed = 0;
+
+          for (const player of inactivePlayers) {
+            try {
+              const member = await guild.members.fetch(player.discord_id).catch(() => null);
+              if (!member) {
+                failed++;
+                continue;
+              }
+
+              if (!member.roles.cache.has(inactiveRoleId)) {
+                await member.roles.add(inactiveRoleId);
+              }
+
+              applied++;
+            } catch {
+              failed++;
+            }
+          }
+
+          const embed = createSuccessEmbed(
+            'Inativos Aplicados',
+            `Cargo aplicado em ${applied} usuário(s).\nFalhas: ${failed}`
+          );
+
+          await message.reply({ embeds: [embed] });
+
+        } catch (err) {
+          await message.reply({
+            embeds: [createErrorEmbed('Erro ao Executar inac-all', err.message)]
+          });
         }
       }
 
