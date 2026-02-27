@@ -360,39 +360,44 @@ async function main() {
 
       // .active <discord_id>
       if (command === 'active') {
-        try {
-          if (args.length < 2 && message.mentions.size === 0) {
-            return message.reply({ embeds: [createErrorEmbed('Parâmetro Inválido', 'Uso: `.active <@user>` ou `.active <discord_id>`')] });
-          }
-          
-          let discord_id = args[1];
-          const mentionMatch = message.content.match(/<@!?(\d+)>/);
-          if (mentionMatch) {
-            discord_id = mentionMatch[1];
-          }
-          const guild = client.guilds.cache.get(discordConfig.guildId);
-          if (!guild) throw new Error('Guild não encontrada');
-          
-          const member = await guild.members.fetch(discord_id).catch(() => null);
-          if (!member) {
-            return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', `Usuário com ID ${discord_id} não encontrado na guild`)] });
-          }
+      try {
+        const discord_id = message.author.id;
 
-          // Remove inactive role
-          const inactiveRoleId = inactivePlayersConfig.inactiveRoleId;
-          if (member.roles.cache.has(inactiveRoleId)) {
-            await member.roles.remove(inactiveRoleId);
-          }
+        // Pega tudo depois do comando como nota
+        const note = args.slice(1).join(' ').trim();
 
-          // Remove from database
-          await removeInactivePlayer(discord_id);
+        const guild = client.guilds.cache.get(discordConfig.guildId);
+        if (!guild) throw new Error('Guild não encontrada');
 
-          const resultEmbed = createSuccessEmbed('Ativado', `${member.user.tag} foi marcado como ativo novamente.`);
-          await message.reply({ embeds: [resultEmbed] });
-        } catch (err) {
-          await message.reply({ embeds: [createErrorEmbed('Erro ao Ativar Usuário', err.message)] });
+        const member = await guild.members.fetch(discord_id).catch(() => null);
+        if (!member) {
+          return message.reply({ 
+            embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar seu usuário na guild.')] 
+          });
         }
+
+        // Remove cargo de inativo
+        const inactiveRoleId = inactivePlayersConfig.inactiveRoleId;
+        if (member.roles.cache.has(inactiveRoleId)) {
+          await member.roles.remove(inactiveRoleId);
+        }
+
+        // Atualiza no banco passando a nota (ou null se vazio)
+        await removeInactivePlayer(discord_id, note);
+
+        const resultEmbed = createSuccessEmbed(
+          'Ativado',
+          `${member.user.tag} foi marcado como ativo novamente.`
+        );
+
+        await message.reply({ embeds: [resultEmbed] });
+
+      } catch (err) {
+        await message.reply({ 
+          embeds: [createErrorEmbed('Erro ao Ativar Usuário', err.message)] 
+        });
       }
+    }
 
       // .inac <discord_id> 
       if (command === 'inac') {
