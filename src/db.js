@@ -28,7 +28,7 @@ function getClient() {
 function getLastWednesdayReference() {
   const today = new Date();
   const dayOfWeek = today.getDay();
-  
+
   // Calcular diferença até a quarta-feira desta semana
   const diffToWednesday = dayOfWeek - 3;
 
@@ -37,8 +37,14 @@ function getLastWednesdayReference() {
   
   // Última quarta - 7 dias (Quarta passada)
   today.setDate(today.getDate() - 7);
-  
-  return today.toISOString().split('T')[0];
+
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+
+  const formattedDate = `${year}-${month}-${day}`;
+
+  return formattedDate;
 }
 
 /**
