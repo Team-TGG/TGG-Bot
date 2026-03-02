@@ -2,7 +2,7 @@
 // all are self explanatory so holy shit think plase
 
 // adm user ids(later remove the last one)
-export const ALLOWED_USER_IDS = ['1447168951963353209', '252249131202904074', '1475984881640280126'];
+export const ALLOWED_USER_IDS = ['1447168951963353209', '252249131202904074', '1475984881640280126', '469616482721071134'];
 
 export const discord = {
   token: process.env.DISCORD_TOKEN,

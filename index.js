@@ -66,9 +66,17 @@ async function main() {
     console.log(`Logged in as ${client.user.tag}`);
   });
 
-  function isAdmin(userId) {
-    return ALLOWED_USER_IDS.includes(userId);
+  async function isAdmin(userId) {
+    try {
+      const user = await getUserByDiscordId(userId);
+
+      if (!user) return false;
+      return user.role?.toLowerCase() === 'admin' && user.active;
+    } catch (err) {
+      return false;
+    }
   }
+
 
   function createErrorEmbed(title, message) {
     return new EmbedBuilder()
@@ -98,7 +106,7 @@ async function main() {
     const publicCommands = ['active', 'regras', 'help'];
     
     // Admin check for admin-only commands
-    if (!publicCommands.includes(command) && !isAdmin(message.author.id)) {
+    if (!publicCommands.includes(command) && !(await isAdmin(message.author.id))) {
       return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar estes comandos.')] });
     }
 
@@ -349,7 +357,7 @@ async function main() {
           const mentionMatch = message.content.match(/<@!?(\d+)>/);
 
           // Bloqueia comando se não for admin
-          if (mentionMatch && !isAdmin(message.author.id)) {
+          if (mentionMatch && !(await isAdmin(message.author.id))) {
             return message.reply({
               embeds: [
                 createErrorEmbed(
@@ -361,7 +369,7 @@ async function main() {
           }
 
           // Comando marcando alguém liberado somente pra admin
-          if (isAdmin(message.author.id) && mentionMatch) {
+          if (await isAdmin(message.author.id) && mentionMatch) {
             targetId = mentionMatch[1];
 
             const afterMention = message.content.split('>').slice(1).join('>').trim();

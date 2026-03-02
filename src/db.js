@@ -151,7 +151,7 @@ export async function getUserByDiscordId(discord_id) {
   const supabase = getClient();
   const { data, error } = await supabase
     .from('users')
-    .select('discord_id, brawlhalla_id')
+    .select('discord_id, brawlhalla_id, role, active')
     .eq('discord_id', discord_id)
     .single();
   if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
