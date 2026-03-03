@@ -98,9 +98,14 @@ async function main() {
     if (message.author.bot) return;
     if (!message.content.startsWith(PREFIX)) return;
 
-    const args = message.content.slice(PREFIX.length).trim().split(/\s+/);
-    const rawCommand = args[0]?.toLowerCase();
-    const command = COMMAND_ALIASES[rawCommand] || rawCommand;
+    const content = message.content.slice(PREFIX.length).trim();
+    if (!content) return;
+
+    const args = content.split(/\s+/);
+    const rawCommand = args.shift().toLowerCase();
+    const command = COMMAND_ALIASES[rawCommand];
+
+    if (!command) return; // impede "." e comandos inexistentes
 
     // Commands that don't require admin access
     const publicCommands = ['active', 'regras', 'help'];

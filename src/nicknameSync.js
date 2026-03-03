@@ -61,7 +61,7 @@ function normalizeText(str) {
   if (!str) return '';
 
   return str
-    .normalize('NFKC')
+    .normalize('NFC')
     .replace(/[\u115F\u1160\u3164]/g, '')     // Hangul fillers (todos)
     .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '') // zero width
     .replace(/\s+/g, ' ')
