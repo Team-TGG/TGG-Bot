@@ -8,6 +8,7 @@ import { syncNicknames, updateMemberNicknameDiscordPortion, parseNickname, build
 import { loadCustomNicknames } from './src/customNicknames.js';
 import { discord as discordConfig, ALLOWED_USER_IDS, inactivePlayers as inactivePlayersConfig } from './config/index.js';
 import { getUserByDiscordId } from './src/db.js';
+import { startCronJobs } from './src/scheduler/cron.js';
 
 async function main() {
   if (!discordConfig.token || !discordConfig.guildId) {
@@ -64,6 +65,14 @@ async function main() {
 
   client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}`);
+    startCronJobs(client, {
+      fetchBrawlhallaClanData,
+      runSync,
+      runEloSync,
+      syncNicknames,
+      getUsers,
+      getUsersWithElo
+    }); // Iniciar os crons
   });
 
   async function isAdmin(userId) {
