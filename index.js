@@ -154,7 +154,8 @@ async function main() {
           .setTitle(`${EMOJIS.clipboard} Inativos`)
           .addFields(
             { name: `${EMOJIS.arrowRight} .inac-all`, value: 'Dar o cargo "ina" a todos os players inativos', inline: false },
-            { name: `${EMOJIS.arrowRight} .active [@user]`, value: 'Remover jogador da lista de inativos', inline: false },
+            { name: `${EMOJIS.arrowRight} .active <justificativa>`, value: 'Se remover da lista de inativos', inline: false },
+            { name: `${EMOJIS.arrowRight} .active [@user] <justificativa> (admin)`, value: 'Remover jogador da lista de inativos', inline: false },
             { name: `${EMOJIS.arrowRight} .unac [@user]`, value: 'Forçar remoção de jogador da lista de inativos', inline: false },
             { name: `${EMOJIS.arrowRight} .inac-list`, value: 'Listar todos os jogadores inativos desta semana', inline: false },
             { name: `${EMOJIS.arrowRight} .inac-test`, value: 'Enviar mensagem de teste com usuários inativos', inline: false }
@@ -392,7 +393,7 @@ async function main() {
           // Usuário normal usando .active <motivo>
           else {
             targetId = message.author.id;
-            note = args.slice(1).join(' ').trim();
+            note = args.join(' ').trim();
 
             if (!note || note.length === 0) {
               note = 'usou o comando /active';
@@ -468,8 +469,8 @@ async function main() {
               inline: false
             },
             {
-              name: `${EMOJIS.square} Contribuir é Legal`,
-              value: 'Ajude a guilda participando de missões, quests e atividades coletivas.',
+              name: `${EMOJIS.square} Contribua com a Guilda`,
+              value: `Ajude a guilda participando de missões, quests e atividades coletivas. Para mais informações, veja o canal <#${'1465513473583616011'}>`,
               inline: false
             },
             {
@@ -700,19 +701,31 @@ async function main() {
       const embed = new EmbedBuilder()
         .setColor(0xfaa61a)
         .setTitle('⚠️ Lembrete: Usuários Inativos')
-        .setDescription(`Olá! Os seguintes usuários estão marcados como inativos:\n\n${mentions}\n\nSe você está ativo e foi adicionado por engano, use o comando \`.active\` para se remover da lista.`)
+        .setDescription(`Olá! Vocês estão marcados como inativos
+          Se você está nesta lista, significa que fez menos de 500 de contribuição na semana passada. 
+          Para saber como contribuir, veja o canal <#${'1465513473583616011'}> ou fale com um membro da staff.
+          Para mostrar que está ativo, use o comando \`.active\` com uma justificativa para se remover da lista.
+          Ex: \`.active Estava viajando e não consegui jogar.\``)
         .setTimestamp();
 
-      await channel.send({ embeds: [embed] });
+      await channel.send({
+        content: mentions, // Mencionar os players fora do embed pra pingar
+        embeds: [embed],
+        allowedMentions: {
+          users: inactivePlayers
+            .filter(p => p.discord_id)
+            .map(p => p.discord_id),
+        }
+      });
       console.log(`[Inactive Reminder] Sent message with ${inactivePlayers.length} inactive players`);
     } catch (err) {
       console.error('[Inactive Reminder Error]', err);
     }
   }
 
-  // Setup periodic task (runs every week by default, or interval as configured)
+  // Setup periodic task (runs every 3 hours by default, or interval as configured)
   if (inactivePlayersConfig.channelId) {
-    const interval = parseInt(inactivePlayersConfig.messageInterval) || 604800000; // 7 days default
+    const interval = parseInt(inactivePlayersConfig.messageInterval) || 10800000; // 3 hours default
     console.log(`[Scheduled] Inactive players reminder will run every ${interval}ms (${(interval / 1000 / 60 / 60 / 24).toFixed(1)} days)`);
     setInterval(sendInactivePlayersReminder, interval);
     // Run once after 5 seconds to test connectivity on startup

@@ -20,6 +20,7 @@ export const ALL_GUILD_ROLE_IDS = Object.values(ROLE_MAP);
 export const SYSTEM_ROLES = {
   TGG: '1437441679572471940',
   VISITOR: '1437447173896802395',
+  WAITING_LIST: '1466815420630565069',
 };
 
 // Human-readable role names for debug logs
@@ -29,6 +30,7 @@ const ROLE_ID_TO_NAME = {
   '1437427655950467242': 'officer',
   '1437441679572471940': 'TGG',
   '1437447173896802395': 'Visitante',
+  '1466815420630565069': 'Fila de espera',
 };
 
 // --- ELO roles (from player_elo_missions.initial_elo_1v1) ---
@@ -100,6 +102,7 @@ export function createClient() {
 export async function syncMemberRoles(member, dbRole, active) {
   const TGG_ROLE_ID = SYSTEM_ROLES.TGG;
   const VISITOR_ROLE_ID = SYSTEM_ROLES.VISITOR;
+  const WAITING_LIST_ROLE_ID = SYSTEM_ROLES.WAITING_LIST;
 
   const targetRoleId = ROLE_MAP[dbRole];
   const targetRoleName = ROLE_ID_TO_NAME[targetRoleId] ?? targetRoleId;
@@ -142,11 +145,19 @@ export async function syncMemberRoles(member, dbRole, active) {
     return { added: false, removed: [], unchanged: false };
   }
 
-  // Remove visitante se tiver
+  // Remove "visitante" se tiver
   if (member.roles.cache.has(VISITOR_ROLE_ID)) {
     await member.roles.remove(VISITOR_ROLE_ID);
     console.log(
       `[REMOVE] ${tag} (${id}): removed ${ROLE_ID_TO_NAME[VISITOR_ROLE_ID] ?? VISITOR_ROLE_ID}`
+    );
+  }
+
+  // Remove "Lista de espera" se tiver
+  if (member.roles.cache.has(WAITING_LIST_ROLE_ID)) {
+    await member.roles.remove(WAITING_LIST_ROLE_ID);
+    console.log(
+      `[REMOVE] ${tag} (${id}): removed ${ROLE_ID_TO_NAME[WAITING_LIST_ROLE_ID] ?? WAITING_LIST_ROLE_ID}`
     );
   }
 
