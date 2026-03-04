@@ -29,19 +29,18 @@ function getLastWednesdayReference() {
   const today = new Date();
   const dayOfWeek = today.getDay();
 
-  // Diferença até a ultima quarta
   let diff = (dayOfWeek - 3 + 7) % 7;
 
-  // Se hoje for quarta, pegar quarta da semana passada
   if (diff === 0) {
-    diff = 7;
+    // Se hoje é quarta, volta 7 dias
+    today.setDate(today.getDate() - 7);
+  } else {
+    // Vai para a última quarta
+    today.setDate(today.getDate() - diff);
+
+    // Voltar mais 7 dias
+    today.setDate(today.getDate() - 7);
   }
-
-  // Voltar para a ultima quarta
-  today.setDate(today.getDate() - diff);
-
-  // Voltar mais 7 dias (quarta da semana passada)
-  today.setDate(today.getDate() - 7);
 
   const year = today.getFullYear();
   const month = String(today.getMonth() + 1).padStart(2, '0');
