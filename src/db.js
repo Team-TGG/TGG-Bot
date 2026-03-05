@@ -28,7 +28,6 @@ function getClient() {
 function getLastWednesdayReference() {
   const today = new Date();
   const dayOfWeek = today.getDay();
-
   let diff = (dayOfWeek - 3 + 7) % 7;
 
   if (diff === 0) {
@@ -37,10 +36,27 @@ function getLastWednesdayReference() {
   } else {
     // Vai para a última quarta
     today.setDate(today.getDate() - diff);
-
     // Voltar mais 7 dias
     today.setDate(today.getDate() - 7);
   }
+
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Get the week reference for the previous Thursday
+ * Used to track missions from this week's Thursday
+ */
+function getMissionWeekStart() {
+  const today = new Date();
+  const dayOfWeek = today.getDay();
+  const diff = (dayOfWeek - 4 + 7) % 7;
+
+  today.setDate(today.getDate() - diff);
 
   const year = today.getFullYear();
   const month = String(today.getMonth() + 1).padStart(2, '0');
@@ -288,4 +304,24 @@ export async function getInactivePlayers() {
   });
   
   return result;
+}
+
+/**
+ * Fetch weekly missions starting from the most recent Thursday
+ * @returns {Promise<Array>} Array of missions
+ */
+export async function getWeeklyMissions() {
+  const supabase = getClient();
+
+  const weekStart = getMissionWeekStart();
+
+  const { data, error } = await supabase
+    .from('weekly_missions')
+    .select('id, week_start, mission, tip, target')
+    .eq('week_start', weekStart)
+    .order('created_at', { ascending: true });
+
+  if (error) throw error;
+
+  return data ?? [];
 }

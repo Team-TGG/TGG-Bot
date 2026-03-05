@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder } from 'discord.js';
-import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers } from './src/db.js';
+import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions } from './src/db.js';
 import { createClient, runSync, runEloSync } from './src/discord.js';
 import { runAndPostGuildActivity } from './src/guildActivity.js';
 import { fetchMovimentacao, buildMovimentacaoEmbeds, getDefaultDateRange, isValidDate, formatMovimentacaoAsText } from './src/movimentacao.js';
@@ -37,11 +37,11 @@ async function main() {
     'help': 'help',
     'active': 'active',
     'inac-all': 'inac-all',
-    'unac': 'unac',
     'inac-list': 'inac-list',
-    'inac-test': 'inac-test',
     'regras': 'regras',
     'rules': 'regras',
+    'missoes': 'missoes',
+    'missions': 'missoes',
   };
 // emoji constant idek if that is actually useful besides junk code but it help later on ig
   const EMOJIS = {
@@ -61,6 +61,8 @@ async function main() {
     cima: '<:cima:1475807892782317578>',
     clock: '<:clock:1475829939122212874>',
     success: '<:check:1475806856722120838>',
+    crossedSwords: '⚔️',
+    hourglass: '⏳',
   };
 
   client.once('ready', () => {
@@ -117,7 +119,7 @@ async function main() {
     if (!command) return; // impede "." e comandos inexistentes
 
     // Commands that don't require admin access
-    const publicCommands = ['active', 'regras', 'help'];
+    const publicCommands = ['active', 'regras', 'help', 'missoes'];
     
     // Admin check for admin-only commands
     if (!publicCommands.includes(command) && !(await isAdmin(message.author.id))) {
@@ -128,37 +130,46 @@ async function main() {
       if (command === 'help') {
         const page1 = new EmbedBuilder()
           .setColor(0x5865f2)
-          .setTitle(`${EMOJIS.clipboard} Sincronização`)
+          .setTitle(`${EMOJIS.crossedSwords} Guilda`)
           .addFields(
-            { name: `${EMOJIS.arrowRight} .sync`, value: 'Sincronização completa (ranks + ELO)', inline: false },
-            { name: `${EMOJIS.arrowRight} .sync-nick`, value: 'Sincronizar apelidos Brawlhalla', inline: false },
-            { name: `${EMOJIS.arrowRight} .refresh-cache`, value: 'Atualizar cache do clan', inline: false }
+            { name: `${EMOJIS.arrowRight} .missoes`, value: 'Mostrar as missões da semana atual', inline: false },
+            { name: `${EMOJIS.arrowRight} .stats (WIP)`, value: 'Trazer seus status atualizados do jogo', inline: false },
+            { name: `${EMOJIS.arrowRight} .progresso (WIP)`, value: 'Verificar seu progresso na missão semanal (somente do que for possível rastrear)', inline: false }
+          )
+          .setFooter({ text: 'Selecione uma categoria no dropdown' })
+          .setTimestamp();
+          
+        const page2 = new EmbedBuilder()
+          .setColor(0x5865f2)
+          .setTitle(`${EMOJIS.hourglass} Sincronização`)
+          .addFields(
+            { name: `${EMOJIS.arrowRight} .sync (admin)`, value: 'Sincronização completa (ranks + ELO)', inline: false },
+            { name: `${EMOJIS.arrowRight} .sync-nick (admin)`, value: 'Sincronizar apelidos Brawlhalla', inline: false },
+            { name: `${EMOJIS.arrowRight} .refresh-cache (admin)`, value: 'Atualizar cache do clan', inline: false }
           )
           .setFooter({ text: 'Selecione uma categoria no dropdown' })
           .setTimestamp();
         
-        const page2 = new EmbedBuilder()
+        const page3 = new EmbedBuilder()
           .setColor(0x5865f2)
           .setTitle(`${EMOJIS.clipboard} Informações`)
           .addFields(
-            { name: `${EMOJIS.arrowRight} .guild-activity`, value: 'Sincronizar atividade da guild', inline: false },
-            { name: `${EMOJIS.arrowRight} .mov [data-início] [data-fim]`, value: 'Buscar movimentação (YYYY-MM-DD)', inline: false },
+            { name: `${EMOJIS.arrowRight} .guild-activity (admin)`, value: 'Sincronizar atividade da guild', inline: false },
+            { name: `${EMOJIS.arrowRight} .mov [data-início] [data-fim] (admin)`, value: 'Buscar movimentação (YYYY-MM-DD)', inline: false },
             { name: `${EMOJIS.arrowRight} .regras`, value: 'Mostrar regras da guild', inline: false },
             { name: `${EMOJIS.arrowRight} .help`, value: 'Mostrar esta mensagem', inline: false }
           )
           .setFooter({ text: 'Selecione uma categoria no dropdown' })
           .setTimestamp();
 
-        const page3 = new EmbedBuilder()
+        const page4 = new EmbedBuilder()
           .setColor(0x5865f2)
-          .setTitle(`${EMOJIS.clipboard} Inativos`)
+          .setTitle(`${EMOJIS.xis} Inativos`)
           .addFields(
-            { name: `${EMOJIS.arrowRight} .inac-all`, value: 'Dar o cargo "ina" a todos os players inativos', inline: false },
+            { name: `${EMOJIS.arrowRight} .inac-all (admin)`, value: 'Dar o cargo "ina" a todos os players inativos', inline: false },
             { name: `${EMOJIS.arrowRight} .active <justificativa>`, value: 'Se remover da lista de inativos', inline: false },
             { name: `${EMOJIS.arrowRight} .active [@user] <justificativa> (admin)`, value: 'Remover jogador da lista de inativos', inline: false },
-            { name: `${EMOJIS.arrowRight} .unac [@user]`, value: 'Forçar remoção de jogador da lista de inativos', inline: false },
-            { name: `${EMOJIS.arrowRight} .inac-list`, value: 'Listar todos os jogadores inativos desta semana', inline: false },
-            { name: `${EMOJIS.arrowRight} .inac-test`, value: 'Enviar mensagem de teste com usuários inativos', inline: false }
+            { name: `${EMOJIS.arrowRight} .inac-list (admin)`, value: 'Listar todos os jogadores inativos desta semana', inline: false },
           )
           .setFooter({ text: 'Selecione uma categoria no dropdown' })
           .setTimestamp();
@@ -167,7 +178,8 @@ async function main() {
           .setCustomId('help_menu')
           .setPlaceholder('Escolha uma categoria...')
           .addOptions(
-            { label: 'Sincronização', value: 'sync', emoji: EMOJIS.arrowRight, description: 'Comandos de sincronização' },
+            { label: 'Guilda', value: 'guild', emoji: EMOJIS.crossedSwords, description: 'Comandos da guilda' },
+            { label: 'Sincronização', value: 'sync', emoji: EMOJIS.hourglass, description: 'Comandos de sincronização' },
             { label: 'Informações', value: 'info', emoji: EMOJIS.clipboard, description: 'Comandos de informação' },
             { label: 'Inativos', value: 'inac', emoji: EMOJIS.xis, description: 'Comandos de inatividade' }
           );
@@ -186,8 +198,9 @@ async function main() {
           if (interaction.customId === 'help_menu') {
             const selected = interaction.values[0];
             let embedToShow = page1;
-            if (selected === 'info') embedToShow = page2;
-            if (selected === 'inac') embedToShow = page3;
+            if (selected === 'sync') embedToShow = page2;
+            if (selected === 'info') embedToShow = page3;
+            if (selected === 'inac') embedToShow = page4;
             await interaction.update({ embeds: [embedToShow], components: [row] });
           }
         });
@@ -200,8 +213,6 @@ async function main() {
       // The rest of the existing command handlers (sync, sync-guild-roles, sync-elo-roles, guild-activity,
       // movimentacao, sync-nicknames, refresh-clan-cache) are implemented below — reuse the existing
       // functions imported at top (getUsers, runSync, runEloSync, runAndPostGuildActivity, etc.).
-
-
 
       // .guild-activity
       if (command === 'guild-activity') {
@@ -479,6 +490,12 @@ async function main() {
               inline: false
             },
             {
+              name: `${EMOJIS.arrowRight} Vire membro e desbloqueie treinamentos gratuitos com jogadores experientes da guilda!`,
+              value: `${EMOJIS.check} Consiga 40.000 de contribuição total
+                      ${EMOJIS.check} Seja MVP Semanal (14 melhores contribuidores da semana)`,
+              inline: false
+            },
+            {
               name: `${EMOJIS.greaterthan} Seja Bem-Vindo!`,
               value: 'Divirta-se, conheça os membros e aproveite a comunidade. Vamos crescer juntos!',
               inline: false
@@ -541,42 +558,6 @@ async function main() {
         }
       }
 
-      // .unac <discord_id>
-      if (command === 'unac') {
-        try {
-          if (args.length < 2 && message.mentions.size === 0) {
-            return message.reply({ embeds: [createErrorEmbed('Parâmetro Inválido', 'Uso: `.unac <@user>` ou `.unac <discord_id>`')] });
-          }
-          
-          let discord_id = args[1];
-          const mentionMatch = message.content.match(/<@!?(\d+)>/);
-          if (mentionMatch) {
-            discord_id = mentionMatch[1];
-          }
-          const guild = client.guilds.cache.get(discordConfig.guildId);
-          if (!guild) throw new Error('Guild não encontrada');
-          
-          const member = await guild.members.fetch(discord_id).catch(() => null);
-          if (!member) {
-            return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', `Usuário com ID ${discord_id} não encontrado na guild`)] });
-          }
-
-          // Remove inactive role
-          const inactiveRoleId = inactivePlayersConfig.inactiveRoleId;
-          if (member.roles.cache.has(inactiveRoleId)) {
-            await member.roles.remove(inactiveRoleId);
-          }
-
-          // Remove from database
-          await removeInactivePlayer(discord_id);
-
-          const resultEmbed = createSuccessEmbed('Removido de Inativos', `${member.user.tag} foi removido da lista de inativos.`);
-          await message.reply({ embeds: [resultEmbed] });
-        } catch (err) {
-          await message.reply({ embeds: [createErrorEmbed('Erro ao Remover de Inativos', err.message)] });
-        }
-      }
-
       // .inac-list
       if (command === 'inac-list') {
         try {
@@ -626,42 +607,48 @@ async function main() {
         }
       }
 
-      // .inac-test - remove later
-      if (command === 'inac-test') {
+      // .missoes
+      if (command === 'missoes') {
         try {
-          const channelId = inactivePlayersConfig.channelId;
-          if (!channelId) {
-            return message.reply({ embeds: [createErrorEmbed('Erro de Configuração', 'INACTIVE_PLAYERS_CHANNEL_ID não configurado')] });
+          const missions = await getWeeklyMissions();
+
+          if (!missions || missions.length === 0) {
+            return message.reply({
+              embeds: [
+                createErrorEmbed(
+                  'Missões',
+                  'Nenhuma missão encontrada para esta semana.'
+                )
+              ]
+            });
           }
 
-          const channel = client.channels.cache.get(channelId);
-          if (!channel) {
-            return message.reply({ embeds: [createErrorEmbed('Canal Não Encontrado', `Canal com ID ${channelId} não encontrado`)] });
-          }
+          const weekDate = new Date(missions[0].week_start + 'T00:00:00').toLocaleDateString('pt-BR');
 
-          // Get all inactive players
-          const inactivePlayers = await getInactivePlayers();
-          
-          if (inactivePlayers.length === 0) {
-            return message.reply({ embeds: [createErrorEmbed('Sem Inativos', 'Nenhum usuário marcado como inativo no momento')] });
-          }
-
-          // Build mention string
-          const mentions = inactivePlayers
-            .filter(p => p.discord_id)
-            .map(p => `<@${p.discord_id}>`)
-            .join(' ');
+          const description = missions
+            .map((m) => {
+              return `🎯 **${m.mission}**
+                Objetivo: ${m.target} pontos
+                _DICA: ${m.tip}_`;
+              })
+            .join('\n\n');
 
           const embed = new EmbedBuilder()
-            .setColor(0xfaa61a)
-            .setTitle(`${EMOJIS.clipboard} Usuários Inativos`)
-            .setDescription(`Olá! Os seguintes usuários estão marcados como inativos:\n\n${mentions}\n\nSe você está ativo e foi adicionado por engano, use o comando \`.active\` para se remover da lista.`)
+            .setColor(0x5865f2)
+            .setTitle(`📜 Missões Semanais (${weekDate})`)
+            .setDescription(
+              `━━━━━━━━━━━━━━━━━━━━━━━━\n${description}\n━━━━━━━━━━━━━━━━━━━━━━━━\n\nSe tiver dúvidas, contate alguém da staff.`
+            )
             .setTimestamp();
 
-          await channel.send({ embeds: [embed] });
-          await message.reply({ embeds: [createSuccessEmbed('Teste Enviado', `Mensagem de teste enviada para <#${channelId}>`)] });
+          await message.reply({ embeds: [embed] });
+
         } catch (err) {
-          await message.reply({ embeds: [createErrorEmbed('Erro ao Enviar Teste', err.message)] });
+          await message.reply({
+            embeds: [
+              createErrorEmbed('Erro ao buscar missões', err.message)
+            ]
+          });
         }
       }
 

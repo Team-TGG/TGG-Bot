@@ -21,6 +21,7 @@ export const SYSTEM_ROLES = {
   TGG: '1437441679572471940',
   VISITOR: '1437447173896802395',
   WAITING_LIST: '1466815420630565069',
+  PENDING: '1478477041077588098',
 };
 
 // Human-readable role names for debug logs
@@ -31,6 +32,7 @@ const ROLE_ID_TO_NAME = {
   '1437441679572471940': 'TGG',
   '1437447173896802395': 'Visitante',
   '1466815420630565069': 'Fila de espera',
+  '1478477041077588098': 'Pendente',
 };
 
 // --- ELO roles (from player_elo_missions.initial_elo_1v1) ---
@@ -103,6 +105,7 @@ export async function syncMemberRoles(member, dbRole, active) {
   const TGG_ROLE_ID = SYSTEM_ROLES.TGG;
   const VISITOR_ROLE_ID = SYSTEM_ROLES.VISITOR;
   const WAITING_LIST_ROLE_ID = SYSTEM_ROLES.WAITING_LIST;
+  const PENDING_ROLE_ID = SYSTEM_ROLES.PENDING;
 
   const targetRoleId = ROLE_MAP[dbRole];
   const targetRoleName = ROLE_ID_TO_NAME[targetRoleId] ?? targetRoleId;
@@ -158,6 +161,14 @@ export async function syncMemberRoles(member, dbRole, active) {
     await member.roles.remove(WAITING_LIST_ROLE_ID);
     console.log(
       `[REMOVE] ${tag} (${id}): removed ${ROLE_ID_TO_NAME[WAITING_LIST_ROLE_ID] ?? WAITING_LIST_ROLE_ID}`
+    );
+  }
+  
+  // Remove "Pendente" se tiver
+  if (member.roles.cache.has(PENDING_ROLE_ID)) {
+    await member.roles.remove(PENDING_ROLE_ID);
+    console.log(
+      `[REMOVE] ${tag} (${id}): removed ${ROLE_ID_TO_NAME[PENDING_ROLE_ID] ?? PENDING_ROLE_ID}`
     );
   }
 
