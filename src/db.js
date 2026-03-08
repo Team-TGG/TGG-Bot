@@ -307,6 +307,72 @@ export async function getInactivePlayers() {
 }
 
 /**
+ * Delete a user from the database by Discord ID or Brawlhalla ID
+ * @param {string} identifier - Discord ID (with @) or Brawlhalla ID (numbers only)
+ * @returns {Promise<Object>} The deleted record
+ */
+export async function deleteUser(identifier) {
+  const supabase = getClient();
+  
+  let query;
+  if (identifier.startsWith('@')) {
+    // Discord ID (remove @ and convert to string)
+    const discordId = identifier.slice(1);
+    query = supabase.from('users').delete().eq('discord_id', discordId);
+  } else {
+    // Brawlhalla ID
+    query = supabase.from('users').delete().eq('brawlhalla_id', identifier);
+  }
+  
+  const { data, error } = await query.select();
+  
+  if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error(`Usuário não encontrado com ${identifier.startsWith('@') ? 'Discord ID' : 'Brawlhalla ID'}: ${identifier}`);
+  }
+  
+  return data[0];
+}
+
+/**
+ * Add a new user to the database with recruit role
+ * @param {string} discord_id - The Discord user ID
+ * @param {string} brawlhalla_id - The Brawlhalla ID
+ * @param {string} username - The Discord username
+ * @returns {Promise<Object>} The inserted record
+ */
+export async function addUser(discord_id, brawlhalla_id, username) {
+  const supabase = getClient();
+  
+  // Check if user already exists
+  const { data: existing, error: checkError } = await supabase
+    .from('users')
+    .select('id')
+    .eq('discord_id', discord_id)
+    .single();
+  
+  if (existing) {
+    throw new Error(`Usuário com Discord ID ${discord_id} já existe no banco de dados`);
+  }
+  
+  // Insert new user with recruit role
+  const { data, error } = await supabase
+    .from('users')
+    .insert({
+      discord_id: String(discord_id),
+      brawlhalla_id: String(brawlhalla_id),
+      username: username,
+      role: 'recruit',
+      active: true,
+      created_at: new Date().toISOString().slice(0, 19).replace('T', ' ')
+    })
+    .select();
+  
+  if (error) throw error;
+  return data?.[0] || null;
+}
+
+/**
  * Fetch weekly missions starting from the most recent Thursday
  * @returns {Promise<Array>} Array of missions
  */

@@ -1,0 +1,157 @@
+{
+  "score_types": {
+    "teamcombo": {
+      "name": "Team Combo",
+      "base_points": 5,
+      "multiplier": 1
+    },
+    "movimentacao": {
+      "name": "Movimentação",
+      "base_points": 3,
+      "multiplier": 1
+    },
+    "combos": {
+      "name": "Combos de Armas",
+      "base_points": 5,
+      "multiplier": 1
+    },
+    "positioning": {
+      "name": "Posicionamento",
+      "base_points": 2,
+      "multiplier": 1
+    },
+    "reading": {
+      "name": "Leitura de Jogo",
+      "base_points": 1,
+      "multiplier": 1
+    },
+    "strategy": {
+      "name": "Estratégia",
+      "base_points": 3,
+      "multiplier": 1.5
+    },
+    "advanced": {
+      "name": "Técnica Avançada",
+      "base_points": 4,
+      "multiplier": 2
+    }
+  },
+  "training_messages": {
+    "start": "🎓 **Início do Treinamento**\n\nO instrutor **{instructor}** iniciou uma sessão de treinamento com **{student}**.\n**Tipo:** {type}\n**Duração:** {duration}\n**Descrição:** {description}",
+    "complete": "🎯 **Treinamento Concluído**\n\nO instrutor **{instructor}** concluiu o treinamento com **{student}**.\n**Tipo:** {type}\n**Duração:** {duration}\n**Pontos ganhos:** {points}\n**Observações:** {notes}",
+    "partial": "⏸️ **Treinamento Parcial**\n\nO instrutor **{instructor}** realizou parte do treinamento com **{student}**.\n**Tipo:** {type}\n**Duração:** {duration}\n**Pontos parciais:** {points}\n**Motivo:** {reason}",
+    "bonus": "🌟 **Bônus Aplicado**\n\nO instrutor **{instructor}** concedeu um bônus a **{student}**.\n**Motivo:** {reason}\n**Pontos de bônus:** {points}"
+  },
+  "instructor_scores": {},
+  "student_scores": {},
+  "training_sessions": [],
+  "leaderboards": {
+    "instructors": [],
+    "students": []
+  },
+  "shop_items": [
+    {
+      "id": "instrutor_destaque",
+      "category": "Cosmética",
+      "name": "Instrutor Destaque (30 dias)",
+      "description": "Cargo exclusivo temporário",
+      "cost": 30,
+      "type": "role_temp",
+      "duration_days": 30,
+      "role_id": "YOUR_DISCORD_ROLE_ID"
+    },
+    {
+      "id": "cor_diferenciada",
+      "category": "Cosmética",
+      "name": "Cor diferenciada no Discord",
+      "description": "Cor exclusiva no nome",
+      "cost": 15,
+      "type": "custom_color"
+    },
+    {
+      "id": "post_elogio",
+      "category": "Cosmética",
+      "name": "Post fixado elogiando instrutor",
+      "description": "Destaque público no servidor",
+      "cost": 30,
+      "type": "public_praise"
+    },
+    {
+      "id": "card_postal",
+      "category": "Cosmética",
+      "name": "Card cartão postal do instrutor",
+      "description": "Imagem editada com suas preferências",
+      "cost": 30,
+      "type": "custom_image"
+    },
+    {
+      "id": "banner_pfp",
+      "category": "Cosmética",
+      "name": "Banner e PFP customizados",
+      "description": "Feitas sob medidas com o Editor oficial",
+      "cost": 100,
+      "type": "custom_art"
+    },
+    {
+      "id": "aluno_destaque",
+      "category": "Cosmética",
+      "name": "Aluno Destaque",
+      "description": "Mostre pro seu aluno como você se importa com ele com um cargo customizado por você",
+      "cost": 10,
+      "type": "student_highlight",
+      "role_id": "YOUR_DISCORD_ROLE_ID"
+    },
+    {
+      "id": "multiplicador_pontos",
+      "category": "Funcional",
+      "name": "Multiplicador de pontos",
+      "description": "Multiplicador (uso único)",
+      "cost": 15,
+      "type": "point_multiplier",
+      "multiplier_value": 1.5,
+      "duration_sessions": 1
+    },
+    {
+      "id": "ticket_premium",
+      "category": "Funcional",
+      "name": "Ticket Premium",
+      "description": "Ticket vale x1,5 pontos",
+      "cost": 10,
+      "type": "ticket_bonus",
+      "bonus_multiplier": 1.5
+    },
+    {
+      "id": "aluno_prioritario",
+      "category": "Funcional",
+      "name": "Aluno prioritário",
+      "description": "Acompanhar aluno específico com bônus",
+      "cost": 15,
+      "type": "priority_student"
+    },
+    {
+      "id": "acesso_antecipado",
+      "category": "Status",
+      "name": "Acesso antecipado a cargos",
+      "description": "Elegível a promoção antes (25% OFF)",
+      "cost": 50,
+      "type": "early_access_promo",
+      "discount_percentage": 25
+    },
+    {
+      "id": "voto_consultivo",
+      "category": "Status",
+      "name": "Voto consultivo",
+      "description": "Participa de decisões do sistema",
+      "cost": 30,
+      "type": "consultative_vote"
+    },
+    {
+      "id": "instrutor_mentor",
+      "category": "Status",
+      "name": "Instrutor Mentor",
+      "description": "Supervisiona outros instrutores, ganha em cima de ",
+      "cost": 0,
+      "type": "mentor_role"
+    }
+  ]
+}
