@@ -6,7 +6,7 @@ import { supabase as supabaseConfig } from '../config/index.js';
 let client = null;
 
 // inicia supabase client preguicosamente
-function getClient() {
+export function getClient() {
   if (!client) {
     if (!supabaseConfig.url) throw new Error('SUPABASE_URL is not set in .env');
     const key = supabaseConfig.serviceRoleKey || supabaseConfig.anonKey;

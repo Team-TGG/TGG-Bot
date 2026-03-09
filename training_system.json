@@ -39,8 +39,12 @@
   "instructor_scores": {
     "1447168951963353209": {
       "teamcombo": 20
+    },
+    "327909575799996417": {
+      "teamcombo": 5
     }
   },
+  "student_instructors": {},
   "instructor_role_points": {
     "1447168951963353209": {
       "total_points": 5,
@@ -49,12 +53,20 @@
         "teamcombo": 1
       },
       "last_activity": "2026-03-08T23:24:59.150Z"
+    },
+    "327909575799996417": {
+      "total_points": 5,
+      "sessions_completed": 1,
+      "types_completed": {
+        "teamcombo": 1
+      },
+      "last_activity": "2026-03-09T00:54:03.802Z"
     }
   },
   "role_holder_sessions": [],
   "student_scores": {
     "1447168951963353209": {
-      "teamcombo": 20
+      "teamcombo": 25
     }
   },
   "training_sessions": [
@@ -101,6 +113,17 @@
       "notes": "ok",
       "status": "complete",
       "timestamp": "2026-03-08T23:24:59.139Z"
+    },
+    {
+      "id": "1773017643792",
+      "instructor_id": "327909575799996417",
+      "student_id": "1447168951963353209",
+      "type": "teamcombo",
+      "duration": "Concluído",
+      "points": 5,
+      "notes": "Treinamento concluído",
+      "status": "complete",
+      "timestamp": "2026-03-09T00:54:03.792Z"
     }
   ],
   "leaderboards": {
@@ -111,14 +134,21 @@
         "scores": {
           "teamcombo": 20
         }
+      },
+      {
+        "instructor_id": "327909575799996417",
+        "total_points": 25,
+        "scores": {
+          "teamcombo": 5
+        }
       }
     ],
     "students": [
       {
         "student_id": "1447168951963353209",
-        "total_points": 100,
+        "total_points": 125,
         "scores": {
-          "teamcombo": 20
+          "teamcombo": 25
         }
       }
     ]

@@ -3,10 +3,15 @@ import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuil
 import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, addUser, deleteUser, deactivateUser, reactivateOrAddUser } from './src/db.js';
 import { addWarning, getWarningCount, getUserWarnings, clearWarnings, parseTime, formatTime } from './src/moderation.js';
 import { 
-  getScoreTypes,
+  getScoreTypes, 
   addTrainingSession, 
   getInstructorSessions, 
-  getStudentSessions, 
+  getStudentSessions,
+  claimStudent,
+  getInstructorStudents,
+  getStudentInstructor
+} from './src/training_db.js';
+import { 
   getInstructorLeaderboard, 
   getStudentLeaderboard, 
   calculateTotalScore, 
@@ -160,25 +165,16 @@ async function sendCleanMessage(originalMessage, newEmbed) {
   }
 
   client.on('messageCreate', async (message) => {
-    if (message.author.bot) return;
-    if (!message.content.startsWith(PREFIX)) return;
-
-    const content = message.content.slice(PREFIX.length).trim();
-    if (!content) return;
-
-    const args = content.split(/\s+/);
-    const rawCommand = args.shift().toLowerCase();
-    const command = COMMAND_ALIASES[rawCommand];
-
-    if (!command) return;
-
-    const publicCommands = ['active', 'regras', 'help', 'missoes'];
-    
-    if (!publicCommands.includes(command) && !(await isAdmin(message.author.id))) {
-      return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar estes comandos.')] });
-    }
-
     try {
+      // Ignore bot messages and messages not starting with .
+      if (message.author.bot || !message.content.startsWith('.')) {
+        return;
+      }
+
+      const args = message.content.slice(1).split(/ +/);
+      const commandName = args.shift().toLowerCase();
+      const command = COMMAND_ALIASES[commandName] || commandName;
+
       // ============ .help ============
       if (command === 'help') {
         const page1 = new EmbedBuilder()
@@ -274,7 +270,14 @@ async function sendCleanMessage(originalMessage, newEmbed) {
             { label: 'Treinamento', value: 'training', emoji: EMOJIS.graduation, description: 'Sistema de treinamento' }
           );
 
+        const backButton = new ButtonBuilder()
+          .setCustomId('help_back')
+          .setLabel('Voltar')
+          .setStyle(1);
+
         const row = new ActionRowBuilder().addComponents(selectMenu);
+        const rowWithBack = new ActionRowBuilder().addComponents(backButton);
+        
         const helpMsg = await message.reply({ embeds: [page1], components: [row] });
 
         const collector = helpMsg.createMessageComponentCollector({ time: 60000 });
@@ -293,7 +296,9 @@ async function sendCleanMessage(originalMessage, newEmbed) {
             if (selected === 'inac') embedToShow = page5;
             if (selected === 'mod') embedToShow = page6;
             if (selected === 'training') embedToShow = page7;
-            await interaction.update({ embeds: [embedToShow], components: [row] });
+            await interaction.update({ embeds: [embedToShow], components: [row, rowWithBack] });
+          } else if (interaction.customId === 'help_back') {
+            await interaction.update({ embeds: [page1], components: [row] });
           }
         });
 
@@ -1143,7 +1148,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
           }
 
           if (args.length < 2) {
-            const scoreTypes = getScoreTypes();
+            const scoreTypes = await getScoreTypes();
             const typeList = Object.entries(scoreTypes).map(([key, type]) => 
               `**${key}** - ${type.name} (${type.base_points} pontos base, multiplicador ${type.multiplier}x)`
             ).join('\n');
@@ -1155,7 +1160,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
           }
 
           const [type, studentIdentifier, ...notes] = args;
-          const scoreTypes = getScoreTypes();
+          const scoreTypes = await getScoreTypes();
           const scoreType = scoreTypes[type];
           
           if (!scoreType) {
@@ -1195,10 +1200,10 @@ async function sendCleanMessage(originalMessage, newEmbed) {
           const actualPoints = scoreType.base_points * scoreType.multiplier;
           const observations = notes.join(' ') || 'Treinamento concluído';
 
-          const session = addTrainingSession(
+          const session = await addTrainingSession(
             message.author.id,
             student.id,
-            type,
+            scoreType.name,
             'Concluído',
             actualPoints,
             observations,
@@ -1210,16 +1215,100 @@ async function sendCleanMessage(originalMessage, newEmbed) {
             addRoleHolderPoints(message.author.id, actualPoints, type);
           }
 
-          const embed = createSuccessEmbed(
-            'Pontos adicionados com sucesso',
-            `**Aluno:** ${student.user.tag}\n**Tipo:** ${scoreType.name}\n**Pontos base:** ${scoreType.base_points}\n**Multiplicador:** ${scoreType.multiplier}x\n**Pontos totais:** ${actualPoints}${observations ? `\n**Observações:** ${observations}` : ''}`
-          );
+          const channelName = message.channel.name || 'desconhecido';
+          const pointsDescription = `${EMOJIS.check} ${scoreType.name} + ${actualPoints}`;
+          
+          const embed = new EmbedBuilder()
+            .setColor(0x57f287)
+            .setDescription(`Nesse canal **#${channelName}** foi adicionado as seguintes opções a lista\n\n${pointsDescription}\n\n✨ **Total = ${actualPoints} Pontos**\n\n**Aluno:** ${student.user.tag}${observations && observations !== 'Treinamento concluído' ? `\n**Observação:** ${observations}` : ''}`)
+            .setTimestamp();
 
           await message.reply({ embeds: [embed] });
 
         } catch (err) {
           await message.reply({
             embeds: [createErrorEmbed('Erro ao Registrar Pontos', err.message)]
+          });
+        }
+      }
+
+      // .claim [aluno]
+      if (command === 'claim') {
+        try {
+          const guild = client.guilds.cache.get(discordConfig.guildId);
+          if (!guild) throw new Error('Guild não encontrada');
+
+          const member = await guild.members.fetch(message.author.id).catch(() => null);
+          const instructorRoleId = '1461134737505652806';
+          
+          if (!hasInstructorRole(member, instructorRoleId)) {
+            return message.reply({
+              embeds: [createErrorEmbed('Acesso Negado', 'Apenas instrutores podem usar este comando.')]
+            });
+          }
+
+          if (args.length === 0) {
+            return message.reply({
+              embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.claim [aluno]` - Reivindica um aluno como seu estudante')]
+            });
+          }
+
+          const studentIdentifier = args[0];
+          let student;
+
+          if (studentIdentifier.startsWith('<@') || studentIdentifier.startsWith('<!')) {
+            const userId = studentIdentifier.replace(/[<@!>]/g, '');
+            student = await guild.members.fetch(userId).catch(() => null);
+          } else {
+            const cleanIdentifier = studentIdentifier.replace(/^@/, '');
+            
+            if (/^\d+$/.test(cleanIdentifier)) {
+              student = await guild.members.fetch(cleanIdentifier).catch(() => null);
+            }
+            
+            if (!student) {
+              const allMembers = await guild.members.fetch({ cache: false }).catch(() => []);
+              student = allMembers.find(m => 
+                m.nickname === cleanIdentifier || 
+                m.user.username === cleanIdentifier ||
+                m.displayName === cleanIdentifier
+              );
+            }
+          }
+
+          if (!student) {
+            return message.reply({
+              embeds: [createErrorEmbed('Aluno Não Encontrado', `Usuário "${studentIdentifier}" não encontrado no servidor.`)]
+            });
+          }
+
+          const currentInstructorData = await getStudentInstructor(student.id);
+          
+          if (currentInstructorData && currentInstructorData.instructor_id !== message.author.id) {
+            const instructorName = currentInstructorData.instructor ? currentInstructorData.instructor.username : 'Desconhecido';
+            
+            return message.reply({
+              embeds: [createErrorEmbed('Aluno Já Reivindicado', `Este aluno já foi reivindicado por **${instructorName}**.`)]
+            });
+          }
+
+          await claimStudent(message.author.id, student.id);
+
+          const embed = new EmbedBuilder()
+            .setColor(0x00ff00)
+            .setTitle('✅ Aluno Reivindicado')
+            .setDescription(`**${message.author.tag}** reivindicou **${student.user.tag}** como seu aluno.`)
+            .addFields(
+              { name: '👨‍🎓 Aluno', value: `<@${student.id}>`, inline: true },
+              { name: '👨‍🏫 Instrutor', value: `<@${message.author.id}>`, inline: true }
+            )
+            .setTimestamp();
+
+          return message.reply({ embeds: [embed] });
+
+        } catch (err) {
+          await message.reply({
+            embeds: [createErrorEmbed('Erro ao Reivindicar', err.message)]
           });
         }
       }
@@ -1242,7 +1331,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
           if (args.length === 0) {
             return message.reply({
               embeds: [createErrorEmbed('Formato Inválido', 
-                `Uso: \`.instrutor <comando>\`\n\nComandos disponíveis:\n• \`pontos [tipo] [pontos] [aluno] [observações]\` - Registrar pontos\n• \`sessao [tipo] [pontos] [aluno] [duração] [observações]\` - Iniciar sessão\n• \`concluir [ID] [observações]\` - Concluir sessão\n• \`parcial [ID] [pontos] [observações]\` - Registrar progresso parcial\n• \`historico [aluno|ID]\` - Ver histórico\n• \`ranking\` - Ver ranking\n• \`tipos\` - Ver tipos de pontuação`)]
+                `Uso: \`.instrutor <comando>\`\n\nComandos disponíveis:\n• \`pontos [tipo] [pontos] [aluno] [observações]\` - Registrar pontos\n• \`sessao [tipo] [pontos] [aluno] [duração] [observações]\` - Iniciar sessão\n• \`concluir [ID] [observações]\` - Concluir sessão\n• \`parcial [ID] [pontos] [observações]\` - Registrar progresso parcial\n• \`historico [aluno|ID]\` - Ver histórico\n• \`ranking\` - Ver ranking\n• \`tipos\` - Ver tipos de pontuação\n• \`alunos\` - Ver seus alunos reivindicados`)]
             });
           }
 
@@ -1344,191 +1433,8 @@ async function sendCleanMessage(originalMessage, newEmbed) {
               await message.reply({ embeds: [sessEmbed] });
               break;
 
-            case 'concluir':
-              if (args.length < 2) {
-                return message.reply({
-                  embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.instrutor concluir [ID] [observações]`')]
-                });
-              }
-
-              const [compSessionId, ...compNotes] = args.slice(1);
-              const compData = readTrainingData();
-              const compSession = compData.training_sessions.find(s => s.id === compSessionId);
-              
-              if (!compSession) {
-                return message.reply({
-                  embeds: [createErrorEmbed('Sessão Não Encontrada', 'ID da sessão não encontrado.')]
-                });
-              }
-
-              if (compSession.status === 'complete') {
-                return message.reply({
-                  embeds: [createErrorEmbed('Sessão Já Concluída', 'Esta sessão já foi concluída anteriormente.')]
-                });
-              }
-
-              const compScoreTypes = getScoreTypes();
-              const compScoreType = compScoreTypes[compSession.type];
-              const compActualPoints = parseInt(compNotes[0]) || 0;
-
-              if (isNaN(compActualPoints) || compActualPoints <= 0) {
-                return message.reply({
-                  embeds: [createErrorEmbed('Pontos Inválidos', 'Os pontos devem ser um número maior que zero.')]
-                });
-              }
-
-              compSession.points = compActualPoints;
-              compSession.notes = compNotes.slice(1).join(' ') || 'Treinamento concluído';
-              compSession.status = 'complete';
-
-              if (!compData.student_scores[compSession.student_id]) {
-                compData.student_scores[compSession.student_id] = {};
-              }
-              if (!compData.student_scores[compSession.student_id][compSession.type]) {
-                compData.student_scores[compSession.student_id][compSession.type] = 0;
-              }
-              compData.student_scores[compSession.student_id][compSession.type] += compActualPoints;
-
-              if (!compData.instructor_scores[compSession.instructor_id]) {
-                compData.instructor_scores[compSession.instructor_id] = {};
-              }
-              if (!compData.instructor_scores[compSession.instructor_id][compSession.type]) {
-                compData.instructor_scores[compSession.instructor_id][compSession.type] = 0;
-              }
-              compData.instructor_scores[compSession.instructor_id][compSession.type] += compActualPoints;
-
-              updateLeaderboards(compData);
-              writeTrainingData(compData);
-
-              // Track points for role holders (instructor role 1461134737505652806)
-              const compInstructorMember = await guild.members.fetch(compSession.instructor_id).catch(() => null);
-              if (compInstructorMember && hasInstructorRole(compInstructorMember, '1461134737505652806')) {
-                addRoleHolderPoints(compSession.instructor_id, compActualPoints, compSession.type);
-              }
-
-              const compEmbed = createSuccessEmbed(
-                'Sessão concluída com sucesso',
-                `**Aluno:** <@${compSession.student_id}>\n**Tipo:** ${compScoreType.name}\n**Pontos:** ${compActualPoints}${compSession.notes ? `\n**Observações:** ${compSession.notes}` : ''}`
-              );
-
-              await message.reply({ embeds: [compEmbed] });
-              break;
-
-            case 'parcial':
-              if (args.length < 3) {
-                return message.reply({
-                  embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.instrutor parcial [ID] [pontos] [observações]`')]
-                });
-              }
-
-              const [partSessionId, partPoints, ...partNotes] = args.slice(1);
-              const partData = readTrainingData();
-              const partSession = partData.training_sessions.find(s => s.id === partSessionId);
-              
-              if (!partSession) {
-                return message.reply({
-                  embeds: [createErrorEmbed('Sessão Não Encontrada', 'ID da sessão não encontrado.')]
-                });
-              }
-
-              const partParsedPoints = parseInt(partPoints);
-              if (isNaN(partParsedPoints) || partParsedPoints <= 0) {
-                return message.reply({
-                  embeds: [createErrorEmbed('Pontos Inválidos', 'Os pontos devem ser um número maior que zero.')]
-                });
-              }
-
-              const partScoreTypes = getScoreTypes();
-              const partScoreType = partScoreTypes[partSession.type];
-              const partActualPoints = partParsedPoints * partScoreType.base_points * partScoreType.multiplier;
-
-              if (!partData.student_scores[partSession.student_id]) {
-                partData.student_scores[partSession.student_id] = {};
-              }
-              if (!partData.student_scores[partSession.student_id][partSession.type]) {
-                partData.student_scores[partSession.student_id][partSession.type] = 0;
-              }
-              partData.student_scores[partSession.student_id][partSession.type] += partActualPoints;
-
-              if (!partData.instructor_scores[partSession.instructor_id]) {
-                partData.instructor_scores[partSession.instructor_id] = {};
-              }
-              if (!partData.instructor_scores[partSession.instructor_id][partSession.type]) {
-                partData.instructor_scores[partSession.instructor_id][partSession.type] = 0;
-              }
-              partData.instructor_scores[partSession.instructor_id][partSession.type] += partActualPoints;
-
-              updateLeaderboards(partData);
-              writeTrainingData(partData);
-
-              const partEmbed = createSuccessEmbed(
-                'Progresso parcial registrado',
-                `**Aluno:** <@${partSession.student_id}>\n**Tipo:** ${partScoreType.name}\n**Pontos:** ${partActualPoints}${partNotes.length > 1 ? `\n**Observações:** ${partNotes.slice(1).join(' ')}` : ''}`
-              );
-
-              await message.reply({ embeds: [partEmbed] });
-              break;
-
-            case 'historico':
-              if (args.length < 2) {
-                return message.reply({
-                  embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.instrutor historico [aluno|ID]`')]
-                });
-              }
-
-              const histIdentifier = args[1];
-              const histHistory = histIdentifier.startsWith('<@') 
-                ? getStudentSessions(histIdentifier.slice(2, -1))
-                : getInstructorSessions(message.author.id).filter(s => s.student_id === histIdentifier);
-
-              if (histHistory.length === 0) {
-                return message.reply({
-                  embeds: [createErrorEmbed('Sem Histórico', 'Nenhuma sessão encontrada para este usuário.')]
-                });
-              }
-
-              const histEmbed = new EmbedBuilder()
-                .setColor(0x5865f2)
-                .setTitle(`📚 Histórico de Treinamentos`)
-                .setDescription(histHistory.slice(0, 15).map((session, index) => {
-                  const histScoreTypes = getScoreTypes();
-                  const histScoreType = histScoreTypes[session.type];
-                  const histDate = new Date(session.timestamp).toLocaleDateString('pt-BR');
-                  const histStatusIcon = session.status === 'complete' ? '✅' : session.status === 'active' ? '🔄' : '⏸️';
-                  return `**${index + 1}.** ${histStatusIcon} <@${session.student_id}> - ${histScoreType.name} (${session.points} pontos) - ${histDate}`;
-                }).join('\n\n'))
-                .setFooter({ text: `Mostrando 15 mais recentes` })
-                .setTimestamp();
-
-              await message.reply({ embeds: [histEmbed] });
-              break;
-
-            case 'ranking':
-              const rankInstructorLeaderboard = getInstructorLeaderboard();
-              const rankStudentLeaderboard = getStudentLeaderboard();
-
-              const rankEmbed = new EmbedBuilder()
-                .setColor(0xfaa61a)
-                .setTitle('🏆 Ranking Geral')
-                .setDescription('**👨‍🏫 Ranking de Instrutores:**\n\n' + 
-                  rankInstructorLeaderboard.slice(0, 5).map((entry, index) => {
-                    const rankTotalScore = calculateTotalScore(entry.instructor_id, true);
-                    return `**${index + 1}.** <@${entry.instructor_id}> - **${rankTotalScore} pontos**`;
-                  }).join('\n\n') +
-                  '\n\n**🎓 Ranking de Alunos:**\n\n' +
-                  rankStudentLeaderboard.slice(0, 5).map((entry, index) => {
-                    const rankTotalScore = calculateTotalScore(entry.student_id, false);
-                    return `**${index + 1}.** <@${entry.student_id}> - **${rankTotalScore} pontos**`;
-                  }).join('\n\n')
-                )
-                .setFooter({ text: 'Top 5 de cada categoria' })
-                .setTimestamp();
-
-              await message.reply({ embeds: [rankEmbed] });
-              break;
-
             case 'tipos':
-              const typesScoreTypes = getScoreTypes();
+              const typesScoreTypes = await getScoreTypes();
               const typesEmbed = new EmbedBuilder()
                 .setColor(0x5865f2)
                 .setTitle('📊 Tipos de Pontuação')
@@ -1536,8 +1442,63 @@ async function sendCleanMessage(originalMessage, newEmbed) {
                   `**${key}** - ${type.name}\n   **Pontos base:** ${type.base_points}\n   **Multiplicador:** ${type.multiplier}x\n   **Descrição:** Treinamento de ${type.name.toLowerCase()}`
                 ).join('\n\n'))
                 .setTimestamp();
-
               await message.reply({ embeds: [typesEmbed] });
+              break;
+
+            case 'alunos':
+              const instructorStudents = await getInstructorStudents(message.author.id);
+
+              if (instructorStudents.length === 0) {
+                return message.reply({
+                  embeds: [createErrorEmbed('Nenhum Aluno', 'Você não reivindicou nenhum aluno ainda. Use `.claim [aluno]` para reivindicar um aluno.')]
+                });
+              }
+
+              // Process student details
+              const studentDetails = [];
+              
+              for (const studentData of instructorStudents) {
+                const student = await guild.members.fetch(studentData.student_id).catch(() => null);
+                if (student) {
+                  const trainings = studentData.trainings || [];
+                  const totalSessions = trainings.length;
+                  const completedSessions = trainings.filter(t => t.status === 'completed').length;
+                  const totalPoints = trainings
+                    .filter(t => t.status === 'completed')
+                    .reduce((sum, t) => {
+                      const trainingPoints = t.training_scores?.reduce((scoreSum, score) => scoreSum + (score.points || 0), 0) || 0;
+                      return sum + trainingPoints;
+                    }, 0);
+
+                  studentDetails.push({
+                    tag: student.user.tag,
+                    id: student.id,
+                    nickname: student.nickname || student.displayName,
+                    totalSessions,
+                    completedSessions,
+                    totalPoints
+                  });
+                }
+              }
+
+              const studentsList = studentDetails.map((student, index) => 
+                `**${index + 1}.** ${student.nickname} (${student.tag})\n   • Sessões: ${student.completedSessions}/${student.totalSessions}\n   • Pontos: ${student.totalPoints}`
+              ).join('\n\n');
+
+              const alunosEmbed = new EmbedBuilder()
+                .setColor(0x5865f2)
+                .setTitle(`👨‍🎓 Alunos de ${message.author.tag}`)
+                .setDescription(`Você tem **${studentDetails.length}** aluno(s) reivindicado(s):\n\n${studentsList}`)
+                .addFields(
+                  { name: '📊 Estatísticas Gerais', value: 
+                    `• Total de sessões: ${studentDetails.reduce((sum, s) => sum + s.totalSessions, 0)}\n` +
+                    `• Sessões concluídas: ${studentDetails.reduce((sum, s) => sum + s.completedSessions, 0)}\n` +
+                    `• Pontos totais: ${studentDetails.reduce((sum, s) => sum + s.totalPoints, 0)}`, 
+                    inline: false }
+                )
+                .setTimestamp();
+
+              await message.reply({ embeds: [alunosEmbed] });
               break;
 
             case 'role':
@@ -1579,6 +1540,11 @@ async function sendCleanMessage(originalMessage, newEmbed) {
                   });
               }
               break;
+
+            default:
+              return message.reply({
+                embeds: [createErrorEmbed('Subcomando Inválido', 'Subcomando não reconhecido. Use `.instrutor` para ver os comandos disponíveis.')]
+              });
           }
 
         } catch (err) {
@@ -1929,80 +1895,6 @@ async function sendCleanMessage(originalMessage, newEmbed) {
               break;
 
             case 'finalizar':
-            case 'finish':
-              if (args.length < 3) {
-                return message.reply({
-                  embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.instrutorl finalizar [ID] [pontos]`')]
-                });
-              }
-
-              const [finishSessionId, finishPoints] = args.slice(1);
-              const finishData = readTrainingData();
-              const finishSession = finishData.training_sessions.find(s => s.id === finishSessionId);
-              
-              if (!finishSession) {
-                return message.reply({
-                  embeds: [createErrorEmbed('Sessão Não Encontrada', 'ID da sessão não encontrado.')]
-                });
-              }
-
-              if (finishSession.status === 'complete') {
-                return message.reply({
-                  embeds: [createErrorEmbed('Sessão Já Concluída', 'Esta sessão já foi concluída anteriormente.')]
-                });
-              }
-
-              const finishParsedPoints = parseInt(finishPoints);
-              if (isNaN(finishParsedPoints) || finishParsedPoints <= 0) {
-                return message.reply({
-                  embeds: [createErrorEmbed('Pontos Inválidos', 'Os pontos devem ser um número maior que zero.')]
-                });
-              }
-
-              const finishScoreTypes = getScoreTypes();
-              const finishScoreType = finishScoreTypes[finishSession.type];
-              const finishActualPoints = finishParsedPoints * finishScoreType.base_points * finishScoreType.multiplier;
-
-              finishSession.points = finishActualPoints;
-              finishSession.notes = `Concluído via instrutorl - ${finishParsedPoints} pontos base`;
-              finishSession.status = 'complete';
-
-              if (!finishData.student_scores[finishSession.student_id]) {
-                finishData.student_scores[finishSession.student_id] = {};
-              }
-              if (!finishData.student_scores[finishSession.student_id][finishSession.type]) {
-                finishData.student_scores[finishSession.student_id][finishSession.type] = 0;
-              }
-              finishData.student_scores[finishSession.student_id][finishSession.type] += finishActualPoints;
-
-              if (!finishData.instructor_scores[finishSession.instructor_id]) {
-                finishData.instructor_scores[finishSession.instructor_id] = {};
-              }
-              if (!finishData.instructor_scores[finishSession.instructor_id][finishSession.type]) {
-                finishData.instructor_scores[finishSession.instructor_id][finishSession.type] = 0;
-              }
-              finishData.instructor_scores[finishSession.instructor_id][finishSession.type] += finishActualPoints;
-
-              updateLeaderboards(finishData);
-              writeTrainingData(finishData);
-
-              const instructorMember = await guild.members.fetch(finishSession.instructor_id).catch(() => null);
-              if (instructorMember && hasInstructorRole(instructorMember, '1461134737505652806')) {
-                addRoleHolderPoints(finishSession.instructor_id, finishActualPoints, finishSession.type);
-              }
-
-              const finishEmbed = createSuccessEmbed(
-                'Treinamento concluído',
-                `**Aluno:** <@${finishSession.student_id}>\n**Tipo:** ${finishScoreType.name}\n**Pontos:** ${finishActualPoints}\n**Observações:** ${finishSession.notes}`
-              );
-
-              await message.reply({ embeds: [finishEmbed] });
-              break;
-
-            case 'stats':
-            case 'estatisticas':
-              const statsInstructorPoints = calculateTotalScore(instructorId, true);
-              const statsStudentPoints = calculateTotalScore(instructorId, false);
               const statsSessions = getInstructorSessions(instructorId, 5);
 
               const statsEmbed = createSuccessEmbed(
