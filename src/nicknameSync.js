@@ -1,9 +1,3 @@
-/**
- * Brawlhalla nickname synchronization system
- * Syncs Discord nicknames with Brawlhalla clan members
- * Format: brawlhallaName/discordName
- * Example: "yaya_s2/disneyritozx"
- */
 
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -15,31 +9,17 @@ import { loadCustomNicknames, saveCustomNicknames, getCustomNickname, setCustomN
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLAN_CACHE_FILE = path.join(__dirname, '..', '.brawlhalla-clan-cache.json');
 
-/**
- * Fix UTF-8 encoding issues (mojibake) in strings
- * Handles Brazilian Portuguese characters and special symbols: ç ã á é í ó ú ô õ ™ ® ° etc
- * @param {string} str - String potentially with encoding issues
- * @returns {string} Fixed string with proper UTF-8 characters
- */
+
 function fixBrawlhallaName(str) {
   if (!str || typeof str !== 'string') return str;
 
   try {
-    // Elegant solution from corehalla: escape → decodeURIComponent
-    // This converts mojibake (UTF-8 bytes read as Latin-1) back to proper Unicode
-    // Works for:™ ® ° ç ã á é í ó ú ô õ and all Latin-1 supplement characters
     return decodeURIComponent(escape(str));
   } catch (e) {
-    // Fallback: return original string if conversion fails
     return str;
   }
 }
 
-/**
- * Sanitize clan data to fix encoding issues in member names
- * @param {Object} clanData - Raw clan data from API
- * @returns {Object} Clan data with fixed encoding
- */
 function sanitizeClanData(clanData) {
   if (!clanData || !clanData.clan) return clanData;
 
@@ -52,26 +32,18 @@ function sanitizeClanData(clanData) {
   };
 }
 
-/**
- * Sanitize and normalize text for consistent nickname formatting
- * @param {*} str - The string to normalize
- * @returns {string} Normalized string
- */
+
 function normalizeText(str) {
   if (!str) return '';
 
   return str
     .normalize('NFC')
-    .replace(/[\u115F\u1160\u3164]/g, '')     // Hangul fillers (todos)
-    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '') // zero width
+    .replace(/[\u115F\u1160\u3164]/g, '')
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-/**
- * Fetch clan data from Brawlhalla API and cache it
- * @returns {Promise<Object>} Full clan response with members array
- */
 export async function fetchBrawlhallaClanData() {
   if (!brawlhalla.apiKey) {
     throw new Error('BRAWLHALLA_API_KEY not set in .env');
@@ -90,10 +62,8 @@ export async function fetchBrawlhallaClanData() {
       throw new Error('Invalid clan data: no clan array in response');
     }
 
-    // Sanitize and fix character encoding for Brazilian Portuguese
     data = sanitizeClanData(data);
 
-    // Cache the response
     await saveClanCache(data);
     return data;
   } catch (err) {
@@ -102,10 +72,7 @@ export async function fetchBrawlhallaClanData() {
   }
 }
 
-/**
- * Save clan data to cache file
- * @param {Object} clanData - The clan data from API
- */
+// salva clan data em cache
 export async function saveClanCache(clanData) {
   try {
     await fs.writeFile(CLAN_CACHE_FILE, JSON.stringify(clanData, null, 2), 'utf8');
@@ -116,10 +83,7 @@ export async function saveClanCache(clanData) {
   }
 }
 
-/**
- * Load clan data from cache file
- * @returns {Promise<Object|null>} Cached clan data or null if not found
- */
+// carrega clan data do cache
 export async function loadClanCache() {
   try {
     const data = await fs.readFile(CLAN_CACHE_FILE, 'utf8');

@@ -1,8 +1,4 @@
-/**
- * Custom Discord Nicknames Storage
- * Stores custom Discord nickname overrides in JSON format
- * Structure: { "discord_id": "customDiscordName" }
- */
+// apelidos customizados em json
 
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -13,9 +9,7 @@ const CUSTOM_NICKNAMES_FILE = path.join(__dirname, '..', 'customNicknames.json')
 
 let customNicknames = {};
 
-/**
- * Load custom nicknames from JSON file
- */
+// carrega apelidos customizados
 export async function loadCustomNicknames() {
   try {
     const data = await fs.readFile(CUSTOM_NICKNAMES_FILE, 'utf8');
@@ -23,9 +17,8 @@ export async function loadCustomNicknames() {
     console.log(`[CUSTOM NICKNAMES] Loaded ${Object.keys(customNicknames).length} custom nicknames`);
   } catch (err) {
     if (err.code === 'ENOENT') {
-      // File doesn't exist yet, that's fine
       customNicknames = {};
-      console.log('[CUSTOM NICKNAMES] No custom nicknames file found, starting fresh');
+      console.log('[CUSTOM NICKNAMES] arquivo não existe');
     } else {
       console.error('[CUSTOM NICKNAMES ERROR] Failed to load:', err.message);
       throw err;
@@ -33,9 +26,7 @@ export async function loadCustomNicknames() {
   }
 }
 
-/**
- * Save custom nicknames to JSON file
- */
+// salva apelidos
 export async function saveCustomNicknames() {
   try {
     await fs.writeFile(CUSTOM_NICKNAMES_FILE, JSON.stringify(customNicknames, null, 2), 'utf8');
@@ -46,20 +37,10 @@ export async function saveCustomNicknames() {
   }
 }
 
-/**
- * Get custom nickname for a Discord user
- * @param {string} discord_id - The Discord user ID
- * @returns {string|null} Custom nickname or null if none set
- */
 export function getCustomNickname(discord_id) {
   return customNicknames[discord_id] || null;
 }
 
-/**
- * Set custom nickname for a Discord user
- * @param {string} discord_id - The Discord user ID
- * @param {string} customName - The custom name to set
- */
 export function setCustomNickname(discord_id, customName) {
   if (!customName || customName.trim() === '') {
     delete customNicknames[discord_id];
@@ -70,27 +51,16 @@ export function setCustomNickname(discord_id, customName) {
   }
 }
 
-/**
- * Remove custom nickname for a Discord user
- * @param {string} discord_id - The Discord user ID
- */
 export function removeCustomNickname(discord_id) {
   delete customNicknames[discord_id];
-  console.log(`[CUSTOM NICKNAMES] Removed custom name for ${discord_id}`);
+  console.log(`[CUSTOM NICKNAMES] removido ${discord_id}`);
 }
 
-/**
- * Get all custom nicknames
- * @returns {Object} Object of discord_id -> customName
- */
 export function getAllCustomNicknames() {
   return { ...customNicknames };
 }
 
-/**
- * Clear all custom nicknames
- */
 export function clearAllCustomNicknames() {
   customNicknames = {};
-  console.log('[CUSTOM NICKNAMES] Cleared all custom names');
+  console.log('[CUSTOM NICKNAMES] limpo');
 }

@@ -7,14 +7,14 @@ const __dirname = path.dirname(__filename);
 
 const WARNINGS_FILE = path.join(__dirname, '..', 'warnings.json');
 
-// Initialize warnings file if it doesn't exist
+// cria arquivo se não existir
 function initWarningsFile() {
   if (!fs.existsSync(WARNINGS_FILE)) {
     fs.writeFileSync(WARNINGS_FILE, JSON.stringify({}, null, 2));
   }
 }
 
-// Read warnings from JSON file
+// lê avisos do arquivo
 function readWarnings() {
   initWarningsFile();
   try {
@@ -26,7 +26,7 @@ function readWarnings() {
   }
 }
 
-// Write warnings to JSON file
+// salva avisos no arquivo
 function writeWarnings(warnings) {
   try {
     fs.writeFileSync(WARNINGS_FILE, JSON.stringify(warnings, null, 2));
@@ -35,7 +35,6 @@ function writeWarnings(warnings) {
   }
 }
 
-// Add a warning to a user
 export function addWarning(userId, moderatorId, reason) {
   const warnings = readWarnings();
   
@@ -58,26 +57,23 @@ export function addWarning(userId, moderatorId, reason) {
   return warnings[userId].count;
 }
 
-// Get warning count for a user
 export function getWarningCount(userId) {
   const warnings = readWarnings();
   return warnings[userId]?.count || 0;
 }
 
-// Get all warnings for a user
 export function getUserWarnings(userId) {
   const warnings = readWarnings();
   return warnings[userId]?.warnings || [];
 }
 
-// Clear all warnings for a user
 export function clearWarnings(userId) {
   const warnings = readWarnings();
   delete warnings[userId];
   writeWarnings(warnings);
 }
 
-// Parse time string (1s, 1m, 1h, 1d, 1M, 1y)
+// converte string de tempo (1s, 1m, 1h, 1d, 1M, 1y)
 export function parseTime(timeString) {
   const match = timeString.match(/^(\d+)([smhdMy])$/);
   if (!match) return null;
@@ -86,17 +82,17 @@ export function parseTime(timeString) {
   const num = parseInt(amount);
   
   switch (unit) {
-    case 's': return num * 1000; // seconds
-    case 'm': return num * 60 * 1000; // minutes
-    case 'h': return num * 60 * 60 * 1000; // hours
-    case 'd': return num * 24 * 60 * 60 * 1000; // days
-    case 'M': return num * 30 * 24 * 60 * 60 * 1000; // months
-    case 'y': return num * 365 * 24 * 60 * 60 * 1000; // years
+    case 's': return num * 1000;
+    case 'm': return num * 60 * 1000;
+    case 'h': return num * 60 * 60 * 1000;
+    case 'd': return num * 24 * 60 * 60 * 1000;
+    case 'M': return num * 30 * 24 * 60 * 60 * 1000;
+    case 'y': return num * 365 * 24 * 60 * 60 * 1000;
     default: return null;
   }
 }
 
-// Format time duration for display
+// formata duracao para exibição
 export function formatTime(milliseconds) {
   const seconds = Math.floor(milliseconds / 1000);
   const minutes = Math.floor(seconds / 60);

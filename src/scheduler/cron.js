@@ -12,10 +12,10 @@ export function startCronJobs(client, services) {
     getUsersWithElo
   } = services;
 
-  // Rodar a cada hora os comandos de cache, sync e sync-nick
+  // a cada hora: cache, sync e sync-nick
   cron.schedule('0 * * * *', async () => {
 
-    console.log('[CRON] Starting job...');
+    console.log('[CRON] iniciando...');
 
     try {
 
@@ -29,7 +29,7 @@ export function startCronJobs(client, services) {
 
       await syncNicknames(client, discordConfig.guildId);
 
-      console.log('[CRON] Job completed successfully.');
+      console.log('[CRON] concluído');
 
     } catch (err) {
       console.error('[CRON ERROR]', err);

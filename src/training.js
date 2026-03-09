@@ -7,7 +7,7 @@ const __dirname = path.dirname(__filename);
 
 const TRAINING_FILE = path.join(__dirname, '..', 'training_points.json');
 
-// Initialize training points file if it doesn't exist
+// cria arquivo se não existir
 function initTrainingFile() {
   if (!fs.existsSync(TRAINING_FILE)) {
     fs.writeFileSync(TRAINING_FILE, JSON.stringify({
@@ -18,7 +18,7 @@ function initTrainingFile() {
   }
 }
 
-// Read training data from JSON file
+// lê dados de treino
 function readTrainingData() {
   initTrainingFile();
   try {
@@ -30,7 +30,7 @@ function readTrainingData() {
   }
 }
 
-// Write training data to JSON file
+// escreve dados de treino
 function writeTrainingData(data) {
   try {
     fs.writeFileSync(TRAINING_FILE, JSON.stringify(data, null, 2));
@@ -39,7 +39,6 @@ function writeTrainingData(data) {
   }
 }
 
-// Add points to instructor for a specific category
 export function addTrainingPoints(instructorId, category, points) {
   const data = readTrainingData();
   
@@ -53,7 +52,6 @@ export function addTrainingPoints(instructorId, category, points) {
   
   data.instructor_points[instructorId][category] += points;
   
-  // Add to training history
   data.training_history.push({
     instructor_id: instructorId,
     category: category,
@@ -66,26 +64,23 @@ export function addTrainingPoints(instructorId, category, points) {
   return data.instructor_points[instructorId][category];
 }
 
-// Get instructor's points for all categories
 export function getInstructorPoints(instructorId) {
   const data = readTrainingData();
   return data.instructor_points[instructorId] || {};
 }
 
-// Get instructor's training history
 export function getInstructorHistory(instructorId) {
   const data = readTrainingData();
   return data.training_history.filter(entry => entry.instructor_id === instructorId);
 }
 
-// Define training categories with their point values
+// categorias de treino e pontos
 export const TRAINING_CATEGORIES = {
   'teamcombo': { name: 'Team Combo', points: 5, description: 'Ensinar team combos' },
   'movimentacao': { name: 'Movimentação', points: 3, description: 'Ensinar movimentação básica' },
   'combos': { name: 'Combos de Armas', points: 5, description: 'Ensinar combos de armas e noções gerais' }
 };
 
-// Get all available categories
 export function getTrainingCategories() {
   return Object.entries(TRAINING_CATEGORIES).map(([key, value]) => ({
     id: key,
@@ -93,7 +88,6 @@ export function getTrainingCategories() {
   }));
 }
 
-// Calculate total points for an instructor
 export function calculateTotalPoints(instructorId) {
   const points = getInstructorPoints(instructorId);
   return Object.entries(points).reduce((total, [category, amount]) => {
@@ -102,7 +96,6 @@ export function calculateTotalPoints(instructorId) {
   }, 0);
 }
 
-// Get instructor leaderboard
 export function getInstructorLeaderboard() {
   const data = readTrainingData();
   const leaderboard = Object.entries(data.instructor_points).map(([instructorId, categories]) => {
@@ -118,5 +111,5 @@ export function getInstructorLeaderboard() {
     };
   }).sort((a, b) => b.total_points - a.total_points);
   
-  return leaderboard.slice(0, 10); // Top 10
+  return leaderboard.slice(0, 10);
 }

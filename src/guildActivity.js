@@ -1,7 +1,4 @@
-/**
- * Guild Activity API: fetch latest guild report and post to Discord channel via embeds.
- * Uses the guild-report.php endpoint to get the latest activity.
- */
+// atividade da guild: fetch do relatorio e postar no discord
 
 import { EmbedBuilder } from 'discord.js';
 import { guildActivity as config } from '../config/index.js';
@@ -11,10 +8,7 @@ const ACTIVITY_URL = () => {
   return `${config.baseUrl}${config.endpoint}`;
 };
 
-/**
- * Run the guild activity sync (fetch from guild-report API with Bearer authentication).
- * @returns {Promise<{ ok: boolean, success?: boolean, data?: object }>}
- */
+// fetch relatorio de atividade da guild
 export async function runGuildActivitySync() {
   const url = ACTIVITY_URL();
   if (!url || !config.apiKey) {
@@ -63,7 +57,6 @@ export async function runGuildActivitySync() {
 export function buildEmbedsFromGuildActivity(data) {
   const embeds = [];
   
-  // arrumar os emojis(todos não funcionam)
   const EMOJIS = {
     entrou: '<:icon_v:825250296987910144>',
     saiu: '<:icon_x:872277999687442472>',
@@ -75,7 +68,6 @@ export function buildEmbedsFromGuildActivity(data) {
     ponto: '<:g_ponto_white_RR:1305837905624698880>',
   };
 
-  // Handle guild-report response structure
   if (!data || !data.data) {
     return [
       new EmbedBuilder()
@@ -89,7 +81,6 @@ export function buildEmbedsFromGuildActivity(data) {
   const reportData = data.data;
   const timestamp = reportData.timestamp || new Date().toISOString();
   
-  // Count activities
   const entrou = reportData.entrou?.length || 0;
   const saiu = reportData.saiu?.length || 0;
   const promovido = reportData.promovido?.length || 0;
@@ -124,7 +115,6 @@ export function buildEmbedsFromGuildActivity(data) {
 
   embeds.push(embed);
   
-  // Add detailed embeds for each activity type
   if (entrou > 0) {
     const desc = reportData.entrou
       .map(p => `${EMOJIS.ponto} **${p.nome}** (${p.brawlhalla_id}) - ${p.rank}`)
@@ -222,11 +212,7 @@ export async function postGuildActivityToDiscord(client, data, channelId) {
   }
 }
 
-/**
- * Calculate summary from guild report data
- * @param {object} reportData - Data from guild-report endpoint
- * @returns {object} Summary with counts
- */
+// calcula resumo do relatorio
 function calculateSummary(reportData) {
   const entrou = reportData.entrou?.length || 0;
   const saiu = reportData.saiu?.length || 0;
@@ -240,21 +226,16 @@ function calculateSummary(reportData) {
     promovido,
     rebaixado,
     nome_alterado,
-    saldo_liquido: entrou - saiu, // Net balance (entries - exits)
+    saldo_liquido: entrou - saiu,
   };
 }
 
-/**
- * Run sync, then post to Discord if channel is configured.
- * @param {import('discord.js').Client} client
- * @returns {{ ok: boolean, summary?: object, posted: boolean, error?: string }}
- */
+// sync e postar no discord se configurado
 export async function runAndPostGuildActivity(client) {
   const channelId = config.channelId || null;
   try {
     const data = await runGuildActivitySync();
     
-    // Calculate summary from report data
     const summary = calculateSummary(data.data || {});
     
     if (channelId) {

@@ -1,16 +1,15 @@
 import 'dotenv/config';
-import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder } from 'discord.js';
-import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, addUser, deleteUser } from './src/db.js';
+import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder } from 'discord.js';
+import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, addUser, deleteUser, deactivateUser, reactivateOrAddUser } from './src/db.js';
 import { addWarning, getWarningCount, getUserWarnings, clearWarnings, parseTime, formatTime } from './src/moderation.js';
 import { 
-  getScoreTypes, 
+  getScoreTypes,
   addTrainingSession, 
   getInstructorSessions, 
   getStudentSessions, 
   getInstructorLeaderboard, 
   getStudentLeaderboard, 
   calculateTotalScore, 
-  formatTrainingMessage,
   getShopItems,
   getShopItemsByCategory,
   purchaseItem,
@@ -39,7 +38,15 @@ async function main() {
 
   const client = createClient();
   const PREFIX = '.';
-//think please
+
+async function sendCleanMessage(originalMessage, newEmbed) {
+  try {
+    await originalMessage.delete();
+    return await originalMessage.channel.send({ embeds: [newEmbed] });
+  } catch (err) {
+    return await originalMessage.reply({ embeds: [newEmbed] });
+  }
+}
   const COMMAND_ALIASES = {
     'sync': 'sync',
     'sync-guild': 'sync',
@@ -72,10 +79,13 @@ async function main() {
     'pontos': 'pontos',
     'instrutor': 'instrutor',
     'instrutorl': 'instrutorl',
-    'loja': 'loja',
-    'resgatar': 'resgatar',
+    'loja': 'shop',
+    'lj': 'shop',
+    'shop': 'shop',
+    'resgatar': 'buy',
+    'buy': 'buy',
+    'comprar': 'buy',
   };
-// emoji constant idek if that is actually useful besides junk code but it help later on ig
   const EMOJIS = {
     arrowLeft: '<:arrowleft:1475806697162539059>',
     arrowRight: '<:arrowright:1475806826833383456>',
@@ -92,9 +102,21 @@ async function main() {
     baixo: '<:baixo:1475807866714718239>',
     cima: '<:cima:1475807892782317578>',
     clock: '<:clock:1475829939122212874>',
+    entrou: '<:cima:1475807892782317578>',
+    saiu: '<:baixo:1475807866714718239>',
     success: '<:check:1475806856722120838>',
+    warning: '<:warning:1475807305794949182>',
+    error: '<:xis:1475807109554896966>',
+    ponto: '<:ponto:1475807354197819453>',
+    castle: '🏰',
+    refresh: '🔄',
+    book: '📖',
+    gear: '⚙️',
+    sleep: '😴',
+    hammer: '🔨',
+    graduation: '🎓',
     crossedSwords: '⚔️',
-    hourglass: '⏳',
+    hourglass: '⏳'
   };
 
   client.once('ready', () => {
@@ -106,7 +128,7 @@ async function main() {
       syncNicknames,
       getUsers,
       getUsersWithElo
-    }); // Iniciar os crons
+    });
   });
 
   async function isAdmin(userId) {
@@ -148,17 +170,16 @@ async function main() {
     const rawCommand = args.shift().toLowerCase();
     const command = COMMAND_ALIASES[rawCommand];
 
-    if (!command) return; // impede "." e comandos inexistentes
+    if (!command) return;
 
-    // Commands that don't require admin access
     const publicCommands = ['active', 'regras', 'help', 'missoes'];
     
-    // Admin check for admin-only commands
     if (!publicCommands.includes(command) && !(await isAdmin(message.author.id))) {
       return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar estes comandos.')] });
     }
 
     try {
+      // ============ .help ============
       if (command === 'help') {
         const page1 = new EmbedBuilder()
           .setColor(0x5865f2)
@@ -198,8 +219,8 @@ async function main() {
           .setColor(0x5865f2)
           .setTitle(`${EMOJIS.success} Gerenciamento de Usuários`)
           .addFields(
-            { name: `${EMOJIS.arrowRight} .entrou <@user> <bhid> (admin)`, value: 'Adicionar novo usuário ao banco de dados e atribuir cargos de recruit', inline: false },
-            { name: `${EMOJIS.arrowRight} .saiu <@user|@discord_id|bhid> (admin)`, value: 'Remover usuário do banco de dados e remover cargos de recruit', inline: false }
+            { name: `${EMOJIS.arrowRight} .entrou <@user> <bhid> (admin)`, value: 'Adicionar novo usuário ou reativar existente no banco de dados', inline: false },
+            { name: `${EMOJIS.arrowRight} .saiu <@user|@discord_id|bhid> (admin)`, value: 'Desativar usuário do banco de dados (não exclui permanentemente)', inline: false }
           )
           .setFooter({ text: 'Selecione uma categoria no dropdown' })
           .setTimestamp();
@@ -232,10 +253,10 @@ async function main() {
           .setColor(0x5865f2)
           .setTitle(`${EMOJIS.success} Treinamento`)
           .addFields(
-            { name: `${EMOJIS.arrowRight} .pontos [tipo] [pontos] [aluno] [obs]`, value: 'Adicionar pontos de treinamento (teamcombo, movimentacao, combos, etc)', inline: false },
-            { name: `${EMOJIS.arrowRight} .instrutor <comando>`, value: 'Sistema completo para instrutores (pontos, sessao, concluir, parcial, historico, ranking, tipos)', inline: false },
-            { name: `${EMOJIS.arrowRight} .loja [categoria]`, value: 'Ver loja de recompensas (cosmética, funcional, status)', inline: false },
-            { name: `${EMOJIS.arrowRight} .resgatar <ID>`, value: 'Resgatar item da loja usando pontos de treinamento', inline: false }
+            { name: `${EMOJIS.arrowRight} .pontos [tipo] [aluno] [obs]`, value: 'Adicionar pontos automaticamente baseados no tipo de treinamento', inline: false },
+            { name: `${EMOJIS.arrowRight} .instrutor/.instrutorl <comando>`, value: 'Sistema simplificado para instrutores (pontos, sessao, concluir, parcial, historico, ranking, tipos)', inline: false },
+            { name: `${EMOJIS.arrowRight} .shop [categoria]`, value: 'Ver loja de recompensas com menu interativo\n**Abreviações:** .shop cos, .shop func, .shop stat', inline: false },
+            { name: `${EMOJIS.arrowRight} .buy [ID]`, value: 'Comprar item da loja usando pontos', inline: false }
           )
           .setFooter({ text: 'Selecione uma categoria no dropdown' })
           .setTimestamp();
@@ -244,19 +265,18 @@ async function main() {
           .setCustomId('help_menu')
           .setPlaceholder('Escolha uma categoria...')
           .addOptions(
-            { label: 'Guilda', value: 'guild', emoji: EMOJIS.crossedSwords, description: 'Comandos da guilda' },
-            { label: 'Sincronização', value: 'sync', emoji: EMOJIS.hourglass, description: 'Comandos de sincronização' },
-            { label: 'Informações', value: 'info', emoji: EMOJIS.clipboard, description: 'Comandos de informação' },
-            { label: 'Gerenciamento', value: 'users', emoji: EMOJIS.success, description: 'Gerenciamento de usuários' },
-            { label: 'Inativos', value: 'inac', emoji: EMOJIS.xis, description: 'Comandos de inatividade' },
-            { label: 'Moderação', value: 'mod', emoji: EMOJIS.xis, description: 'Comandos de moderação' },
-            { label: 'Treinamento', value: 'training', emoji: EMOJIS.success, description: 'Sistema de treinamento' }
+            { label: 'Guilda', value: 'guild', emoji: EMOJIS.castle, description: 'Comandos da guilda' },
+            { label: 'Sincronização', value: 'sync', emoji: EMOJIS.refresh, description: 'Comandos de sincronização' },
+            { label: 'Informações', value: 'info', emoji: EMOJIS.book, description: 'Comandos de informação' },
+            { label: 'Gerenciamento', value: 'users', emoji: EMOJIS.gear, description: 'Gerenciamento de usuários' },
+            { label: 'Inativos', value: 'inac', emoji: EMOJIS.sleep, description: 'Comandos de inatividade' },
+            { label: 'Moderação', value: 'mod', emoji: EMOJIS.hammer, description: 'Comandos de moderação' },
+            { label: 'Treinamento', value: 'training', emoji: EMOJIS.graduation, description: 'Sistema de treinamento' }
           );
 
         const row = new ActionRowBuilder().addComponents(selectMenu);
         const helpMsg = await message.reply({ embeds: [page1], components: [row] });
 
-        // Create a collector for the select menu
         const collector = helpMsg.createMessageComponentCollector({ time: 60000 });
 
         collector.on('collect', async (interaction) => {
@@ -282,13 +302,15 @@ async function main() {
         });
       }
 
-      // The rest of the existing command handlers (sync, sync-guild-roles, sync-elo-roles, guild-activity,
-      // movimentacao, sync-nicknames, refresh-clan-cache) are implemented below — reuse the existing
-      // functions imported at top (getUsers, runSync, runEloSync, runAndPostGuildActivity, etc.).
-
-      // .guild-activity
+      // ============ .guild-activity ============
       if (command === 'guild-activity') {
-        const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando...`).setDescription('Buscando atividade da guild...')] });
+        const loadingEmbed = new EmbedBuilder()
+          .setColor(0xfaa61a)
+          .setTitle(`${EMOJIS.loading} Sincronizando...`)
+          .setDescription('Buscando atividade da guild...');
+        
+        const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
+        
         try {
           const result = await runAndPostGuildActivity(client);
           if (result.ok) {
@@ -296,45 +318,50 @@ async function main() {
             const resultEmbed = new EmbedBuilder()
               .setColor(0x57f287)
               .setTitle(`${EMOJIS.check} Atividade Sincronizada`)
+              .setDescription(`Atividade da guild atualizada com sucesso.`)
               .addFields(
-                { name: `${EMOJIS.cima} Entradas`, value: `${summary.entrou ?? 0}`, inline: true },
-                { name: `${EMOJIS.baixo} Sa\u00eddas`, value: `${summary.saiu ?? 0}`, inline: true },
-                { name: `${EMOJIS.arrowRight} Saldo`, value: `${summary.saldo_liquido ?? 0}`, inline: true }
+                { name: '📊 Total de Membros', value: `${summary.total_members || 0}`, inline: true },
+                { name: '👥 Membros Online', value: `${summary.online_members || 0}`, inline: true },
+                { name: '💬 Mensagens', value: `${summary.messages || 0}`, inline: true }
               )
               .setTimestamp();
-            await loading.edit({ embeds: [resultEmbed] });
+            
+            await sendCleanMessage(loadingMsg, resultEmbed);
           } else {
-            await loading.edit({ embeds: [createErrorEmbed('Erro na Sincronização', result.error)] });
+            await sendCleanMessage(loadingMsg, createErrorEmbed('Erro na Sincronização', result.error));
           }
         } catch (err) {
-          await message.reply({ embeds: [createErrorEmbed('Erro na Sincronização', err.message)] });
+          await sendCleanMessage(loadingMsg, createErrorEmbed('Erro na Sincronização', err.message));
         }
       }
 
-      // .movimentacao
+      // ============ .movimentacao / .mov ============
       if (command === 'movimentacao' || command === 'mov') {
-        const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Buscando...`).setDescription('Carregando dados de movimentação...')] });
+        const loadingEmbed = new EmbedBuilder()
+          .setColor(0xfaa61a)
+          .setTitle(`${EMOJIS.loading} Carregando...`)
+          .setDescription('Buscando dados de movimentação...');
+        
+        const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
+        
         try {
           let startDate, endDate, queryType = 'range';
           
           if (args.length >= 3) {
-            // Two dates provided: date range
             startDate = args[1];
             endDate = args[2];
             if (!isValidDate(startDate) || !isValidDate(endDate)) {
-              return loading.edit({ embeds: [createErrorEmbed('Data Inválida', 'Formato: YYYY-MM-DD')] });
+              return await sendCleanMessage(loadingMsg, createErrorEmbed('Data Inválida', 'Formato: YYYY-MM-DD'));
             }
             queryType = 'range';
           } else if (args.length === 2) {
-            // One date provided: single day
             startDate = args[1];
             if (!isValidDate(startDate)) {
-              return loading.edit({ embeds: [createErrorEmbed('Data Inválida', 'Formato: YYYY-MM-DD')] });
+              return await sendCleanMessage(loadingMsg, createErrorEmbed('Data Inválida', 'Formato: YYYY-MM-DD'));
             }
-            endDate = startDate; // Same day
+            endDate = startDate;
             queryType = 'day';
           } else {
-            // No dates provided: default to last 7 days
             const range = getDefaultDateRange();
             startDate = range.startDate;
             endDate = range.endDate;
@@ -345,18 +372,15 @@ async function main() {
           const result = buildMovimentacaoEmbeds(data.data || [], startDate, endDate);
           
           if (result.needsFile) {
-            // Send data as text file if embeds would be too large
             const textContent = formatMovimentacaoAsText(result.json);
             const attachment = new AttachmentBuilder(Buffer.from(textContent), {
               name: `movimentacao_${startDate}_${endDate}.txt`,
             });
             const dateDisplay = startDate === endDate ? startDate : `${startDate} a ${endDate}`;
-            await loading.edit({
-              embeds: [
-                new EmbedBuilder()
+            const fileEmbed = new EmbedBuilder()
                   .setColor(0xfaa61a)
                   .setTitle(`${EMOJIS.ponto} Guild Movimentação (Arquivo)`)
-                  .setDescription(`Dados de ${dateDisplay}\n\nOs dados foram salvos em arquivo de texto pois ultrapassaram o limite de tamanho.`)
+                  .setDescription(`Dados de ${dateDisplay}\nOs dados foram salvos em arquivo de texto pois ultrapassaram o limite de tamanho.`)
                   .addFields([
                     { name: 'Entradas', value: String(result.json.summary.entrou), inline: true },
                     { name: 'Saídas', value: String(result.json.summary.saiu), inline: true },
@@ -364,31 +388,41 @@ async function main() {
                     { name: 'Promoções', value: String(result.json.summary.promovido), inline: true },
                     { name: 'Rebaixamentos', value: String(result.json.summary.rebaixado), inline: true },
                   ])
-                  .setFooter({ text: `Período: ${dateDisplay}` }),
-              ],
-              files: [attachment],
-            });
+                  .setFooter({ text: `Período: ${dateDisplay}` })
+                  .setTimestamp();
+            
+            await sendCleanMessage(loadingMsg, fileEmbed, [attachment]);
           } else {
-            // Send data as embeds
             const EMBEDS_PER_MESSAGE = 10;
             for (let i = 0; i < result.embeds.length; i += EMBEDS_PER_MESSAGE) {
               const chunk = result.embeds.slice(i, i + EMBEDS_PER_MESSAGE);
-              if (i === 0) await loading.edit({ embeds: chunk }); else await message.reply({ embeds: chunk });
+              if (i === 0) {
+                await sendCleanMessage(loadingMsg, chunk);
+              } else {
+                await message.channel.send({ embeds: chunk });
+              }
             }
           }
         } catch (err) {
-          await loading.edit({ embeds: [createErrorEmbed('Erro na API', err.message)] });
+          await sendCleanMessage(loadingMsg, createErrorEmbed('Erro na API', err.message));
         }
       }
 
-      // .sync (both guild and elo)
+      // ============ .sync ============
       if (command === 'sync') {
-        const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando...`).setDescription('Executando sincronização completa...')] });
+        const loadingEmbed = new EmbedBuilder()
+          .setColor(0xfaa61a)
+          .setTitle(`${EMOJIS.loading} Sincronizando...`)
+          .setDescription('Executando sincronização completa...');
+        
+        const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
+        
         try {
           const users = await getUsers();
           const guildResult = await runSync(client, users);
           const usersWithElo = await getUsersWithElo();
           const eloResult = await runEloSync(client, usersWithElo);
+          
           const resultEmbed = new EmbedBuilder()
             .setColor(0x57f287)
             .setTitle(`${EMOJIS.check} Sincronização Completa`)
@@ -397,13 +431,14 @@ async function main() {
               { name: 'ELO', value: `${EMOJIS.check} ${eloResult.synced} | ${EMOJIS.checkbox} ${eloResult.skipped} | ${EMOJIS.xis} ${eloResult.errors}`, inline: true }
             )
             .setTimestamp();
-          await loading.edit({ embeds: [resultEmbed] });
+            
+          await sendCleanMessage(loadingMsg, resultEmbed);
         } catch (err) {
-          await loading.edit({ embeds: [createErrorEmbed('Erro de Sincronização', err.message)] });
+          await sendCleanMessage(loadingMsg, createErrorEmbed('Erro de Sincronização', err.message));
         }
       }
 
-      // .sync-nicknames
+      // ============ .sync-nicknames / .sync-nick ============
       if (command === 'sync-nicknames' || command === 'sync-nick') {
         const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando...`).setDescription('Sincronizando apelidos com clan Brawlhalla...')] });
         try {
@@ -429,7 +464,7 @@ async function main() {
         }
       }
 
-      // .refresh-clan-cache
+      // ============ .refresh-clan-cache / .refresh-cache ============
       if (command === 'refresh-clan-cache' || command === 'refresh-cache') {
         const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Atualizando...`).setDescription('Atualizando cache do clan Brawlhalla...')] });
         try {
@@ -441,7 +476,7 @@ async function main() {
         }
       }
 
-      // .active <discord_id>
+      // ============ .active ============
       if (command === 'active') {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
@@ -454,7 +489,6 @@ async function main() {
 
           const mentionMatch = message.content.match(/<@!?(\d+)>/);
 
-          // Bloqueia comando se não for admin
           if (mentionMatch && !(await isAdmin(message.author.id))) {
             return message.reply({
               embeds: [
@@ -466,15 +500,12 @@ async function main() {
             });
           }
 
-          // Comando marcando alguém liberado somente pra admin
           if (await isAdmin(message.author.id) && mentionMatch) {
             targetId = mentionMatch[1];
 
             const afterMention = message.content.split('>').slice(1).join('>').trim();
             note = afterMention.length > 0 ? afterMention : 'ativado por administrador';
-          } 
-          // Usuário normal usando .active <motivo>
-          else {
+          } else {
             targetId = message.author.id;
             note = args.join(' ').trim();
 
@@ -490,12 +521,10 @@ async function main() {
             });
           }
 
-          // Remove cargo de inativo
           if (member.roles.cache.has(inactiveRoleId)) {
             await member.roles.remove(inactiveRoleId);
           }
 
-          // Atualiza banco passando a justificativa
           await removeInactivePlayer(targetId, note);
 
           const embed = createSuccessEmbed(
@@ -505,10 +534,7 @@ async function main() {
 
           await message.reply({ embeds: [embed] });
 
-        // Tratamento de erros
         } catch (err) {
-
-          // Já está ativo
           if (err.message.includes('já está ativo')) {
             return message.reply({
               embeds: [
@@ -518,10 +544,7 @@ async function main() {
                 )
               ]
             });
-          }
-
-          // Não está marcado como inativo
-          if (err.message.includes('não está marcado como inativo')) {
+          }          if (err.message.includes('não está marcado como inativo')) {
             return message.reply({
               embeds: [
                 createErrorEmbed(
@@ -532,14 +555,13 @@ async function main() {
             });
           }
 
-          // Fallback dos erros
           await message.reply({
             embeds: [createErrorEmbed('Erro ao Ativar Usuário', err.message)]
           });
         }
       }
 
-      // .regras (Display guild rules)
+      // ============ .regras ============
       if (command === 'regras') {
         const rulesEmbed = new EmbedBuilder()
           .setColor(0x5865f2)
@@ -579,7 +601,7 @@ async function main() {
         await message.reply({ embeds: [rulesEmbed] });
       }
 
-      // .inac-all (Give "ina" role to all inactive members)
+      // ============ .inac-all ============
       if (command === 'inac-all') {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
@@ -630,7 +652,7 @@ async function main() {
         }
       }
 
-      // .inac-list
+      // ============ .inac-list ============
       if (command === 'inac-list') {
         try {
           const inactivePlayers = await getInactivePlayers();
@@ -679,7 +701,7 @@ async function main() {
         }
       }
 
-      // .missoes
+      // ============ .missoes ============
       if (command === 'missoes') {
         try {
           const missions = await getWeeklyMissions();
@@ -724,13 +746,12 @@ async function main() {
         }
       }
 
-      // .entrou <@user> <brawlhalla_id>
+      // ============ .entrou ============
       if (command === 'entrou') {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
 
-          // Parse command arguments
           const mentionMatch = message.content.match(/<@!?(\d+)>/);
           if (!mentionMatch) {
             return message.reply({
@@ -739,7 +760,7 @@ async function main() {
           }
 
           const targetId = mentionMatch[1];
-          const brawlhallaId = args[1]; // Get brawlhalla_id from args
+          const brawlhallaId = args[1];
 
           if (!brawlhallaId || !/^\d+$/.test(brawlhallaId)) {
             return message.reply({
@@ -754,21 +775,17 @@ async function main() {
             });
           }
 
-          // Add user to database
-          const result = await addUser(targetId, brawlhallaId, member.user.tag);
+          const result = await reactivateOrAddUser(targetId, brawlhallaId, member.user.tag);
 
-          // Role management - remove old roles and add recruit roles
           const rolesToRemove = ['1466815420630565069', '1478477041077588098', '1437447173896802395'];
           const rolesToAdd = ['1437441679572471940', '1437427750209327297'];
 
-          // Remove old roles
           for (const roleId of rolesToRemove) {
             if (member.roles.cache.has(roleId)) {
               await member.roles.remove(roleId);
             }
           }
 
-          // Add new recruit roles
           for (const roleId of rolesToAdd) {
             if (!member.roles.cache.has(roleId)) {
               await member.roles.add(roleId);
@@ -776,27 +793,20 @@ async function main() {
           }
 
           const embed = createSuccessEmbed(
-            'Usuário Adicionado',
-            `${member.user.tag} foi adicionado ao banco de dados.\n**Brawlhalla ID:** ${brawlhallaId}\n**Cargo:** Recruit\n\nCargos atualizados com sucesso!`
+            result.reactivated ? 'Usuário Reativado' : 'Usuário Adicionado',
+            `${member.user.tag} foi ${result.reactivated ? 'reativado' : 'adicionado'} ao banco de dados.\n**Brawlhalla ID:** ${brawlhallaId}\n**Cargo:** Recruit\n\nCargos atualizados com sucesso!`
           );
 
           await message.reply({ embeds: [embed] });
 
         } catch (err) {
-          // Handle specific errors
-          if (err.message.includes('já existe no banco de dados')) {
-            return message.reply({
-              embeds: [createErrorEmbed('Usuário Já Existe', err.message)]
-            });
-          }
-
           await message.reply({
             embeds: [createErrorEmbed('Erro ao Adicionar Usuário', err.message)]
           });
         }
       }
 
-      // .saiu <@user|@discord_id|brawlhalla_id>
+      // ============ .saiu ============
       if (command === 'saiu') {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
@@ -809,33 +819,21 @@ async function main() {
           }
 
           const identifier = args[0];
-          let deletedUser;
+          let deactivatedUser;
           let member = null;
           let actualIdentifier = identifier;
 
-          // Parse different identifier formats
-          if (identifier.startsWith('<@') && identifier.endsWith('>')) {
-            // Discord mention like <@123456789> or <@!123456789>
-            const mentionMatch = identifier.match(/<@!?(\d+)>/);
+          if (identifier.startsWith('<@') && identifier.endsWith('>')) {            const mentionMatch = identifier.match(/<@!?(\d+)>/);
             if (mentionMatch) {
-              actualIdentifier = mentionMatch[1]; // Extract the numeric ID
+              actualIdentifier = mentionMatch[1];
               member = await guild.members.fetch(actualIdentifier).catch(() => null);
             }
           } else if (identifier.startsWith('@')) {
-            // Discord ID with @ prefix like @123456789
             actualIdentifier = identifier.slice(1);
             member = await guild.members.fetch(actualIdentifier).catch(() => null);
           } else {
-            // Brawlhalla ID (numbers only)
-            actualIdentifier = identifier;
-          }
-
-          // Delete user from database using the appropriate identifier format
-          const dbIdentifier = (identifier.startsWith('<@') || identifier.startsWith('@')) ? `@${actualIdentifier}` : actualIdentifier;
-          deletedUser = await deleteUser(dbIdentifier);
-
-          // If we have a member, remove recruit roles
-          if (member) {
+          }          const dbIdentifier = (identifier.startsWith('<@') || identifier.startsWith('@')) ? `@${actualIdentifier}` : actualIdentifier;
+          deactivatedUser = await deactivateUser(dbIdentifier);          if (member) {
             const recruitRoles = ['1437441679572471940', '1437427750209327297'];
             for (const roleId of recruitRoles) {
               if (member.roles.cache.has(roleId)) {
@@ -845,14 +843,13 @@ async function main() {
           }
 
           const embed = createSuccessEmbed(
-            'Usuário Removido',
-            `**Usuário:** ${deletedUser.username}\n**Discord ID:** ${deletedUser.discord_id}\n**Brawlhalla ID:** ${deletedUser.brawlhalla_id}\n\nUsuário removido do banco de dados com sucesso!${member ? '\nCargos de recruit removidos.' : ''}`
+            'Usuário Desativado',
+            `**Usuário:** ${deactivatedUser.username}\n**Discord ID:** ${deactivatedUser.discord_id}\n**Brawlhalla ID:** ${deactivatedUser.brawlhalla_id}\n\nUsuário desativado no banco de dados com sucesso!${member ? '\nCargos de recruit removidos.' : ''}`
           );
 
           await message.reply({ embeds: [embed] });
 
         } catch (err) {
-          // Handle specific errors
           if (err.message.includes('não encontrado')) {
             return message.reply({
               embeds: [createErrorEmbed('Usuário Não Encontrado', err.message)]
@@ -860,12 +857,12 @@ async function main() {
           }
 
           await message.reply({
-            embeds: [createErrorEmbed('Erro ao Remover Usuário', err.message)]
+            embeds: [createErrorEmbed('Erro ao Desativar Usuário', err.message)]
           });
         }
       }
 
-      // .warn <@user> [reason]
+      // ============ .warn ============
       if (command === 'warn') {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
@@ -888,7 +885,6 @@ async function main() {
             });
           }
 
-          // Add warning
           const warningCount = addWarning(targetId, message.author.id, reason);
 
           const embed = createSuccessEmbed(
@@ -898,15 +894,14 @@ async function main() {
 
           await message.reply({ embeds: [embed] });
 
-          // Warning escalation logic
           if (warningCount === 3) {
-            // Auto mute for 10 minutes on 3rd warning
+            // Auto mute on 3rd warning
             const muteRole = guild.roles.cache.find(r => r.name === 'Muted');
             if (muteRole) {
               await member.roles.add(muteRole);
               setTimeout(() => {
                 member.roles.remove(muteRole).catch(() => {});
-              }, 10 * 60 * 1000); // 10 minutes
+              }, 10 * 60 * 1000);
               
               await message.channel.send({
                 embeds: [new EmbedBuilder()
@@ -942,7 +937,7 @@ async function main() {
         }
       }
 
-      // .mute <@user> <duration>
+      // ============ .mute ============
       if (command === 'mute') {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
@@ -980,7 +975,6 @@ async function main() {
             });
           }
 
-          // Check for existing Muted role or create it
           let muteRole = guild.roles.cache.find(r => r.name === 'Muted');
           if (!muteRole) {
             muteRole = await guild.roles.create({
@@ -990,7 +984,6 @@ async function main() {
             });
           }
 
-          // Apply voice mute if user is in voice
           if (member.voice.channel) {
             await member.voice.setMute(true, 'Usuário silenciado por moderação');
           }
@@ -1004,7 +997,6 @@ async function main() {
 
           await message.reply({ embeds: [embed] });
 
-          // Store mute info for auto-unmute
           const muteInfo = {
             userId: targetId,
             endTime: Date.now() + durationMs,
@@ -1012,7 +1004,6 @@ async function main() {
             originalVoiceState: member.voice.serverMute
           };
 
-          // Auto unmute after duration
           setTimeout(async () => {
             try {
               const guild = client.guilds.cache.get(discordConfig.guildId);
@@ -1021,7 +1012,6 @@ async function main() {
               if (user && user.roles.cache.has(muteRole.id)) {
                 await user.roles.remove(muteRole);
                 
-                // Restore voice state if they were muted in voice
                 if (muteInfo.wasInVoice && !muteInfo.originalVoiceState) {
                   await user.voice.setMute(false, 'Auto-unmute');
                 }
@@ -1045,7 +1035,7 @@ async function main() {
         }
       }
 
-      // .ban <@user> [reason]
+      // ============ .ban ============
       if (command === 'ban') {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
@@ -1084,7 +1074,7 @@ async function main() {
         }
       }
 
-      // .unmute <@user>
+      // ============ .unmute ============
       if (command === 'unmute') {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
@@ -1113,10 +1103,8 @@ async function main() {
             });
           }
 
-          // Remove mute role
           await member.roles.remove(muteRole);
 
-          // Unmute voice if they were voice muted
           if (member.voice.serverMute) {
             await member.voice.setMute(false, 'Usuário dessilenciado por moderação');
           }
@@ -1135,23 +1123,26 @@ async function main() {
         }
       }
 
-      // .pontos [tipo] [pontos] [aluno] [observações]
+      // ============ .pontos ============
       if (command === 'pontos') {
         try {
-          // Check if user has instructor role
           const guild = client.guilds.cache.get(discordConfig.guildId);
-          if (!guild) throw new Error('Guild não encontrada');
-
-          const member = await guild.members.fetch(message.author.id).catch(() => null);
-          const instructorRoleId = '1461134737505652806'; // You should replace this with your actual instructor role ID
+          const instructorRoleId = '1461134737505652806';
           
-          if (!hasInstructorRole(member, instructorRoleId)) {
+          const member = await guild.members.fetch(message.author.id).catch(() => null);
+          const isAdminUser = await isAdmin(message.author.id);
+          const hasInstructorAccess = member && (
+            hasInstructorRole(member, instructorRoleId) || 
+            isAdminUser
+          );
+          
+          if (!hasInstructorAccess) {
             return message.reply({
-              embeds: [createErrorEmbed('Acesso Negado', 'Apenas usuários com cargo de instrutor podem usar este comando.')]
+              embeds: [createErrorEmbed('Acesso Negado', 'Apenas usuários com cargo de instrutor (ou administradores) podem usar este comando.')]
             });
           }
 
-          if (args.length < 3) {
+          if (args.length < 2) {
             const scoreTypes = getScoreTypes();
             const typeList = Object.entries(scoreTypes).map(([key, type]) => 
               `**${key}** - ${type.name} (${type.base_points} pontos base, multiplicador ${type.multiplier}x)`
@@ -1159,11 +1150,11 @@ async function main() {
             
             return message.reply({
               embeds: [createErrorEmbed('Formato Inválido', 
-                `Uso: \`.pontos [tipo] [pontos] [aluno] [observações]\`\n\nTipos disponíveis:\n\n${typeList}`)]
+                `Uso: \`.pontos [tipo] [aluno] [observações]\`\n\nTipos disponíveis:\n\n${typeList}`)]
             });
           }
 
-          const [type, points, studentId, ...notes] = args;
+          const [type, studentIdentifier, ...notes] = args;
           const scoreTypes = getScoreTypes();
           const scoreType = scoreTypes[type];
           
@@ -1173,26 +1164,40 @@ async function main() {
             });
           }
 
-          const parsedPoints = parseInt(points);
-          if (isNaN(parsedPoints) || parsedPoints <= 0) {
-            return message.reply({
-              embeds: [createErrorEmbed('Pontos Inválidos', 'Os pontos devem ser um número maior que zero.')]
-            });
+          let student;
+          
+          if (studentIdentifier.startsWith('<@') || studentIdentifier.startsWith('<!')) {
+            const userId = studentIdentifier.replace(/[<@!>]/g, '');
+            student = await guild.members.fetch(userId).catch(() => null);
+          } else {
+            const cleanIdentifier = studentIdentifier.replace(/^@/, '');
+            
+            if (/^\d+$/.test(cleanIdentifier)) {
+              student = await guild.members.fetch(cleanIdentifier).catch(() => null);
+            }
+            
+            if (!student) {
+              const allMembers = await guild.members.fetch({ cache: false }).catch(() => []);
+              student = allMembers.find(m => 
+                m.nickname === cleanIdentifier || 
+                m.user.username === cleanIdentifier ||
+                m.displayName === cleanIdentifier
+              );
+            }
           }
-
-          const student = await guild.members.fetch(studentId).catch(() => null);
+          
           if (!student) {
             return message.reply({
-              embeds: [createErrorEmbed('Aluno Não Encontrado', 'Não foi possível encontrar o aluno na guild.')]
+              embeds: [createErrorEmbed('Aluno Não Encontrado', `Usuário "${studentIdentifier}" não encontrado no servidor.`)]
             });
           }
 
-          const actualPoints = parsedPoints * scoreType.base_points * scoreType.multiplier;
+          const actualPoints = scoreType.base_points * scoreType.multiplier;
           const observations = notes.join(' ') || 'Treinamento concluído';
 
           const session = addTrainingSession(
             message.author.id,
-            studentId,
+            student.id,
             type,
             'Concluído',
             actualPoints,
@@ -1200,42 +1205,17 @@ async function main() {
             'complete'
           );
 
-          // Track points for role holders (instructor role 1461134737505652806)
           const instructorMember = await guild.members.fetch(message.author.id).catch(() => null);
           if (instructorMember && hasInstructorRole(instructorMember, '1461134737505652806')) {
             addRoleHolderPoints(message.author.id, actualPoints, type);
           }
 
           const embed = createSuccessEmbed(
-            'Pontos Registrados',
-            `**Instrutor:** ${message.author.tag}\n**Aluno:** ${student.user.tag}\n**Tipo:** ${scoreType.name}\n**Pontos base:** ${scoreType.base_points}\n**Multiplicador:** ${scoreType.multiplier}x\n**Pontos totais:** ${actualPoints}\n**Observações:** ${notes}`
+            'Pontos adicionados com sucesso',
+            `**Aluno:** ${student.user.tag}\n**Tipo:** ${scoreType.name}\n**Pontos base:** ${scoreType.base_points}\n**Multiplicador:** ${scoreType.multiplier}x\n**Pontos totais:** ${actualPoints}${observations ? `\n**Observações:** ${observations}` : ''}`
           );
 
           await message.reply({ embeds: [embed] });
-
-          // Send training completion message to student (if different from instructor)
-          if (student.id !== message.author.id) {
-            try {
-              const messageTemplate = getScoreTypes().training_messages.complete;
-              const formattedMessage = formatTrainingMessage(messageTemplate, {
-                instructor: message.author.tag,
-                student: student.user.tag,
-                type: scoreType.name,
-                duration: 'Concluído',
-                points: actualPoints,
-                notes: notes
-              });
-
-              await student.send({
-                embeds: [new EmbedBuilder()
-                  .setColor(0x57f287)
-                  .setTitle('🎯 Treinamento Concluído!')
-                  .setDescription(formattedMessage)]
-              });
-            } catch (err) {
-              console.log('Error sending training completion message:', err);
-            }
-          }
 
         } catch (err) {
           await message.reply({
@@ -1244,10 +1224,9 @@ async function main() {
         }
       }
 
-      // .instrutor <comando>
+      // ============ .instrutor ============
       if (command === 'instrutor') {
         try {
-          // Check if user has instructor role
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
 
@@ -1316,8 +1295,8 @@ async function main() {
               );
 
               const cmdEmbed = createSuccessEmbed(
-                'Pontos Registrados',
-                `**Instrutor:** ${message.author.tag}\n**Aluno:** ${cmdStudent.user.tag}\n**Tipo:** ${cmdScoreType.name}\n**Pontos base:** ${cmdScoreType.base_points}\n**Multiplicador:** ${cmdScoreType.multiplier}x\n**Pontos totais:** ${cmdActualPoints}\n**Observações:** ${cmdObservations}`
+                'Pontos adicionados com sucesso',
+                `**Aluno:** ${cmdStudent.user.tag}\n**Tipo:** ${cmdScoreType.name}\n**Pontos:** ${cmdActualPoints}${cmdObservations ? `\n**Observações:** ${cmdObservations}` : ''}`
               );
 
               await message.reply({ embeds: [cmdEmbed] });
@@ -1347,48 +1326,22 @@ async function main() {
                 });
               }
 
-              // Create training session without points (will be added on completion)
               const sessSession = addTrainingSession(
                 instructorId,
                 sessStudentId,
                 sessType,
                 sessDuration,
-                0, // No points yet
+                0,
                 sessNotes.join(' ') || 'Sessão iniciada',
-                'active' // Active status
-              );
-
-              const sessStartMessage = formatTrainingMessage(
-                getScoreTypes().training_messages.start,
-                {
-                  instructor: message.author.tag,
-                  student: sessStudent.user.tag,
-                  type: sessScoreType.name,
-                  duration: sessDuration,
-                  description: sessNotes.join(' ') || 'Sessão de treinamento'
-                }
+                'active'
               );
 
               const sessEmbed = createSuccessEmbed(
-                'Sessão Iniciada',
-                `**Instrutor:** ${message.author.tag}\n**Aluno:** ${sessStudent.user.tag}\n**Tipo:** ${sessScoreType.name}\n**Duração:** ${sessDuration}\n**Status:** Ativa\n**ID da Sessão:** ${sessSession.id}`
+                'Sessão iniciada',
+                `**Aluno:** ${sessStudent.user.tag}\n**Tipo:** ${sessScoreType.name}\n**Duração:** ${sessDuration}\n**ID:** ${sessSession.id}`
               );
 
               await message.reply({ embeds: [sessEmbed] });
-
-              // Send start message to student
-              if (sessStudent.id !== instructorId) {
-                try {
-                  await sessStudent.send({
-                    embeds: [new EmbedBuilder()
-                      .setColor(0xfaa61a)
-                      .setTitle('🎓 Início do Treinamento')
-                      .setDescription(sessStartMessage)]
-                  });
-                } catch (err) {
-                  console.log('Error sending training start message:', err);
-                }
-              }
               break;
 
             case 'concluir':
@@ -1424,12 +1377,10 @@ async function main() {
                 });
               }
 
-              // Update session with points and mark as complete
               compSession.points = compActualPoints;
               compSession.notes = compNotes.slice(1).join(' ') || 'Treinamento concluído';
               compSession.status = 'complete';
 
-              // Update scores
               if (!compData.student_scores[compSession.student_id]) {
                 compData.student_scores[compSession.student_id] = {};
               }
@@ -1456,8 +1407,8 @@ async function main() {
               }
 
               const compEmbed = createSuccessEmbed(
-                'Sessão Concluída',
-                `**ID da Sessão:** ${compSessionId}\n**Aluno:** <@${compSession.student_id}>\n**Tipo:** ${compScoreType.name}\n**Pontos ganhos:** ${compActualPoints}\n**Observações:** ${compSession.notes}`
+                'Sessão concluída com sucesso',
+                `**Aluno:** <@${compSession.student_id}>\n**Tipo:** ${compScoreType.name}\n**Pontos:** ${compActualPoints}${compSession.notes ? `\n**Observações:** ${compSession.notes}` : ''}`
               );
 
               await message.reply({ embeds: [compEmbed] });
@@ -1491,7 +1442,6 @@ async function main() {
               const partScoreType = partScoreTypes[partSession.type];
               const partActualPoints = partParsedPoints * partScoreType.base_points * partScoreType.multiplier;
 
-              // Add partial points
               if (!partData.student_scores[partSession.student_id]) {
                 partData.student_scores[partSession.student_id] = {};
               }
@@ -1512,8 +1462,8 @@ async function main() {
               writeTrainingData(partData);
 
               const partEmbed = createSuccessEmbed(
-                'Progresso Parcial Registrado',
-                `**ID da Sessão:** ${partSessionId}\n**Aluno:** <@${partSession.student_id}>\n**Tipo:** ${partScoreType.name}\n**Pontos parciais:** ${partActualPoints}\n**Observações:** ${partNotes.join(' ')}`
+                'Progresso parcial registrado',
+                `**Aluno:** <@${partSession.student_id}>\n**Tipo:** ${partScoreType.name}\n**Pontos:** ${partActualPoints}${partNotes.length > 1 ? `\n**Observações:** ${partNotes.slice(1).join(' ')}` : ''}`
               );
 
               await message.reply({ embeds: [partEmbed] });
@@ -1638,64 +1588,199 @@ async function main() {
         }
       }
 
-      // .loja [categoria]
-      if (command === 'loja') {
+      // ============ .shop ============
+      if (command === 'shop') {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
 
-          const category = args[0]?.toLowerCase();
-          const shopItems = category ? getShopItemsByCategory(category) : getShopItems();
+          const categoryMap = {
+            'cos': 'Cosmética',
+            'cosmetica': 'Cosmética',
+            'func': 'Funcional',
+            'funcional': 'Funcional',
+            'status': 'Status',
+            'stat': 'Status',
+            'rank': 'Status',
+            'vip': 'Status'
+          };
+
+          let category = args[0]?.toLowerCase();
+          
+          if (!category) {
+            const allItems = getShopItems();
+            const userPoints = calculateTotalScore(message.author.id, false);
+            
+            const categorySelect = new StringSelectMenuBuilder()
+              .setCustomId('shop_category_select')
+              .setPlaceholder('🛍 Escolha uma categoria...')
+              .addOptions(
+                { label: '✨ Cosmética', value: 'Cosmética', description: 'Cargos, cores e visuais', emoji: '✨' },
+                { label: '⚙️ Funcional', value: 'Funcional', description: 'Ferramentas e utilidades', emoji: '⚙️' },
+                { label: '👑 Status', value: 'Status', description: 'Privilégios e vantagens', emoji: '👑' },
+                { label: '📦 Ver Todos', value: 'Todos', description: 'Mostrar todos os itens', emoji: '📦' }
+              );
+
+            const row = new ActionRowBuilder().addComponents(categorySelect);
+            
+            const mainEmbed = new EmbedBuilder()
+              .setColor(0x57f287)
+              .setTitle('Loja de Recompensas')
+              .setDescription('**Seus Pontos:** 💰 ' + userPoints + ' pts\n\n**Como usar:**\n• Escolha uma categoria no menu abaixo\n• Ou use abreviações: `.shop cos`, `.shop func`, `.shop stat`\n• Para comprar: `.buy [ID]`')
+              .setFooter({ text: 'Escolha uma categoria para ver os itens' })
+              .setTimestamp();
+
+            const shopMessage = await message.reply({ 
+              embeds: [mainEmbed], 
+              components: [row] 
+            });
+
+            const collector = shopMessage.createMessageComponentCollector({ 
+              time: 60000
+            });
+
+            collector.on('collect', async (interaction) => {
+              if (interaction.user.id !== message.author.id) {
+                return interaction.reply({ 
+                  content: 'Você não pode usar este menu!', 
+                  ephemeral: true 
+                });
+              }
+
+              const selectedCategory = interaction.values[0];
+              await interaction.update({ components: [] });
+
+              let itemsToShow = selectedCategory === 'Todos' 
+                ? allItems 
+                : getShopItemsByCategory(selectedCategory);
+
+              const itemsPerPage = 3;
+              const totalPages = Math.ceil(itemsToShow.length / itemsPerPage);
+              let currentPage = 0;
+
+              const createPageEmbed = (page) => {
+                const startIndex = page * itemsPerPage;
+                const endIndex = Math.min(startIndex + itemsPerPage, itemsToShow.length);
+                const pageItems = itemsToShow.slice(startIndex, endIndex);
+
+                const pageEmbed = new EmbedBuilder()
+                  .setColor(0x57f287)
+                  .setTitle(`Loja - ${selectedCategory}`)
+                  .setDescription(`**Seus Pontos:** 💰 ${userPoints} pts\n\n**Página ${page + 1}/${totalPages}**`)
+                  .setTimestamp();
+
+                if (pageItems.length === 0) {
+                  pageEmbed.addFields({
+                    name: 'Nenhum item encontrado',
+                    value: 'Esta categoria não possui itens no momento.',
+                    inline: false
+                  });
+                } else {
+                  pageItems.forEach(item => {
+                    const canAfford = userPoints >= item.cost;
+                    const status = canAfford ? '✅' : '❌';
+                    
+                    pageEmbed.addFields({
+                      name: `${status} ${item.name} (${item.cost} pts)`,
+                      value: `**ID:** ${item.id}\n${item.description}`,
+                      inline: false
+                    });
+                  });
+                }
+
+                return pageEmbed;
+              };              const createNavigationRows = (page) => {
+                const rows = [];
+                
+                if (totalPages > 1) {
+                  const navRow = new ActionRowBuilder();
+                  
+                  const prevButton = new ButtonBuilder()
+                    .setCustomId('prev_page')
+                    .setLabel('⬅️ Anterior')
+                    .setStyle('Secondary')
+                    .setDisabled(page === 0);
+
+                  const nextButton = new ButtonBuilder()
+                    .setCustomId('next_page')
+                    .setLabel('Próxima ➡️')
+                    .setStyle('Secondary')
+                    .setDisabled(page === totalPages - 1);
+
+                  navRow.addComponents(prevButton, nextButton);
+                  rows.push(navRow);
+                }
+
+                return rows;
+              };
+
+              await interaction.followUp({ 
+                embeds: [createPageEmbed(0)], 
+                components: createNavigationRows(0) 
+              });
+
+              const pageCollector = interaction.channel.createMessageComponentCollector({ 
+                time: 300000
+              });
+
+              pageCollector.on('collect', async (pageInteraction) => {
+                if (pageInteraction.user.id !== message.author.id) return;
+
+                if (pageInteraction.customId === 'prev_page' && currentPage > 0) {
+                  currentPage--;
+                } else if (pageInteraction.customId === 'next_page' && currentPage < totalPages - 1) {
+                  currentPage++;
+                }
+
+                await pageInteraction.update({ 
+                  embeds: [createPageEmbed(currentPage)], 
+                  components: createNavigationRows(currentPage) 
+                });
+              });
+
+              pageCollector.on('end', () => {
+                interaction.editReply({ components: [] }).catch(() => {});
+              });
+            });
+
+            collector.on('end', () => {
+              shopMessage.edit({ components: [] }).catch(() => {});
+            });
+
+            return;
+          }
+
+          const mappedCategory = categoryMap[category] || category;
+          const shopItems = getShopItemsByCategory(mappedCategory);
           
           if (shopItems.length === 0) {
             return message.reply({
-              embeds: [createErrorEmbed('Categoria Inválida', 'Categoria não encontrada. Use `.loja` para ver todas as categorias.')]
+              embeds: [createErrorEmbed('Categoria Inválida', `Categoria "${category}" não encontrada.\n\n**Disponíveis:** cos (Cosmética), func (Funcional), stat (Status)\nUse \`.shop\` para ver menu.`)]
             });
           }
 
-          // Group items by category
-          const itemsByCategory = {};
-          shopItems.forEach(item => {
-            if (!itemsByCategory[item.category]) {
-              itemsByCategory[item.category] = [];
-            }
-            itemsByCategory[item.category].push(item);
-          });
-
+          const userPoints = calculateTotalScore(message.author.id, false);
           const shopEmbed = new EmbedBuilder()
             .setColor(0x57f287)
-            .setTitle('🛍 Loja de Recompensas')
-            .setDescription('Use `.resgatar [ID]` para comprar um item')
+            .setTitle(`Loja - ${mappedCategory}`)
+            .setDescription('**Seus Pontos:** 💰 ' + userPoints + ' pts\n\nUse `.buy [ID]` para comprar um item')
             .setTimestamp();
 
-          Object.entries(itemsByCategory).forEach(([cat, items]) => {
-            const categoryEmoji = {
-              'Cosmética': '✨',
-              'Funcional': '⚙️',
-              'Status': '👑'
-            }[cat] || '📦';
+          const categoryEmoji = {
+            'Cosmética': '✨',
+            'Funcional': '⚙️',
+            'Status': '👑'
+          }[mappedCategory] || '📦';
 
-            const itemsList = items.map(item => {
-              const userPoints = calculateTotalScore(message.author.id, false);
-              const canAfford = userPoints >= item.cost;
-              const status = canAfford ? '✅' : '❌';
-              
-              return `**${item.id}** ${status} - ${item.name} (${item.cost} pts)\n   ${item.description}`;
-            }).join('\n\n');
-
+          shopItems.forEach(item => {
+            const canAfford = userPoints >= item.cost;
+            const status = canAfford ? '✅' : '❌';
+            
             shopEmbed.addFields({
-              name: `${categoryEmoji} ${cat}`,
-              value: itemsList,
+              name: `${status} ${item.name} (${item.cost} pts)`,
+              value: `**ID:** ${item.id}\n${item.description}`,
               inline: false
             });
-          });
-
-          // Show user's current points
-          const userPoints = calculateTotalScore(message.author.id, false);
-          shopEmbed.addFields({
-            name: '💰 Seus Pontos',
-            value: `Você tem **${userPoints} pontos** disponíveis.`,
-            inline: false
           });
 
           await message.reply({ embeds: [shopEmbed] });
@@ -1707,12 +1792,12 @@ async function main() {
         }
       }
 
-      // .resgatar <item_id>
-      if (command === 'resgatar') {
+      // ============ .buy ============
+      if (command === 'buy') {
         try {
           if (args.length === 0) {
             return message.reply({
-              embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.resgatar [ID]`')]
+              embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.buy [ID]` ou `.comprar [ID]`')]
             });
           }
 
@@ -1729,10 +1814,8 @@ async function main() {
 
             await message.reply({ embeds: [embed] });
 
-            // Apply reward effect
             applyRewardEffect(message.author.id, result.item);
 
-            // Send purchase confirmation
             const confirmationEmbed = new EmbedBuilder()
               .setColor(0x57f287)
               .setTitle('🛍 Compra Confirmada!')
@@ -1754,10 +1837,9 @@ async function main() {
         }
       }
 
-      // .instrutorl (simplified instructor commands)
+      // ============ .instrutorl ============
       if (command === 'instrutorl') {
         try {
-          // Check if user has instructor role
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
 
@@ -1828,48 +1910,22 @@ async function main() {
                 });
               }
 
-              // Create training session
               const startSession = addTrainingSession(
                 instructorId,
                 startStudentId,
                 startType,
                 startDuration,
-                0, // No points yet
+                0,
                 `Sessão iniciada via instrutorl`,
-                'active' // Active status
+                'active'
               );
 
               const startEmbed = createSuccessEmbed(
-                '🎓 Treinamento Iniciado',
-                `**Instrutor:** ${message.author.tag}\n**Aluno:** ${startStudent.user.tag}\n**Tipo:** ${startScoreType.name}\n**Duração:** ${startDuration}\n**ID da Sessão:** \`${startSession.id}\`\n\nUse \`.instrutorl finalizar ${startSession.id} [pontos]\` para concluir.`
+                'Treinamento iniciado',
+                `**Aluno:** ${startStudent.user.tag}\n**Tipo:** ${startScoreType.name}\n**Duração:** ${startDuration}\n**ID:** ${startSession.id}\n\nUse \`.instrutorl finalizar ${startSession.id} [pontos]\` para concluir.`
               );
 
               await message.reply({ embeds: [startEmbed] });
-
-              // Send start message to student
-              if (startStudent.id !== instructorId) {
-                try {
-                  const startMsg = formatTrainingMessage(
-                    getScoreTypes().training_messages.start,
-                    {
-                      instructor: message.author.tag,
-                      student: startStudent.user.tag,
-                      type: startScoreType.name,
-                      duration: startDuration,
-                      description: 'Treinamento iniciado'
-                    }
-                  );
-
-                  await startStudent.send({
-                    embeds: [new EmbedBuilder()
-                      .setColor(0xfaa61a)
-                      .setTitle('🎓 Treinamento Iniciado!')
-                      .setDescription(startMsg)]
-                  });
-                } catch (err) {
-                  console.log('Error sending training start message:', err);
-                }
-              }
               break;
 
             case 'finalizar':
@@ -1907,12 +1963,10 @@ async function main() {
               const finishScoreType = finishScoreTypes[finishSession.type];
               const finishActualPoints = finishParsedPoints * finishScoreType.base_points * finishScoreType.multiplier;
 
-              // Update session with points and mark as complete
               finishSession.points = finishActualPoints;
               finishSession.notes = `Concluído via instrutorl - ${finishParsedPoints} pontos base`;
               finishSession.status = 'complete';
 
-              // Update scores
               if (!finishData.student_scores[finishSession.student_id]) {
                 finishData.student_scores[finishSession.student_id] = {};
               }
@@ -1932,15 +1986,14 @@ async function main() {
               updateLeaderboards(finishData);
               writeTrainingData(finishData);
 
-              // Track points for role holders (instructor role 1461134737505652806)
               const instructorMember = await guild.members.fetch(finishSession.instructor_id).catch(() => null);
               if (instructorMember && hasInstructorRole(instructorMember, '1461134737505652806')) {
                 addRoleHolderPoints(finishSession.instructor_id, finishActualPoints, finishSession.type);
               }
 
               const finishEmbed = createSuccessEmbed(
-                '🎯 Treinamento Concluído',
-                `**Sessão ID:** ${finishSessionId}\n**Aluno:** <@${finishSession.student_id}>\n**Tipo:** ${finishScoreType.name}\n**Pontos ganhos:** ${finishActualPoints}\n**Observações:** ${finishSession.notes}`
+                'Treinamento concluído',
+                `**Aluno:** <@${finishSession.student_id}>\n**Tipo:** ${finishScoreType.name}\n**Pontos:** ${finishActualPoints}\n**Observações:** ${finishSession.notes}`
               );
 
               await message.reply({ embeds: [finishEmbed] });
@@ -1990,10 +2043,9 @@ async function main() {
               const shopEmbed = new EmbedBuilder()
                 .setColor(0x57f287)
                 .setTitle('🛍 Loja de Recompensas')
-                .setDescription(`Você tem **${userPoints} pontos** disponíveis.\n\nUse \`.resgatar [ID]\` para comprar itens.`)
+                .setDescription(`Você tem **${userPoints} pontos** disponíveis.\n\nUse \`.buy [ID]\` para comprar itens ou \`.shop\` para ver o menu completo.`)
                 .setTimestamp();
 
-              // Group items by category
               const shopByCategory = {};
               shopItems.forEach(item => {
                 if (!shopByCategory[item.category]) {
@@ -2038,13 +2090,64 @@ async function main() {
         }
       }
 
+      // ============ .finduser ============
+      if (command === 'finduser') {
+        try {
+          if (args.length === 0) {
+            return message.reply({
+              embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.finduser [nome, ID, ou parte do nome]`')]
+            });
+          }
+
+          const searchTerm = args.join(' ').toLowerCase();
+          const guild = client.guilds.cache.get(discordConfig.guildId);
+          
+          if (!guild) {
+            return message.reply({
+              embeds: [createErrorEmbed('Erro', 'Guild não encontrada')]
+            });
+          }
+
+          const allMembers = await guild.members.fetch({ cache: false });
+          const matches = allMembers.filter(m => 
+            m.user.username.toLowerCase().includes(searchTerm) ||
+            m.nickname?.toLowerCase().includes(searchTerm) ||
+            m.displayName.toLowerCase().includes(searchTerm) ||
+            m.user.id === searchTerm
+          );
+
+          if (matches.size === 0) {
+            return message.reply({
+              embeds: [createErrorEmbed('Nenhum Usuário Encontrado', `Nenhum usuário encontrado para: "${searchTerm}"`)]
+            });
+          }
+
+          const results = matches.first(10).map((member, index) => {
+            return `**${index + 1}.** ${member.user.tag} (${member.user.id})\n   • Nickname: ${member.nickname || 'Nenhum'}\n   • Display: ${member.displayName}`;
+          }).join('\n\n');
+
+          const embed = new EmbedBuilder()
+            .setColor(0x5865f2)
+            .setTitle(`🔍 Resultados da Busca (${matches.size} encontrados)`)
+            .setDescription(results)
+            .setFooter({ text: `Buscando por: "${searchTerm}"` });
+
+          return message.reply({ embeds: [embed] });
+
+        } catch (err) {
+          await message.reply({
+            embeds: [createErrorEmbed('Erro na Busca', err.message)]
+          });
+        }
+      }
+
     } catch (err) {
       console.error('[Command Error]', err);
       await message.reply({ embeds: [createErrorEmbed('Erro Interno', `Um erro inesperado ocorreu: ${err.message}`)] }).catch(() => {});
     }
   });
 
-  // task com periodo
+  // Periodic inactive player reminder scheduled during startup
   async function sendInactivePlayersReminder() {
     try {
       const channelId = inactivePlayersConfig.channelId;
@@ -2082,7 +2185,7 @@ async function main() {
         .setTimestamp();
 
       await channel.send({
-        content: mentions, // Mencionar os players fora do embed pra pingar
+        content: mentions,
         embeds: [embed],
         allowedMentions: {
           users: inactivePlayers
@@ -2096,9 +2199,8 @@ async function main() {
     }
   }
 
-  // Setup periodic task (runs every 3 hours by default, or interval as configured)
   if (inactivePlayersConfig.channelId) {
-    const interval = parseInt(inactivePlayersConfig.messageInterval) || 10800000; // 3 hours default
+    const interval = parseInt(inactivePlayersConfig.messageInterval) || 10800000;
     console.log(`[Scheduled] Inactive players reminder will run every ${interval}ms (${(interval / 1000 / 60 / 60 / 24).toFixed(1)} days)`);
     setInterval(sendInactivePlayersReminder, interval);
     // Run once after 5 seconds to test connectivity on startup

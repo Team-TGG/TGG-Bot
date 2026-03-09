@@ -7,7 +7,6 @@ const __dirname = path.dirname(__filename);
 
 const TRAINING_FILE = path.join(__dirname, '..', 'training_system.json');
 
-// Initialize comprehensive training system file
 function initTrainingFile() {
   if (!fs.existsSync(TRAINING_FILE)) {
     fs.writeFileSync(TRAINING_FILE, JSON.stringify({
@@ -20,34 +19,25 @@ function initTrainingFile() {
         strategy: { name: 'Estratégia', base_points: 3, multiplier: 1.5 },
         advanced: { name: 'Técnica Avançada', base_points: 4, multiplier: 2.0 }
       },
-      training_messages: {
-        start: "🎓 **Início do Treinamento**\n\nO instrutor **{instructor}** iniciou uma sessão de treinamento com **{student}**.\n**Tipo:** {type}\n**Duração:** {duration}\n**Descrição:** {description}",
-        complete: "🎯 **Treinamento Concluído**\n\nO instrutor **{instructor}** concluiu o treinamento com **{student}**.\n**Tipo:** {type}\n**Duração:** {duration}\n**Pontos ganhos:** {points}\n**Observações:** {notes}",
-        partial: "⏸️ **Treinamento Parcial**\n\nO instrutor **{instructor}** realizou parte do treinamento com **{student}**.\n**Tipo:** {type}\n**Duração:** {duration}\n**Pontos parciais:** {points}\n**Motivo:** {reason}",
-        bonus: "🌟 **Bônus Aplicado**\n\nO instrutor **{instructor}** concedeu um bônus a **{student}**.\n**Motivo:** {reason}\n**Pontos de bônus:** {points}"
-      },
       instructor_scores: {},
       student_scores: {},
-      instructor_role_points: {}, // Points specifically for role 1461134737505652806 holders
-      role_holder_sessions: [], // Sessions by role holders
+      instructor_role_points: {},
+      role_holder_sessions: [],
       training_sessions: [],
       leaderboards: {
         instructors: [],
         students: []
       },
       shop_items: [
-        // Cosmética
         { id: 'instrutor_destaque', category: 'Cosmética', name: 'Instrutor Destaque (30 dias)', description: 'Cargo exclusivo temporário', cost: 30, type: 'role_temp', duration_days: 30, role_id: 'YOUR_DISCORD_ROLE_ID' },
         { id: 'cor_diferenciada', category: 'Cosmética', name: 'Cor diferenciada no Discord', description: 'Cor exclusiva no nome', cost: 15, type: 'custom_color' },
         { id: 'post_elogio', category: 'Cosmética', name: 'Post fixado elogiando instrutor', description: 'Destaque público no servidor', cost: 30, type: 'public_praise' },
         { id: 'card_postal', category: 'Cosmética', name: 'Card cartão postal do instrutor', description: 'Imagem editada com suas preferências', cost: 30, type: 'custom_image' },
         { id: 'banner_pfp', category: 'Cosmética', name: 'Banner e PFP customizados', description: 'Feitas sob medidas com o Editor oficial', cost: 100, type: 'custom_art' },
         { id: 'aluno_destaque', category: 'Cosmética', name: 'Aluno Destaque', description: 'Mostre pro seu aluno como você se importa com ele com um cargo customizado por você', cost: 10, type: 'student_highlight', role_id: 'YOUR_DISCORD_ROLE_ID' },
-        // Funcional
         { id: 'multiplicador_pontos', category: 'Funcional', name: 'Multiplicador de pontos', description: 'Multiplicador (uso único)', cost: 15, type: 'point_multiplier', multiplier_value: 1.5, duration_sessions: 1 },
         { id: 'ticket_premium', category: 'Funcional', name: 'Ticket Premium', description: 'Ticket vale x1,5 pontos', cost: 10, type: 'ticket_bonus', bonus_multiplier: 1.5 },
         { id: 'aluno_prioritario', category: 'Funcional', name: 'Aluno prioritário', description: 'Acompanhar aluno específico com bônus', cost: 15, type: 'priority_student' },
-        // Status
         { id: 'acesso_antecipado', category: 'Status', name: 'Acesso antecipado a cargos', description: 'Elegível a promoção antes (25% OFF)', cost: 50, type: 'early_access_promo', discount_percentage: 25 },
         { id: 'voto_consultivo', category: 'Status', name: 'Voto consultivo', description: 'Participa de decisões do sistema', cost: 30, type: 'consultative_vote' },
         { id: 'instrutor_mentor', category: 'Status', name: 'Instrutor Mentor', description: 'Supervisiona outros instrutores, ganha em cima de ', cost: 0, type: 'mentor_role' }
@@ -56,7 +46,6 @@ function initTrainingFile() {
   }
 }
 
-// Read training system data
 function readTrainingData() {
   initTrainingFile();
   try {
@@ -66,7 +55,6 @@ function readTrainingData() {
     console.error('Error reading training system file:', error);
     return {
       score_types: {},
-      training_messages: {},
       instructor_scores: {},
       student_scores: {},
       training_sessions: [],
@@ -75,7 +63,6 @@ function readTrainingData() {
   }
 }
 
-// Write training system data
 function writeTrainingData(data) {
   try {
     fs.writeFileSync(TRAINING_FILE, JSON.stringify(data, null, 2));
@@ -84,13 +71,11 @@ function writeTrainingData(data) {
   }
 }
 
-// Get all score types
 export function getScoreTypes() {
   const data = readTrainingData();
   return data.score_types;
 }
 
-// Add training session (complete or partial)
 export function addTrainingSession(instructorId, studentId, type, duration, points, notes = '', status = 'complete') {
   const data = readTrainingData();
   
@@ -126,7 +111,6 @@ export function addTrainingSession(instructorId, studentId, type, duration, poin
     }
     data.instructor_scores[instructorId][type] += points;
   }
-  
   // Update leaderboards
   updateLeaderboards(data);
   
@@ -134,9 +118,12 @@ export function addTrainingSession(instructorId, studentId, type, duration, poin
   return session;
 }
 
-// Add role holder points tracking
 export function addRoleHolderPoints(instructorId, points, type = 'general') {
   const data = readTrainingData();
+  
+  if (!data.instructor_role_points) {
+    data.instructor_role_points = {};
+  }
   
   if (!data.instructor_role_points[instructorId]) {
     data.instructor_role_points[instructorId] = {
@@ -160,7 +147,6 @@ export function addRoleHolderPoints(instructorId, points, type = 'general') {
   return data.instructor_role_points[instructorId];
 }
 
-// Get role holder stats
 export function getRoleHolderStats(instructorId) {
   const data = readTrainingData();
   return data.instructor_role_points[instructorId] || {
@@ -171,9 +157,11 @@ export function getRoleHolderStats(instructorId) {
   };
 }
 
-// Get all role holder stats for leaderboard
 export function getRoleHolderLeaderboard() {
   const data = readTrainingData();
+  if (!data.instructor_role_points) {
+    return [];
+  }
   return Object.entries(data.instructor_role_points)
     .map(([userId, stats]) => ({
       user_id: userId,
@@ -183,9 +171,7 @@ export function getRoleHolderLeaderboard() {
     .slice(0, 10);
 }
 
-// Update leaderboards
 function updateLeaderboards(data) {
-  // Instructor leaderboard
   data.leaderboards.instructors = Object.entries(data.instructor_scores).map(([instructorId, scores]) => {
     const totalPoints = Object.entries(scores).reduce((total, [type, points]) => {
       const scoreType = data.score_types[type];
@@ -220,7 +206,6 @@ function updateLeaderboards(data) {
   }).sort((a, b) => b.total_points - a.total_points).slice(0, 10);
 }
 
-// Get instructor's training sessions
 export function getInstructorSessions(instructorId, limit = 10) {
   const data = readTrainingData();
   return data.training_sessions
@@ -229,7 +214,6 @@ export function getInstructorSessions(instructorId, limit = 10) {
     .slice(0, limit);
 }
 
-// Get student's training sessions
 export function getStudentSessions(studentId, limit = 10) {
   const data = readTrainingData();
   return data.training_sessions
@@ -238,19 +222,16 @@ export function getStudentSessions(studentId, limit = 10) {
     .slice(0, limit);
 }
 
-// Get instructor leaderboard
 export function getInstructorLeaderboard() {
   const data = readTrainingData();
   return data.leaderboards.instructors;
 }
 
-// Get student leaderboard
 export function getStudentLeaderboard() {
   const data = readTrainingData();
   return data.leaderboards.students;
 }
 
-// Calculate total points for user with multipliers
 export function calculateTotalScore(userId, isInstructor = false) {
   const data = readTrainingData();
   const scores = isInstructor ? data.instructor_scores[userId] : data.student_scores[userId];
@@ -265,19 +246,16 @@ export function calculateTotalScore(userId, isInstructor = false) {
   }, 0);
 }
 
-// Get all shop items
 export function getShopItems() {
   const data = readTrainingData();
   return data.shop_items || [];
 }
 
-// Get shop items by category
 export function getShopItemsByCategory(category) {
   const data = readTrainingData();
   return (data.shop_items || []).filter(item => item.category === category);
 }
 
-// Purchase item for user
 export function purchaseItem(userId, itemId) {
   const data = readTrainingData();
   const item = data.shop_items.find(i => i.id === itemId);
@@ -286,7 +264,6 @@ export function purchaseItem(userId, itemId) {
     throw new Error('Item não encontrado na loja.');
   }
   
-  // Get user's total points
   const userScores = data.student_scores[userId] || {};
   const scoreTypes = data.score_types;
   let totalPoints = 0;
@@ -302,7 +279,6 @@ export function purchaseItem(userId, itemId) {
     throw new Error(`Pontos insuficientes. Você tem ${totalPoints} pontos, mas precisa de ${item.cost} pontos.`);
   }
   
-  // Deduct points
   if (!data.student_scores[userId]) {
     data.student_scores[userId] = {};
   }
@@ -311,7 +287,6 @@ export function purchaseItem(userId, itemId) {
   }
   data.student_scores[userId][item.category] -= item.cost;
   
-  // Add to purchase history
   if (!data.purchase_history) {
     data.purchase_history = [];
   }
@@ -332,18 +307,14 @@ export function purchaseItem(userId, itemId) {
   };
 }
 
-// Apply reward effect to user
 export function applyRewardEffect(userId, item) {
   const data = readTrainingData();
   
   switch (item.type) {
     case 'role_temp':
-      // Add temporary role
-      // This would need Discord API integration
       break;
       
     case 'custom_color':
-      // Store custom color preference
       if (!data.user_preferences) {
         data.user_preferences = {};
       }
@@ -355,12 +326,9 @@ export function applyRewardEffect(userId, item) {
       break;
       
     case 'public_praise':
-      // Send public announcement
-      // This would need Discord API integration
       break;
       
     case 'custom_image':
-      // Store custom PFP
       if (!data.user_preferences) {
         data.user_preferences = {};
       }
@@ -372,7 +340,6 @@ export function applyRewardEffect(userId, item) {
       break;
       
     case 'student_highlight':
-      // Store student highlight preference
       if (!data.user_preferences) {
         data.user_preferences = {};
       }
@@ -384,7 +351,6 @@ export function applyRewardEffect(userId, item) {
       break;
       
     case 'priority_student':
-      // Store priority student for instructor
       if (!data.user_preferences) {
         data.user_preferences = {};
       }
@@ -396,7 +362,6 @@ export function applyRewardEffect(userId, item) {
       break;
       
     case 'point_multiplier':
-      // Store point multiplier
       if (!data.user_preferences) {
         data.user_preferences = {};
       }
@@ -408,7 +373,6 @@ export function applyRewardEffect(userId, item) {
       break;
       
     case 'ticket_bonus':
-      // Store ticket bonus
       if (!data.user_preferences) {
         data.user_preferences = {};
       }
@@ -420,7 +384,6 @@ export function applyRewardEffect(userId, item) {
       break;
       
     case 'early_access_promo':
-      // Store early access promo
       if (!data.user_preferences) {
         data.user_preferences = {};
       }
@@ -432,7 +395,6 @@ export function applyRewardEffect(userId, item) {
       break;
       
     case 'consultative_vote':
-      // Store consultative vote
       if (!data.user_preferences) {
         data.user_preferences = {};
       }
@@ -444,7 +406,6 @@ export function applyRewardEffect(userId, item) {
       break;
       
     case 'mentor_role':
-      // Store mentor role
       if (!data.user_preferences) {
         data.user_preferences = {};
       }
@@ -459,31 +420,17 @@ export function applyRewardEffect(userId, item) {
   return true;
 }
 
-// Get user's purchase history
 export function getUserPurchaseHistory(userId) {
   const data = readTrainingData();
   return (data.purchase_history || []).filter(purchase => purchase.user_id === userId);
 }
 
-// Get user preferences
 export function getUserPreferences(userId) {
   const data = readTrainingData();
   return data.user_preferences?.[userId] || {};
 }
 
-// Check if user has instructor role
 export function hasInstructorRole(member, instructorRoleId) {
-  if (!instructorRoleId) return true; // If no role ID specified, allow everyone
+  if (!instructorRoleId) return true;
   return member.roles.cache.has(instructorRoleId);
-}
-
-// Format training message
-export function formatTrainingMessage(template, variables) {
-  let message = template;
-  
-  Object.entries(variables).forEach(([key, value]) => {
-    message = message.replace(new RegExp(`{${key}}`, 'g'), value);
-  });
-  
-  return message;
 }

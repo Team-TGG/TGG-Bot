@@ -1,16 +1,11 @@
-/**
- * Database layer: fetch users from Supabase for autorole sync.
- * Expects a `users` table with discord_id (string) and role (string).
- */
+// camada de banco: usuarios da tabela users (discord_id, role)
 
 import { createClient } from '@supabase/supabase-js';
 import { supabase as supabaseConfig } from '../config/index.js';
 
 let client = null;
 
-/**
- * Get Supabase client (lazy init). Uses SUPABASE_URL + service role key.
- */
+// inicia supabase client preguicosamente
 function getClient() {
   if (!client) {
     if (!supabaseConfig.url) throw new Error('SUPABASE_URL is not set in .env');
@@ -21,22 +16,16 @@ function getClient() {
   return client;
 }
 
-/**
- * Get the week reference for the previous Wednesday
- * Used to track inactivity from the past Wednesday
- */
+// calcula quarta-feira anterior como referencia
 function getLastWednesdayReference() {
   const today = new Date();
   const dayOfWeek = today.getDay();
   let diff = (dayOfWeek - 3 + 7) % 7;
 
   if (diff === 0) {
-    // Se hoje é quarta, volta 7 dias
     today.setDate(today.getDate() - 7);
   } else {
-    // Vai para a última quarta
     today.setDate(today.getDate() - diff);
-    // Voltar mais 7 dias
     today.setDate(today.getDate() - 7);
   }
 
@@ -65,11 +54,7 @@ function getMissionWeekStart() {
   return `${year}-${month}-${day}`;
 }
 
-/**
- * Fetch all users from the users table.
- * Returns rows with at least: discord_id, role.
- * Caller should skip rows where discord_id is null.
- */
+// busca todos os usuarios
 export async function getUsers() {
   const supabase = getClient();
   const { data, error } = await supabase
@@ -79,26 +64,20 @@ export async function getUsers() {
   return data ?? [];
 }
 
-/**
- * Fetch discord_id + highest peak elo (1v1, 2v2 or 3v3) per user.
- * Uses player_elo_history and returns the highest peak among all modes.
- */
+// busca discord_id com maior pico de elo 1v1, 2v2 ou 3v3
 export async function getUsersWithElo() {
   const supabase = getClient();
 
-  // Busca histórico de elo
   const { data: history, error: historyError } = await supabase
     .from('player_elo_history')
     .select('brawlhalla_id, peak_1v1, peak_2v2, peak_3v3');
   if (historyError) throw historyError;
 
-  // Busca usuários
   const { data: users, error: usersError } = await supabase
     .from('users')
     .select('discord_id, brawlhalla_id');
   if (usersError) throw usersError;
 
-  // brawlhalla_id -> maior elo entre todos os peaks
   const eloByBrawlhalla = new Map();
 
   for (const row of history ?? []) {
@@ -157,11 +136,7 @@ export async function getUsersByBrawlhallaIds(brawlhallaIds) {
   return map;
 }
 
-/**
- * Get a single user by Discord ID
- * @param {string} discord_id - The Discord user ID
- * @returns {Promise<Object|null>} User object with discord_id and brawlhalla_id, or null if not found
- */
+// busca usuario por discord id
 export async function getUserByDiscordId(discord_id) {
   const supabase = getClient();
   const { data, error } = await supabase
@@ -169,27 +144,21 @@ export async function getUserByDiscordId(discord_id) {
     .select('discord_id, brawlhalla_id, role, active')
     .eq('discord_id', discord_id)
     .single();
-  if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
+  if (error && error.code !== 'PGRST116') throw error;
   return data || null;
 }
-/**
- * Add a user to the weekly_inactive_players table
- * Uses week_reference as 7 days ago (the past week)
- * @param {string} discord_id - The Discord user ID
- * @returns {Promise<Object>} The inserted record
- */
+
+// marca jogador como inativo(quarta-feira anterior)
 export async function addInactivePlayer(discord_id) {
   const supabase = getClient();
   
-  // First get the user's brawlhalla_id
   const user = await getUserByDiscordId(discord_id);
   if (!user) throw new Error(`Usuário com Discord ID ${discord_id} não encontrado`);
   
   const brawlhalla_id = user.brawlhalla_id;
-  const weekReference = getLastWednesdayReference(); // Last Wesnesday
+  const weekReference = getLastWednesdayReference();
   const today = new Date().toISOString().split('T')[0];
   
-  // Check if user is already in the table for this week
   const { data: existing, error: checkError } = await supabase
     .from('weekly_inactive_players')
     .select('id')
@@ -201,7 +170,6 @@ export async function addInactivePlayer(discord_id) {
     throw new Error(`Usuário já está marcado como inativo nesta semana`);
   }
   
-  // Insert new record
   const { data, error } = await supabase
     .from('weekly_inactive_players')
     .insert({
@@ -235,7 +203,6 @@ export async function removeInactivePlayer(discord_id, noteText = '') {
     ? noteText
     : 'usou o comando /active';
 
-  // Primeiro verifica se ainda está inativo (note = NULL)
   const { data: existing, error: checkError } = await supabase
     .from('weekly_inactive_players')
     .select('id, note')
@@ -253,7 +220,6 @@ export async function removeInactivePlayer(discord_id, noteText = '') {
     throw new Error('Usuário já está ativo.');
   }
 
-  // Se estiver inativo, faz o update
   const { data, error } = await supabase
     .from('weekly_inactive_players')
     .update({ note: finalNote })
@@ -263,11 +229,7 @@ export async function removeInactivePlayer(discord_id, noteText = '') {
   return data?.length || 0;
 }
 
-/**
- * Get all inactive players from last Wednesday with their Discord IDs
- * Only returns players from the past week (last Wednesday) who haven't used /active
- * @returns {Promise<Array>} Array of objects with discord_id, brawlhalla_id, created_at
- */
+// busca inativos da quarta-feira anterior com discord id
 export async function getInactivePlayers() {
   const supabase = getClient();
   const weekReference = getLastWednesdayReference(); // Only fetch last Wednesday data
@@ -306,22 +268,16 @@ export async function getInactivePlayers() {
   return result;
 }
 
-/**
- * Delete a user from the database by Discord ID or Brawlhalla ID
- * @param {string} identifier - Discord ID (with @) or Brawlhalla ID (numbers only)
- * @returns {Promise<Object>} The deleted record
- */
-export async function deleteUser(identifier) {
+// desativa usuario por discord id ou brawlhalla id
+export async function deactivateUser(identifier) {
   const supabase = getClient();
   
   let query;
   if (identifier.startsWith('@')) {
-    // Discord ID (remove @ and convert to string)
     const discordId = identifier.slice(1);
-    query = supabase.from('users').delete().eq('discord_id', discordId);
+    query = supabase.from('users').update({ active: false }).eq('discord_id', discordId);
   } else {
-    // Brawlhalla ID
-    query = supabase.from('users').delete().eq('brawlhalla_id', identifier);
+    query = supabase.from('users').update({ active: false }).eq('brawlhalla_id', identifier);
   }
   
   const { data, error } = await query.select();
@@ -335,16 +291,81 @@ export async function deleteUser(identifier) {
 }
 
 /**
- * Add a new user to the database with recruit role
- * @param {string} discord_id - The Discord user ID
- * @param {string} brawlhalla_id - The Brawlhalla ID
- * @param {string} username - The Discord username
- * @returns {Promise<Object>} The inserted record
+ * Delete a user from the database by Discord ID or Brawlhalla ID
+ * @param {string} identifier - Discord ID (with @) or Brawlhalla ID (numbers only)
+ * @returns {Promise<Object>} The deleted record
  */
+export async function deleteUser(identifier) {
+  const supabase = getClient();
+  
+  let query;
+  if (identifier.startsWith('@')) {
+    const discordId = identifier.slice(1);
+    query = supabase.from('users').delete().eq('discord_id', discordId);
+  } else {
+    query = supabase.from('users').delete().eq('brawlhalla_id', identifier);
+  }
+  
+  const { data, error } = await query.select();
+  
+  if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error(`Usuário não encontrado com ${identifier.startsWith('@') ? 'Discord ID' : 'Brawlhalla ID'}: ${identifier}`);
+  }
+  
+  return data[0];
+}
+
+export async function reactivateOrAddUser(discord_id, brawlhalla_id, username) {
+  const supabase = getClient();
+  
+  // Check if user already exists (including inactive ones)
+  const { data: existing, error: checkError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('discord_id', discord_id)
+    .single();
+  
+  if (checkError && checkError.code !== 'PGRST116') throw checkError; // PGRST116 = not found
+  
+  if (existing) {
+    // User exists, reactivate them
+    const { data, error } = await supabase
+      .from('users')
+      .update({ 
+        active: true,
+        username: username,
+        brawlhalla_id: String(brawlhalla_id),
+        role: 'recruit'
+      })
+      .eq('discord_id', discord_id)
+      .select();
+    
+    if (error) throw error;
+    return { ...data[0], reactivated: true };
+  } else {
+    // User doesn't exist, create new one
+    const { data, error } = await supabase
+      .from('users')
+      .insert({
+        discord_id: String(discord_id),
+        brawlhalla_id: String(brawlhalla_id),
+        username: username,
+        role: 'recruit',
+        active: true,
+        created_at: new Date().toISOString().slice(0, 19).replace('T', ' ')
+      })
+      .select();
+    
+    if (error) throw error;
+    return { ...data[0], reactivated: false };
+  }
+}
+
+// add novo usuario com role recruit
 export async function addUser(discord_id, brawlhalla_id, username) {
   const supabase = getClient();
   
-  // Check if user already exists
   const { data: existing, error: checkError } = await supabase
     .from('users')
     .select('id')
@@ -355,7 +376,6 @@ export async function addUser(discord_id, brawlhalla_id, username) {
     throw new Error(`Usuário com Discord ID ${discord_id} já existe no banco de dados`);
   }
   
-  // Insert new user with recruit role
   const { data, error } = await supabase
     .from('users')
     .insert({

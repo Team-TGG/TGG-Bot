@@ -1,21 +1,6 @@
-/**
- * Guild Movimentacao API: fetch movement logs with date ranges and display as embeds.
- */
-
 import { EmbedBuilder } from 'discord.js';
 import { movimentacao as config } from '../config/index.js';
 
-/**
- * Build the API URL with query parameters
- * @param {Object} options - Query parameters
- * @param {string} options.date - Specific date in YYYY-MM-DD format (takes precedence over start/end)
- * @param {string} options.startDate - Start date in YYYY-MM-DD format
- * @param {string} options.endDate - End date in YYYY-MM-DD format
- * @param {string} options.action - Filter by action (entrou, saiu, promovido, rebaixado)
- * @param {string} options.search - Search by player name
- * @param {number} options.limit - Max records (default 5000, max 5000)
- * @returns {string}
- */
 function buildMovimentacaoUrl(options = {}) {
   if (!config.baseUrl || !config.endpoint) return null;
   
@@ -28,7 +13,6 @@ function buildMovimentacaoUrl(options = {}) {
     limit = 5000,
   } = options;
   
-  // Apply default date range if neither date nor startDate/endDate is provided
   if (!date && !startDate && !endDate) {
     const now = new Date();
     const sevenDaysAgo = new Date(now);
@@ -66,7 +50,6 @@ function buildMovimentacaoUrl(options = {}) {
  * @returns {Promise<{ ok: boolean, data?: array, summary?: object, message?: string }>}
  */
 export async function fetchMovimentacao(options = {}) {
-  // Support both old signature (startDate, endDate, limit) and new object signature
   const queryOptions = typeof options === 'string' 
     ? { startDate: options, endDate: arguments[1], limit: arguments[2] }
     : options;
@@ -105,13 +88,11 @@ export async function fetchMovimentacao(options = {}) {
     throw new Error(data?.error || 'API returned unsuccessful response');
   }
 
-  // Handle API response structure from guild-movimentacao endpoint
   let records = Array.isArray(data.data) ? data.data : [];
   
-  // Normalize records to fix field name inconsistencies
   records = records.map(record => ({
     id: record.id,
-    brawlhalla_id: record.brawlhalla_id || record.brawlhallaid, // Fix typo
+    brawlhalla_id: record.brawlhalla_id || record.brawlhallaid,
     nome: record.nome || record.player_name,
     rank: record.rank || record.new_rank,
     action: record.action,
@@ -143,17 +124,8 @@ function calculateEmbedSize(embed) {
   return size;
 }
 
-/**
- * Build Discord embeds from movimentacao data
- * @param {array} records - Movement records
- * @param {string} startDate
- * @param {string} endDate
- * @returns {{ embeds: EmbedBuilder[], needsFile: boolean, json: object }}
- */
 export function buildMovimentacaoEmbeds(records, startDate, endDate) {
-  const embeds = [];
-  
-  // Custom emoji IDs - Using working emojis from the server
+  // Custom emoji IDs
   const EMOJIS = {
     entrou: '<:check:1475806856722120838>',
     saiu: '<:xis:1475807109554896966>',
@@ -182,7 +154,6 @@ export function buildMovimentacaoEmbeds(records, startDate, endDate) {
   // Filter out error records (check for valid structure with required fields)
   const validRecords = Array.isArray(records)
     ? records.filter((r) => {
-        // Must have required fields and not be an error object
         return r && r.nome && r.action && !r.code && !r.message && r.action !== 'error';
       })
     : [];
@@ -257,14 +228,12 @@ export function buildMovimentacaoEmbeds(records, startDate, endDate) {
     });
   });
 
-  // Check if total size exceeds Discord limits (safely under MAX_EMBED_SIZE)
   let totalSize = 0;
   let needsFile = false;
   embeds.forEach(embed => {
     totalSize += calculateEmbedSize(embed);
   });
 
-  // If total exceeds safe limit, mark for file output
   if (totalSize > 5500 || embeds.length > 10) {
     needsFile = true;
   }
@@ -286,10 +255,6 @@ export function buildMovimentacaoEmbeds(records, startDate, endDate) {
   };
 }
 
-/**
- * Get default date range (last 7 days)
- * @returns {{ startDate: string, endDate: string }}
- */
 export function getDefaultDateRange() {
   const endDate = new Date();
   const startDate = new Date(endDate);
@@ -301,11 +266,6 @@ export function getDefaultDateRange() {
   };
 }
 
-/**
- * Format date string for validation (YYYY-MM-DD)
- * @param {string} dateStr
- * @returns {boolean}
- */
 export function isValidDate(dateStr) {
   if (!dateStr) return false;
   const regex = /^\d{4}-\d{2}-\d{2}$/;
@@ -314,50 +274,22 @@ export function isValidDate(dateStr) {
   return date instanceof Date && !isNaN(date);
 }
 
-/**
- * Fetch movimentacao data for a specific date
- * @param {string} date - YYYY-MM-DD format
- * @returns {Promise<{ ok: boolean, data?: array, summary?: object }>}
- */
 export async function fetchMovimentacaoByDate(date) {
   return fetchMovimentacao({ date });
 }
 
-/**
- * Fetch movimentacao data for a date range
- * @param {string} startDate - YYYY-MM-DD format
- * @param {string} endDate - YYYY-MM-DD format
- * @returns {Promise<{ ok: boolean, data?: array, summary?: object }>}
- */
 export async function fetchMovimentacaoByDateRange(startDate, endDate) {
   return fetchMovimentacao({ startDate, endDate });
 }
 
-/**
- * Fetch movimentacao data filtered by action
- * @param {string} action - Action type (entrou, saiu, promovido, rebaixado)
- * @param {string} date - Optional specific date in YYYY-MM-DD format
- * @returns {Promise<{ ok: boolean, data?: array, summary?: object }>}
- */
 export async function fetchMovimentacaoByAction(action, date = null) {
   return fetchMovimentacao({ date, action });
 }
 
-/**
- * Search movimentacao data by player name
- * @param {string} playerName - Player name to search
- * @param {string} date - Optional specific date in YYYY-MM-DD format
- * @returns {Promise<{ ok: boolean, data?: array, summary?: object }>}
- */
 export async function fetchMovimentacaoBySearch(playerName, date = null) {
   return fetchMovimentacao({ date, search: playerName });
 }
 
-/**
- * Export movimentacao data for a file (txt format)
- * @param {object} json - JSON data returned from buildMovimentacaoEmbeds
- * @returns {string}
- */
 export function formatMovimentacaoAsText(json) {
   if (!json || !json.data) return '';
 

@@ -1,11 +1,8 @@
-/**
- * Discord autorole sync: guild rank roles (recruit/member/officer) and ELO roles.
- */
+// sincroniza cargos: guild rank (recruit/member/officer) e elo roles
 
 import { Client, GatewayIntentBits } from 'discord.js';
 
-// --- Guild rank (users.role) ---
-// Exact role mapping: DB role -> Discord role ID (admin maps to officer)
+// mapeamento db role -> discord role id
 const ROLE_MAP = {
   recruit: '1437427750209327297',
   member: '1437427716805890191',
@@ -13,10 +10,10 @@ const ROLE_MAP = {
   admin: '1437427655950467242', // same as officer
 };
 
-// All guild rank role IDs (we remove any of these before adding the correct one)
+// todos os guild rank role ids
 export const ALL_GUILD_ROLE_IDS = Object.values(ROLE_MAP);
 
-// System roles that are independent of guild rank
+// cargos do sistema independentes
 export const SYSTEM_ROLES = {
   TGG: '1437441679572471940',
   VISITOR: '1437447173896802395',
@@ -24,7 +21,7 @@ export const SYSTEM_ROLES = {
   PENDING: '1478477041077588098',
 };
 
-// Human-readable role names for debug logs
+// nomes para debug
 const ROLE_ID_TO_NAME = {
   '1437427750209327297': 'recruit',
   '1437427716805890191': 'member',
@@ -35,9 +32,7 @@ const ROLE_ID_TO_NAME = {
   '1478477041077588098': 'Pendente',
 };
 
-// --- ELO roles (from player_elo_missions.initial_elo_1v1) ---
-// Tiers: Diamond 2000+, Platinum 5→1, Gold 5→1, Silver 5→1, Bronze 5→1, Tin 5→0.
-// We assign the highest tier where elo >= minElo.
+// ranks de elo (diamond ate tin 0)
 const ELO_ROLES = [
   { minElo: 3000, roleId: '1445053516144971776', name: 'Diamond 10' },
   { minElo: 2900, roleId: '1445053513251164160', name: 'Diamond 9' },
@@ -113,7 +108,6 @@ export async function syncMemberRoles(member, dbRole, active) {
   const tag = member.user.tag;
   const id = member.id;
 
-  // Se o user estiver inativo, tira TGG e rank e deixa só visitante
   if (active === false) {
     const rolesToRemove = [
       TGG_ROLE_ID,
@@ -142,13 +136,11 @@ export async function syncMemberRoles(member, dbRole, active) {
     return { added: true, removed: removedNames, unchanged: false };
   }
 
-  // Se o usuário estiver ativo
   if (!targetRoleId) {
     console.warn(`[SKIP] Unknown role "${dbRole}" for ${tag} (${id})`);
     return { added: false, removed: [], unchanged: false };
   }
 
-  // Remove "visitante" se tiver
   if (member.roles.cache.has(VISITOR_ROLE_ID)) {
     await member.roles.remove(VISITOR_ROLE_ID);
     console.log(
@@ -156,7 +148,6 @@ export async function syncMemberRoles(member, dbRole, active) {
     );
   }
 
-  // Remove "Lista de espera" se tiver
   if (member.roles.cache.has(WAITING_LIST_ROLE_ID)) {
     await member.roles.remove(WAITING_LIST_ROLE_ID);
     console.log(
@@ -164,7 +155,6 @@ export async function syncMemberRoles(member, dbRole, active) {
     );
   }
   
-  // Remove "Pendente" se tiver
   if (member.roles.cache.has(PENDING_ROLE_ID)) {
     await member.roles.remove(PENDING_ROLE_ID);
     console.log(
@@ -172,7 +162,6 @@ export async function syncMemberRoles(member, dbRole, active) {
     );
   }
 
-  // Garante TGG
   if (!member.roles.cache.has(TGG_ROLE_ID)) {
     await member.roles.add(TGG_ROLE_ID);
     console.log(
@@ -180,7 +169,6 @@ export async function syncMemberRoles(member, dbRole, active) {
     );
   }
 
-  // Se já tiver o rank correto
   if (member.roles.cache.has(targetRoleId)) {
     console.log(`[OK] ${tag} (${id}): already has ${targetRoleName}, skip`);
     return { added: false, removed: [], unchanged: true };
@@ -199,15 +187,12 @@ export async function syncMemberRoles(member, dbRole, active) {
   if (removedNames.length) {
     console.log(`[REMOVE] ${tag} (${id}): removed ${removedNames.join(', ')}`);
   }
-  // Adiciona rank correto
   await member.roles.add(targetRoleId);
   console.log(`[ADD] ${tag} (${id}): added ${targetRoleName} (DB role: ${dbRole})`);
   return { added: true, removed: removedNames, unchanged: false };
 }
 
-/**
- * Run full sync for a guild: for each user record, find member and sync roles.
- */
+// sincroniza todos os usuarios de um guild
 export async function runSync(client, users) {
   const guildId = process.env.DISCORD_GUILD_ID;
   const guild = await client.guilds.fetch(guildId);
@@ -215,10 +200,10 @@ export async function runSync(client, users) {
     throw new Error(`Guild not found: ${guildId}`);
   }
 
-  const synced = [];   // { discord_id, role, tag }
-  const skippedNoId = [];   // users with no discord_id
-  const skippedNotInGuild = [];   // { discord_id, role }
-  const failed = [];   // { discord_id, error }
+  const synced = [];
+  const skippedNoId = [];
+  const skippedNotInGuild = [];
+  const failed = [];
 
   console.log('\n--- Sync start ---');
   console.log(`Guild: ${guild.name} (${guild.id}), users from DB: ${users.length}\n`);
@@ -244,7 +229,6 @@ export async function runSync(client, users) {
     }
   }
 
-  // Summary
   console.log('\n--- Summary ---');
   console.log(`Synced (has correct role): ${synced.length}`);
   synced.forEach((u) => console.log(`  • ${u.tag} (${u.discord_id}) → ${u.role}`));
@@ -266,9 +250,7 @@ export async function runSync(client, users) {
   };
 }
 
-/**
- * Get the ELO role that should be assigned for a given ELO (highest tier where elo >= minElo).
- */
+// retorna tier de elo baseado na rating
 function getEloRoleForRating(elo) {
   const rating = Number(elo) || 0;
   for (const tier of ELO_ROLES) {
@@ -277,15 +259,12 @@ function getEloRoleForRating(elo) {
   return null;
 }
 
-/**
- * Sync one member's ELO roles: remove any existing ELO role, then add the one for their rating.
- */
+// sincroniza os elo roles do membro
 export async function syncMemberEloRoles(member, elo) {
   const tier = getEloRoleForRating(elo);
   const tag = member.user.tag;
   const id = member.id;
 
-  // Early return if member already has the correct role (performance optimization)
   if (tier && tier.roleId && member.roles.cache.has(tier.roleId)) {
     const otherEloRoles = member.roles.cache.filter((r) => ALL_ELO_ROLE_IDS.includes(r.id) && r.id !== tier.roleId);
     if (otherEloRoles.size === 0) {
@@ -316,9 +295,7 @@ export async function syncMemberEloRoles(member, elo) {
   return { added: true, tier: tier.name };
 }
 
-/**
- * Run ELO sync: for each user with discord_id + elo from DB, remove all ELO roles then add the correct one.
- */
+// sincroniza elo de todos os usuarios
 export async function runEloSync(client, usersWithElo) {
   const guildId = process.env.DISCORD_GUILD_ID;
   const guild = await client.guilds.fetch(guildId);
