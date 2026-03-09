@@ -11,13 +11,15 @@ function initTrainingFile() {
   if (!fs.existsSync(TRAINING_FILE)) {
     fs.writeFileSync(TRAINING_FILE, JSON.stringify({
       score_types: {
-        teamcombo: { name: 'Team Combo', base_points: 5, multiplier: 1.0 },
-        movimentacao: { name: 'Movimentação', base_points: 3, multiplier: 1.0 },
-        combos: { name: 'Combos de Armas', base_points: 5, multiplier: 1.0 },
-        positioning: { name: 'Posicionamento', base_points: 2, multiplier: 1.0 },
-        reading: { name: 'Leitura de Jogo', base_points: 1, multiplier: 1.0 },
-        strategy: { name: 'Estratégia', base_points: 3, multiplier: 1.5 },
-        advanced: { name: 'Técnica Avançada', base_points: 4, multiplier: 2.0 }
+        acompanhamentocontinuo: { name: 'Acompanhamento Contínuo', base_points: 3, multiplier: 1.0 },
+        alunoplatina: { name: 'Aluno chegou à Platina', base_points: 3, multiplier: 1.0 },
+        alunodiamante: { name: 'Aluno chegou ao Diamante', base_points: 6, multiplier: 1.0 },
+        analisedereplay: { name: 'Análise de replay', base_points: 3, multiplier: 1.0 },
+        aulademovimentacao: { name: 'Aula de movimentação', base_points: 1, multiplier: 1.0 },
+        correcaodehabitos: { name: 'Correção de hábitos', base_points: 2, multiplier: 1.0 },
+        followup: { name: 'Follow-up / Team combo', base_points: 2, multiplier: 1.0 },
+        fundamentosdaarma: { name: 'Fundamentos da arma', base_points: 2, multiplier: 1.0 },
+        treinocompleto: { name: 'Treino completo', base_points: 4, multiplier: 1.0 }
       },
       instructor_scores: {},
       student_scores: {},

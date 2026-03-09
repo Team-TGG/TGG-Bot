@@ -1,157 +1,68 @@
 {
   "score_types": {
-    "teamcombo": {
-      "name": "Team Combo",
-      "base_points": 5,
-      "multiplier": 1
-    },
-    "movimentacao": {
-      "name": "Movimentação",
+    "acompanhamentocontinuo": {
+      "name": "Acompanhamento Contínuo",
       "base_points": 3,
       "multiplier": 1
     },
-    "combos": {
-      "name": "Combos de Armas",
-      "base_points": 5,
+    "alunoplatina": {
+      "name": "Aluno chegou à Platina",
+      "base_points": 3,
       "multiplier": 1
     },
-    "positioning": {
-      "name": "Posicionamento",
-      "base_points": 2,
+    "alunodiamante": {
+      "name": "Aluno chegou ao Diamante",
+      "base_points": 6,
       "multiplier": 1
     },
-    "reading": {
-      "name": "Leitura de Jogo",
+    "analisedereplay": {
+      "name": "Análise de replay",
+      "base_points": 3,
+      "multiplier": 1
+    },
+    "aulademovimentacao": {
+      "name": "Aula de movimentação",
       "base_points": 1,
       "multiplier": 1
     },
-    "strategy": {
-      "name": "Estratégia",
-      "base_points": 3,
-      "multiplier": 1.5
+    "correcaodehabitos": {
+      "name": "Correção de hábitos",
+      "base_points": 2,
+      "multiplier": 1
     },
-    "advanced": {
-      "name": "Técnica Avançada",
+    "followup": {
+      "name": "Follow-up / Team combo",
+      "base_points": 2,
+      "multiplier": 1
+    },
+    "fundamentosdaarma": {
+      "name": "Fundamentos da arma",
+      "base_points": 2,
+      "multiplier": 1
+    },
+    "treinocompleto": {
+      "name": "Treino completo",
       "base_points": 4,
-      "multiplier": 2
+      "multiplier": 1
     }
   },
-  "instructor_scores": {
-    "1447168951963353209": {
-      "teamcombo": 20
-    },
-    "327909575799996417": {
-      "teamcombo": 5
-    }
-  },
-  "student_instructors": {},
+  "instructor_scores": {},
+  "student_scores": {},
   "instructor_role_points": {
     "1447168951963353209": {
-      "total_points": 5,
+      "total_points": 2,
       "sessions_completed": 1,
       "types_completed": {
-        "teamcombo": 1
+        "follow-up_/_team_combo": 1
       },
-      "last_activity": "2026-03-08T23:24:59.150Z"
-    },
-    "327909575799996417": {
-      "total_points": 5,
-      "sessions_completed": 1,
-      "types_completed": {
-        "teamcombo": 1
-      },
-      "last_activity": "2026-03-09T00:54:03.802Z"
+      "last_activity": "2026-03-09T12:06:52.459Z"
     }
   },
   "role_holder_sessions": [],
-  "student_scores": {
-    "1447168951963353209": {
-      "teamcombo": 25
-    }
-  },
-  "training_sessions": [
-    {
-      "id": "1773012099726",
-      "instructor_id": "1447168951963353209",
-      "student_id": "1447168951963353209",
-      "type": "teamcombo",
-      "duration": "Concluído",
-      "points": 5,
-      "notes": "ok",
-      "status": "complete",
-      "timestamp": "2026-03-08T23:21:39.726Z"
-    },
-    {
-      "id": "1773012187370",
-      "instructor_id": "1447168951963353209",
-      "student_id": "1447168951963353209",
-      "type": "teamcombo",
-      "duration": "Concluído",
-      "points": 5,
-      "notes": "ok",
-      "status": "complete",
-      "timestamp": "2026-03-08T23:23:07.370Z"
-    },
-    {
-      "id": "1773012206537",
-      "instructor_id": "1447168951963353209",
-      "student_id": "1447168951963353209",
-      "type": "teamcombo",
-      "duration": "Concluído",
-      "points": 5,
-      "notes": "ok",
-      "status": "complete",
-      "timestamp": "2026-03-08T23:23:26.537Z"
-    },
-    {
-      "id": "1773012299139",
-      "instructor_id": "1447168951963353209",
-      "student_id": "1447168951963353209",
-      "type": "teamcombo",
-      "duration": "Concluído",
-      "points": 5,
-      "notes": "ok",
-      "status": "complete",
-      "timestamp": "2026-03-08T23:24:59.139Z"
-    },
-    {
-      "id": "1773017643792",
-      "instructor_id": "327909575799996417",
-      "student_id": "1447168951963353209",
-      "type": "teamcombo",
-      "duration": "Concluído",
-      "points": 5,
-      "notes": "Treinamento concluído",
-      "status": "complete",
-      "timestamp": "2026-03-09T00:54:03.792Z"
-    }
-  ],
+  "training_sessions": [],
   "leaderboards": {
-    "instructors": [
-      {
-        "instructor_id": "1447168951963353209",
-        "total_points": 100,
-        "scores": {
-          "teamcombo": 20
-        }
-      },
-      {
-        "instructor_id": "327909575799996417",
-        "total_points": 25,
-        "scores": {
-          "teamcombo": 5
-        }
-      }
-    ],
-    "students": [
-      {
-        "student_id": "1447168951963353209",
-        "total_points": 125,
-        "scores": {
-          "teamcombo": 25
-        }
-      }
-    ]
+    "instructors": [],
+    "students": []
   },
   "shop_items": [
     {
@@ -162,7 +73,7 @@
       "cost": 30,
       "type": "role_temp",
       "duration_days": 30,
-      "role_id": "1480347828520747122"
+      "role_id": "YOUR_DISCORD_ROLE_ID"
     },
     {
       "id": "cor_diferenciada",
@@ -203,7 +114,7 @@
       "description": "Mostre pro seu aluno como você se importa com ele com um cargo customizado por você",
       "cost": 10,
       "type": "student_highlight",
-      "role_id": "1480349714150064169"
+      "role_id": "YOUR_DISCORD_ROLE_ID"
     },
     {
       "id": "multiplicador_pontos",

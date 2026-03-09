@@ -8,6 +8,7 @@ import {
   getInstructorSessions, 
   getStudentSessions,
   claimStudent,
+  unclaimStudent,
   getInstructorStudents,
   getStudentInstructor
 } from './src/training_db.js';
@@ -34,6 +35,31 @@ import { loadCustomNicknames } from './src/customNicknames.js';
 import { discord as discordConfig, ALLOWED_USER_IDS, inactivePlayers as inactivePlayersConfig } from './config/index.js';
 import { getUserByDiscordId } from './src/db.js';
 import { startCronJobs } from './src/scheduler/cron.js';
+
+const TRAINING_TYPE_ALIASES = {
+  'teamcombo': 'follow-up_/_team_combo',
+  'combo': 'follow-up_/_team_combo',
+  'team': 'follow-up_/_team_combo',
+  'followup': 'follow-up_/_team_combo',
+  'follow': 'follow-up_/_team_combo',
+  'mov': 'aula_de_movimentação',
+  'movimentacao': 'aula_de_movimentação',
+  'aula': 'aula_de_movimentação',
+  'replay': 'análise_de_replay',
+  'analise': 'análise_de_replay',
+  'treino': 'treino_completo',
+  'completo': 'treino_completo',
+  'tc': 'treino_completo',
+  'full': 'treino_completo',
+  'arma': 'fundamentos_da_arma',
+  'fundamentos': 'fundamentos_da_arma',
+  'habitos': 'correção_de_hábitos',
+  'correcao': 'correção_de_hábitos',
+  'platina': 'aluno_chegou_à_platina',
+  'diamante': 'aluno_chegou_ao_diamante',
+  'acompanhamento': 'acompanhamento_contínuo',
+  'continuo': 'acompanhamento_contínuo'
+};
 
 async function main() {
   if (!discordConfig.token || !discordConfig.guildId) {
@@ -90,7 +116,10 @@ async function sendCleanMessage(originalMessage, newEmbed) {
     'resgatar': 'buy',
     'buy': 'buy',
     'comprar': 'buy',
+    'claim': 'claim',
+    'unclaim': 'unclaim'
   };
+
   const EMOJIS = {
     arrowLeft: '<:arrowleft:1475806697162539059>',
     arrowRight: '<:arrowright:1475806826833383456>',
@@ -1148,24 +1177,22 @@ async function sendCleanMessage(originalMessage, newEmbed) {
           }
 
           if (args.length < 2) {
-            const scoreTypes = await getScoreTypes();
-            const typeList = Object.entries(scoreTypes).map(([key, type]) => 
-              `**${key}** - ${type.name} (${type.base_points} pontos base, multiplicador ${type.multiplier}x)`
-            ).join('\n');
-            
             return message.reply({
               embeds: [createErrorEmbed('Formato Inválido', 
-                `Uso: \`.pontos [tipo] [aluno] [observações]\`\n\nTipos disponíveis:\n\n${typeList}`)]
+                `Uso: \`.pontos [tipo] [aluno] [observações]\`\n\n**Tipos mais usados:**\n• teamcombo (Follow-up)\n• mov (Movimentação)\n• replay (Análise)\n• treino (Completo)\n• arma (Fundamentos)\n\nUse \`.instrutor tipos\` para ver todos.`)]
             });
           }
 
           const [type, studentIdentifier, ...notes] = args;
           const scoreTypes = await getScoreTypes();
-          const scoreType = scoreTypes[type];
+          const resolvedType = TRAINING_TYPE_ALIASES[type] || type;
+          const scoreType = scoreTypes[resolvedType];
           
           if (!scoreType) {
+            console.log(`[DEBUG] type: ${type}, resolvedType: ${resolvedType}, scoreTypes keys:`, Object.keys(scoreTypes));
             return message.reply({
-              embeds: [createErrorEmbed('Tipo Inválido', 'Tipo de pontuação não encontrado. Use `.pontos` para ver os tipos disponíveis.')]
+              embeds: [createErrorEmbed('Tipo Inválido', 
+                `Tipo "${type}" não encontrado.\n\nUse \`.instrutor tipos\` para ver os tipos disponíveis.`)]
             });
           }
 
@@ -1203,7 +1230,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
           const session = await addTrainingSession(
             message.author.id,
             student.id,
-            scoreType.name,
+            resolvedType,
             'Concluído',
             actualPoints,
             observations,
@@ -1212,7 +1239,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
 
           const instructorMember = await guild.members.fetch(message.author.id).catch(() => null);
           if (instructorMember && hasInstructorRole(instructorMember, '1461134737505652806')) {
-            addRoleHolderPoints(message.author.id, actualPoints, type);
+            addRoleHolderPoints(message.author.id, actualPoints, resolvedType);
           }
 
           const channelName = message.channel.name || 'desconhecido';
@@ -1294,6 +1321,16 @@ async function sendCleanMessage(originalMessage, newEmbed) {
 
           await claimStudent(message.author.id, student.id);
 
+          // Assign role based on instructor
+          if (message.author.id === '1447168951963353209') {
+            try {
+              const roleToAdd = '1480538487747903519';
+              await student.roles.add(roleToAdd);
+            } catch (err) {
+              console.error('Erro ao adicionar cargo:', err);
+            }
+          }
+
           const embed = new EmbedBuilder()
             .setColor(0x00ff00)
             .setTitle('✅ Aluno Reivindicado')
@@ -1309,6 +1346,97 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         } catch (err) {
           await message.reply({
             embeds: [createErrorEmbed('Erro ao Reivindicar', err.message)]
+          });
+        }
+      }
+
+      // .unclaim [aluno]
+      if (command === 'unclaim') {
+        try {
+          const guild = client.guilds.cache.get(discordConfig.guildId);
+          if (!guild) throw new Error('Guild não encontrada');
+
+          if (args.length === 0) {
+            return message.reply({
+              embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.unclaim [aluno]` - Remove a reivindicação de um aluno')]
+            });
+          }
+
+          const studentIdentifier = args[0];
+          let student;
+
+          if (studentIdentifier.startsWith('<@') || studentIdentifier.startsWith('<!')) {
+            const userId = studentIdentifier.replace(/[<@!>]/g, '');
+            student = await guild.members.fetch(userId).catch(() => null);
+          } else {
+            const cleanIdentifier = studentIdentifier.replace(/^@/, '');
+            
+            if (/^\d+$/.test(cleanIdentifier)) {
+              student = await guild.members.fetch(cleanIdentifier).catch(() => null);
+            }
+            
+            if (!student) {
+              const allMembers = await guild.members.fetch({ cache: false }).catch(() => []);
+              student = allMembers.find(m => 
+                m.nickname === cleanIdentifier || 
+                m.user.username === cleanIdentifier ||
+                m.displayName === cleanIdentifier
+              );
+            }
+          }
+
+          if (!student) {
+            return message.reply({
+              embeds: [createErrorEmbed('Aluno Não Encontrado', `Usuário "${studentIdentifier}" não encontrado no servidor.`)]
+            });
+          }
+
+          const currentInstructorData = await getStudentInstructor(student.id);
+          
+          if (!currentInstructorData) {
+            return message.reply({
+              embeds: [createErrorEmbed('Aluno Não Reivindicado', `Este aluno não foi reivindicado por nenhum instrutor.`)]
+            });
+          }
+
+          const isAdminUser = await isAdmin(message.author.id);
+          const isClaimedInstructor = currentInstructorData.instructor_id === message.author.id;
+
+          if (!isClaimedInstructor && !isAdminUser) {
+            const instructorName = currentInstructorData.instructor ? currentInstructorData.instructor.username : 'Desconhecido';
+            
+            return message.reply({
+              embeds: [createErrorEmbed('Acesso Negado', `Este aluno foi reivindicado por **${instructorName}**. Apenas o instrutor que reivindicou ou um administrador pode remover a reivindicação.`)]
+            });
+          }
+
+          // Remove role if the instructor is the specific user
+          if (currentInstructorData.instructor_id === '1447168951963353209') {
+            try {
+              const roleToRemove = '1480538487747903519';
+              await student.roles.remove(roleToRemove);
+            } catch (err) {
+              console.error('Erro ao remover cargo:', err);
+            }
+          }
+
+          await unclaimStudent(currentInstructorData.instructor_id, student.id);
+
+          const embed = new EmbedBuilder()
+            .setColor(0x00ff00)
+            .setTitle('✅ Reivindicação Removida')
+            .setDescription(`**${message.author.tag}** removeu a reivindicação de **${student.user.tag}**.`)
+            .addFields(
+              { name: '👨‍🎓 Aluno', value: `<@${student.id}>`, inline: true },
+              { name: '👨‍🏫 Removido por', value: `<@${message.author.id}>`, inline: true }
+            )
+            .setTimestamp();
+
+          return message.reply({ embeds: [embed] });
+
+        } catch (err) {
+          await message.reply({
+            embeds: [createErrorEmbed('Erro ao Remover Reivindicação', err.message)]
           });
         }
       }
@@ -1348,7 +1476,8 @@ async function sendCleanMessage(originalMessage, newEmbed) {
 
               const [cmdType, cmdPoints, cmdStudentId, ...cmdNotes] = args.slice(1);
               const cmdScoreTypes = getScoreTypes();
-              const cmdScoreType = cmdScoreTypes[cmdType];
+              const cmdResolvedType = TRAINING_TYPE_ALIASES[cmdType] || cmdType;
+              const cmdScoreType = cmdScoreTypes[cmdResolvedType];
               
               if (!cmdScoreType) {
                 return message.reply({
@@ -1376,7 +1505,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
               const cmdSession = addTrainingSession(
                 instructorId,
                 cmdStudentId,
-                cmdType,
+                cmdResolvedType,
                 'Concluído',
                 cmdActualPoints,
                 cmdObservations,
@@ -1400,7 +1529,8 @@ async function sendCleanMessage(originalMessage, newEmbed) {
 
               const [sessType, sessPoints, sessStudentId, sessDuration, ...sessNotes] = args.slice(1);
               const sessScoreTypes = getScoreTypes();
-              const sessScoreType = sessScoreTypes[sessType];
+              const sessResolvedType = TRAINING_TYPE_ALIASES[sessType] || sessType;
+              const sessScoreType = sessScoreTypes[sessResolvedType];
               
               if (!sessScoreType) {
                 return message.reply({
@@ -1418,7 +1548,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
               const sessSession = addTrainingSession(
                 instructorId,
                 sessStudentId,
-                sessType,
+                sessResolvedType,
                 sessDuration,
                 0,
                 sessNotes.join(' ') || 'Sessão iniciada',
@@ -1435,12 +1565,27 @@ async function sendCleanMessage(originalMessage, newEmbed) {
 
             case 'tipos':
               const typesScoreTypes = await getScoreTypes();
+              const essentialTypes = [
+                { key: 'followup', name: 'Follow-up / Team combo', aliases: 'teamcombo, combo, follow', points: 2 },
+                { key: 'aulademovimentacao', name: 'Aula de movimentação', aliases: 'mov, movimentacao, aula', points: 1 },
+                { key: 'analisedereplay', name: 'Análise de replay', aliases: 'replay, analise', points: 3 },
+                { key: 'treinocompleto', name: 'Treino completo', aliases: 'treino, completo, tc', points: 4 },
+                { key: 'fundamentosdaarma', name: 'Fundamentos da arma', aliases: 'arma, fundamentos', points: 2 },
+                { key: 'correcaodehabitos', name: 'Correção de hábitos', aliases: 'habitos, correcao', points: 2 },
+                { key: 'acompanhamentocontinuo', name: 'Acompanhamento contínuo', aliases: 'acompanhamento, continuo', points: 3 },
+                { key: 'alunoplatina', name: 'Aluno chegou à Platina', aliases: 'platina', points: 3 },
+                { key: 'alunodiamante', name: 'Aluno chegou ao Diamante', aliases: 'diamante', points: 6 }
+              ];
+              
+              const typeDescriptions = essentialTypes.map(type => 
+                `**${type.name}** (${type.points} pts)\n   Atalhos: ${type.aliases}`
+              ).join('\n\n');
+              
               const typesEmbed = new EmbedBuilder()
                 .setColor(0x5865f2)
-                .setTitle('📊 Tipos de Pontuação')
-                .setDescription(Object.entries(typesScoreTypes).map(([key, type]) => 
-                  `**${key}** - ${type.name}\n   **Pontos base:** ${type.base_points}\n   **Multiplicador:** ${type.multiplier}x\n   **Descrição:** Treinamento de ${type.name.toLowerCase()}`
-                ).join('\n\n'))
+                .setTitle('� Tipos de Treinamento')
+                .setDescription(typeDescriptions)
+                .setFooter({ text: 'Use os atalhos para agilizar!' })
                 .setTimestamp();
               await message.reply({ embeds: [typesEmbed] });
               break;
@@ -2032,7 +2177,6 @@ async function sendCleanMessage(originalMessage, newEmbed) {
           });
         }
       }
-
     } catch (err) {
       console.error('[Command Error]', err);
       await message.reply({ embeds: [createErrorEmbed('Erro Interno', `Um erro inesperado ocorreu: ${err.message}`)] }).catch(() => {});
@@ -2040,13 +2184,20 @@ async function sendCleanMessage(originalMessage, newEmbed) {
   });
 
   // Periodic inactive player reminder scheduled during startup
+  const ENABLE_INACTIVE_REMINDER = false; // Set to true to enable, false to disable
+  
   async function sendInactivePlayersReminder() {
+    if (!ENABLE_INACTIVE_REMINDER) {
+      console.log('[Inactive Reminder] Disabled by configuration');
+      return;
+    }
+    
     try {
       const channelId = inactivePlayersConfig.channelId;
-      if (!channelId) {
-        console.log('[Inactive Reminder] INACTIVE_PLAYERS_CHANNEL_ID not configured, skipping');
-        return;
-      }
+    if (!channelId) {
+      console.log('[Inactive Reminder] INACTIVE_PLAYERS_CHANNEL_ID not configured, skipping');
+      return;
+    }
 
       const channel = client.channels.cache.get(channelId);
       if (!channel) {
@@ -2091,7 +2242,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
     }
   }
 
-  if (inactivePlayersConfig.channelId) {
+  if (inactivePlayersConfig.channelId && ENABLE_INACTIVE_REMINDER) {
     const interval = parseInt(inactivePlayersConfig.messageInterval) || 10800000;
     console.log(`[Scheduled] Inactive players reminder will run every ${interval}ms (${(interval / 1000 / 60 / 60 / 24).toFixed(1)} days)`);
     setInterval(sendInactivePlayersReminder, interval);

@@ -38,17 +38,7 @@ function buildMovimentacaoUrl(options = {}) {
   return u.toString();
 }
 
-/**
- * Fetch guild movimentacao data from API
- * @param {Object} options - Query options
- * @param {string} options.date - Specific date in YYYY-MM-DD format
- * @param {string} options.startDate - Start date in YYYY-MM-DD format
- * @param {string} options.endDate - End date in YYYY-MM-DD format
- * @param {string} options.action - Filter by action (entrou, saiu, promovido, rebaixado)
- * @param {string} options.search - Search by player name
- * @param {number} options.limit - Max records (default 5000)
- * @returns {Promise<{ ok: boolean, data?: array, summary?: object, message?: string }>}
- */
+
 export async function fetchMovimentacao(options = {}) {
   const queryOptions = typeof options === 'string' 
     ? { startDate: options, endDate: arguments[1], limit: arguments[2] }
@@ -106,11 +96,6 @@ export async function fetchMovimentacao(options = {}) {
   };
 }
 
-/**
- * Calculate total embed size in characters
- * @param {EmbedBuilder} embed
- * @returns {number}
- */
 function calculateEmbedSize(embed) {
   let size = 0;
   if (embed.data.title) size += embed.data.title.length;
@@ -125,7 +110,6 @@ function calculateEmbedSize(embed) {
 }
 
 export function buildMovimentacaoEmbeds(records, startDate, endDate) {
-  // Custom emoji IDs
   const EMOJIS = {
     entrou: '<:check:1475806856722120838>',
     saiu: '<:xis:1475807109554896966>',
@@ -151,7 +135,7 @@ export function buildMovimentacaoEmbeds(records, startDate, endDate) {
     };
   }
 
-  // Filter out error records (check for valid structure with required fields)
+ 
   const validRecords = Array.isArray(records)
     ? records.filter((r) => {
         return r && r.nome && r.action && !r.code && !r.message && r.action !== 'error';
@@ -172,7 +156,6 @@ export function buildMovimentacaoEmbeds(records, startDate, endDate) {
     };
   }
 
-  // Group records by action type
   const groupedByAction = {};
   validRecords.forEach((record) => {
     const action = record.action || 'unknown';
@@ -188,7 +171,7 @@ export function buildMovimentacaoEmbeds(records, startDate, endDate) {
     unknown: 0x95a5a6,
   };
 
-  // Build embeds for each action type, chunking if needed
+ 
   Object.entries(groupedByAction).forEach(([action, items]) => {
     const color = actionColors[action] || 0x95a5a6;
     const emoji = EMOJIS[action] || EMOJIS.ponto;
@@ -199,8 +182,8 @@ export function buildMovimentacaoEmbeds(records, startDate, endDate) {
       rebaixado: 'Rebaixamentos',
     }[action] || action;
 
-    // Split items into chunks to avoid embed size limits
-    const itemsPerEmbed = 50; // Conservative limit to stay under 6000 chars
+   
+    const itemsPerEmbed = 50; 
     const itemChunks = [];
     for (let i = 0; i < items.length; i += itemsPerEmbed) {
       itemChunks.push(items.slice(i, i + itemsPerEmbed));

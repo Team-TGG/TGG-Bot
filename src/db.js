@@ -141,7 +141,7 @@ export async function getUserByDiscordId(discord_id) {
   const supabase = getClient();
   const { data, error } = await supabase
     .from('users')
-    .select('discord_id, brawlhalla_id, role, active')
+    .select('id, discord_id, brawlhalla_id, role, active')
     .eq('discord_id', discord_id)
     .single();
   if (error && error.code !== 'PGRST116') throw error;
@@ -318,17 +318,22 @@ export async function deleteUser(identifier) {
 
 export async function reactivateOrAddUser(discord_id, brawlhalla_id, username) {
   const supabase = getClient();
+  console.log(`[DEBUG] reactivateOrAddUser called for discord_id: ${discord_id}`);
   
   // Check if user already exists (including inactive ones)
   const { data: existing, error: checkError } = await supabase
     .from('users')
     .select('*')
-    .eq('discord_id', discord_id)
+    .eq('discord_id', String(discord_id))
     .single();
   
-  if (checkError && checkError.code !== 'PGRST116') throw checkError; // PGRST116 = not found
+  if (checkError && checkError.code !== 'PGRST116') {
+    console.error(`[DEBUG] reactivateOrAddUser checkError for ${discord_id}:`, checkError);
+    throw checkError;
+  }
   
   if (existing) {
+    console.log(`[DEBUG] User ${discord_id} exists (ID: ${existing.id}), updating...`);
     // User exists, reactivate them
     const { data, error } = await supabase
       .from('users')
@@ -338,12 +343,23 @@ export async function reactivateOrAddUser(discord_id, brawlhalla_id, username) {
         brawlhalla_id: String(brawlhalla_id),
         role: 'recruit'
       })
-      .eq('discord_id', discord_id)
+      .eq('discord_id', String(discord_id))
       .select();
     
-    if (error) throw error;
+    if (error) {
+      console.error(`[DEBUG] reactivateOrAddUser update error for ${discord_id}:`, error);
+      throw error;
+    }
+    
+    if (!data || data.length === 0) {
+      console.error(`[DEBUG] reactivateOrAddUser update returned no data for ${discord_id}`);
+      throw new Error(`Falha ao atualizar usuário ${discord_id}`);
+    }
+
+    console.log(`[DEBUG] User ${discord_id} updated successfully: ${data[0].id}`);
     return { ...data[0], reactivated: true };
   } else {
+    console.log(`[DEBUG] User ${discord_id} not found, inserting...`);
     // User doesn't exist, create new one
     const { data, error } = await supabase
       .from('users')
@@ -357,7 +373,17 @@ export async function reactivateOrAddUser(discord_id, brawlhalla_id, username) {
       })
       .select();
     
-    if (error) throw error;
+    if (error) {
+      console.error(`[DEBUG] reactivateOrAddUser insert error for ${discord_id}:`, error);
+      throw error;
+    }
+
+    if (!data || data.length === 0) {
+      console.error(`[DEBUG] reactivateOrAddUser insert returned no data for ${discord_id}`);
+      throw new Error(`Falha ao inserir novo usuário ${discord_id}`);
+    }
+
+    console.log(`[DEBUG] User ${discord_id} inserted successfully: ${data[0].id}`);
     return { ...data[0], reactivated: false };
   }
 }

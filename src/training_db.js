@@ -1,8 +1,50 @@
 // Sistema de Treinamento usando Banco de Dados SQL
 
 import { getClient } from './db.js';
+import { getUserByDiscordId, reactivateOrAddUser } from './db.js';
 
 const supabase = getClient();
+
+// ============ HELPER FUNCTIONS ============
+
+export async function getOrCreateInstructorByDiscordId(discordId) {
+  const user = await getUserByDiscordId(discordId);
+  if (!user) {
+    throw new Error(`Usuário com Discord ID ${discordId} não encontrado no banco de dados.`);
+  }
+
+  // Try to find existing instructor
+  const { data: existingInstructor, error: findError } = await supabase
+    .from('instructors')
+    .select('*')
+    .eq('user_id', user.id)
+    .single();
+
+  if (findError && findError.code !== 'PGRST116') {
+    throw findError;
+  }
+
+  if (existingInstructor) {
+    return existingInstructor;
+  }
+
+  // Create new instructor if doesn't exist
+  const { data: newInstructor, error: createError } = await supabase
+    .from('instructors')
+    .insert({
+      user_id: user.id,
+      status: true,
+      created_at: new Date().toISOString()
+    })
+    .select()
+    .single();
+
+  if (createError) {
+    throw createError;
+  }
+
+  return newInstructor;
+}
 
 // ============ TIPOS DE PONTUAÇÃO ============
 
@@ -51,14 +93,76 @@ export async function getScoreTypeById(id) {
 // ============ SESSÕES DE TREINAMENTO ============
 
 export async function createTrainingSession(trainerId, studentId, notes = '', durationMinutes = null) {
+  // Get or create instructor record for trainer
+  const trainer = await getOrCreateInstructorByDiscordId(trainerId);
+  
+  // Get user record for student
+  let student = await getUserByDiscordId(studentId);
+  
+  console.log('[DEBUG] trainer:', trainer);
+  console.log('[DEBUG] student:', student);
+  
+  if (!trainer) {
+    throw new Error(`Instrutor com Discord ID ${trainerId} não encontrado no banco de dados. O usuário precisa estar registrado no sistema.`);
+  }
+  
+  // Auto-create student if doesn't exist
+  if (!student) {
+    try {
+      console.log(`[DEBUG] Creating student with Discord ID: ${studentId}`);
+      
+      // Create student with default values
+      const createdUser = await reactivateOrAddUser(studentId, '0', 'Aluno');
+      console.log(`[DEBUG] Created user:`, createdUser);
+      
+      // Get the newly created user from database
+      student = await getUserByDiscordId(studentId);
+      console.log(`[DEBUG] Fetched student from DB:`, student);
+      
+      if (!student || !student.id) {
+        throw new Error('Não foi possível criar ou encontrar o aluno no banco de dados. O ID do usuário é inválido.');
+      }
+      
+      // Verify the student exists in the users table
+      const { data: verifyStudent, error: verifyError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', student.id)
+        .single();
+      
+      if (verifyError || !verifyStudent) {
+        throw new Error(`O aluno com UUID ${student.id} não existe na tabela users. Verificação de integridade falhou.`);
+      }
+      
+      console.log(`[DEBUG] Student verified in users table with ID: ${student.id}`);
+    } catch (err) {
+      console.error('[ERROR] Failed to create student:', err);
+      throw new Error(`Não foi possível criar o aluno no banco de dados: ${err.message}`);
+    }
+  }
+
+  console.log('[DEBUG] trainer.id:', trainer.id, 'student.id:', student.id);
+
+  // Verify trainer exists in instructors table
+  const { data: verifyTrainer, error: verifyTrainerError } = await supabase
+    .from('instructors')
+    .select('id')
+    .eq('id', trainer.id)
+    .single();
+  
+  if (verifyTrainerError || !verifyTrainer) {
+    throw new Error(`O instrutor com UUID ${trainer.id} não existe na tabela instructors. Verificação de integridade falhou.`);
+  }
+
+  console.log('[DEBUG] Creating training session with validated IDs');
+
   const { data, error } = await supabase
     .from('trainings')
     .insert({
-      trainer_id: trainerId,
-      student_id: studentId,
+      trainer_id: trainer.id,
+      student_id: student.id,
       status: 'active',
-      notes: notes,
-      duration_minutes: durationMinutes
+      created_at: new Date().toISOString()
     })
     .select()
     .single();
@@ -66,6 +170,18 @@ export async function createTrainingSession(trainerId, studentId, notes = '', du
   if (error) {
     console.error('Erro ao criar sessão de treinamento:', error);
     throw error;
+  }
+
+  // Add notes to training_messages table if provided
+  if (notes && data?.id) {
+    await supabase
+      .from('training_messages')
+      .insert({
+        training_id: data.id,
+        sender_id: trainer.id,
+        message: notes,
+        created_at: new Date().toISOString()
+      });
   }
 
   return data;
@@ -76,8 +192,7 @@ export async function completeTrainingSession(trainingId, notes = '') {
     .from('trainings')
     .update({
       status: 'completed',
-      finished_at: new Date().toISOString(),
-      notes: notes
+      finished_at: new Date().toISOString()
     })
     .eq('id', trainingId)
     .select()
@@ -88,6 +203,18 @@ export async function completeTrainingSession(trainingId, notes = '') {
     throw error;
   }
 
+  // Add notes to training_messages table if provided
+  if (notes) {
+    await supabase
+      .from('training_messages')
+      .insert({
+        training_id: trainingId,
+        sender_id: data?.trainer_id,
+        message: notes,
+        created_at: new Date().toISOString()
+      });
+  }
+
   return data;
 }
 
@@ -95,16 +222,27 @@ export async function partialTrainingSession(trainingId, notes = '') {
   const { data, error } = await supabase
     .from('trainings')
     .update({
-      status: 'partial',
-      notes: notes
+      status: 'partial'
     })
     .eq('id', trainingId)
     .select()
     .single();
 
   if (error) {
-    console.error('Erro ao atualizar sessão parcial:', error);
+    console.error('Erro ao atualizar sessão de treinamento:', error);
     throw error;
+  }
+
+  // Add notes to training_messages table if provided
+  if (notes) {
+    await supabase
+      .from('training_messages')
+      .insert({
+        training_id: trainingId,
+        sender_id: data?.trainer_id,
+        message: notes,
+        created_at: new Date().toISOString()
+      });
   }
 
   return data;
@@ -259,17 +397,60 @@ export async function getTrainingMessages(trainingId) {
 // ============ ALUNO-INSTRUTOR ============
 
 export async function claimStudent(instructorId, studentId) {
+  // Convert Discord IDs to database UUIDs
+  const instructor = await getOrCreateInstructorByDiscordId(instructorId);
+  
+  if (!instructor) {
+    throw new Error(`Instrutor com Discord ID ${instructorId} não encontrado no banco de dados.`);
+  }
+
+  // Ensure we have a valid student record in 'users' table
+  let student = await getUserByDiscordId(studentId);
+  
+  if (!student) {
+    console.log(`[DEBUG] Student ${studentId} not found, creating...`);
+    student = await reactivateOrAddUser(studentId, '0', 'Aluno');
+    console.log(`[DEBUG] Created student:`, student.id);
+  } else if (!student.active) {
+    console.log(`[DEBUG] Student ${studentId} found but inactive, reactivating...`);
+    student = await reactivateOrAddUser(studentId, student.brawlhalla_id || '0', student.username || 'Aluno');
+    console.log(`[DEBUG] Reactivated student:`, student.id);
+  }
+
+  if (!student || !student.id) {
+    throw new Error(`Não foi possível obter um ID válido para o aluno ${studentId}`);
+  }
+
+  // Double check existence in 'users' table to avoid FK violation
+  const { data: userExists, error: checkError } = await supabase
+    .from('users')
+    .select('id')
+    .eq('id', student.id)
+    .single();
+
+  if (checkError || !userExists) {
+    console.error(`[ERROR] Student ID ${student.id} not found in users table despite creation attempt:`, checkError);
+    // Final fallback: search again by discord_id
+    const finalCheck = await getUserByDiscordId(studentId);
+    if (!finalCheck) {
+      throw new Error(`Erro crítico: Aluno ${studentId} não existe na tabela 'users' (FK constraint fail)`);
+    }
+    student = finalCheck;
+  }
+
+  console.log(`[DEBUG] Final student ID for association: ${student.id}`);
+
   const { data, error } = await supabase
     .from('student_instructors')
     .insert({
-      instructor_id: instructorId,
-      student_id: studentId
+      instructor_id: instructor.id,
+      student_id: student.id
     })
     .select()
     .single();
 
   if (error) {
-    if (error.code === '23505') { // Unique violation
+    if (error.code === '23505') {
       throw new Error('Este aluno já está associado a um instrutor.');
     }
     console.error('Erro ao reivindicar aluno:', error);
@@ -280,11 +461,48 @@ export async function claimStudent(instructorId, studentId) {
 }
 
 export async function unclaimStudent(instructorId, studentId) {
+  // Convert Discord IDs to database UUIDs
+  const instructor = await getOrCreateInstructorByDiscordId(instructorId);
+  const student = await getUserByDiscordId(studentId);
+  
+  if (!instructor) {
+    throw new Error(`Instrutor com Discord ID ${instructorId} não encontrado no banco de dados.`);
+  }
+  
+  if (!student) {
+    throw new Error(`Aluno com Discord ID ${studentId} não encontrado no banco de dados.`);
+  }
+
+  console.log(`[DEBUG] unclaimStudent - instructor.id: ${instructor.id}, student.id: ${student.id}`);
+
+  // Verify both exist in their respective tables
+  const { data: verifyInstructor, error: verifyInstructorError } = await supabase
+    .from('instructors')
+    .select('id')
+    .eq('id', instructor.id)
+    .single();
+  
+  if (verifyInstructorError || !verifyInstructor) {
+    throw new Error(`O instrutor com UUID ${instructor.id} não existe na tabela instructors.`);
+  }
+
+  const { data: verifyStudent, error: verifyStudentError } = await supabase
+    .from('users')
+    .select('id')
+    .eq('id', student.id)
+    .single();
+  
+  if (verifyStudentError || !verifyStudent) {
+    throw new Error(`O aluno com UUID ${student.id} não existe na tabela users.`);
+  }
+
+  console.log('[DEBUG] Deleting student_instructors record with validated IDs');
+
   const { error } = await supabase
     .from('student_instructors')
     .delete()
-    .eq('instructor_id', instructorId)
-    .eq('student_id', studentId);
+    .eq('instructor_id', instructor.id)
+    .eq('student_id', student.id);
 
   if (error) {
     console.error('Erro ao remover associação:', error);

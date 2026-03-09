@@ -1,5 +1,6 @@
 
 // adm user ids
+const ENABLE_INACTIVE_REMINDER = false;
 export const ALLOWED_USER_IDS = ['1447168951963353209', '252249131202904074', '1475984881640280126', '469616482721071134'];
 
 export const discord = {
