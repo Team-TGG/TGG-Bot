@@ -1,3 +1,7 @@
 node_modules/
 .env
 .brawlhalla-clan-cache.json
+
+# Old training system (deprecated)
+src/training_system_old.js
+training_system.json

@@ -397,54 +397,26 @@ export async function getTrainingMessages(trainingId) {
 // ============ ALUNO-INSTRUTOR ============
 
 export async function claimStudent(instructorId, studentId) {
-  // Convert Discord IDs to database UUIDs
-  const instructor = await getOrCreateInstructorByDiscordId(instructorId);
-  
-  if (!instructor) {
+  // A tabela student_instructors usa IDs do Discord (strings numéricas)
+  // Ex: "student_id":"1447168951963353209","instructor_id":"469616482721071134"
+
+  // Garantir que o instrutor existe na tabela users
+  const instructorUser = await getUserByDiscordId(String(instructorId));
+  if (!instructorUser) {
     throw new Error(`Instrutor com Discord ID ${instructorId} não encontrado no banco de dados.`);
   }
 
-  // Ensure we have a valid student record in 'users' table
-  let student = await getUserByDiscordId(studentId);
-  
-  if (!student) {
-    console.log(`[DEBUG] Student ${studentId} not found, creating...`);
-    student = await reactivateOrAddUser(studentId, '0', 'Aluno');
-    console.log(`[DEBUG] Created student:`, student.id);
-  } else if (!student.active) {
-    console.log(`[DEBUG] Student ${studentId} found but inactive, reactivating...`);
-    student = await reactivateOrAddUser(studentId, student.brawlhalla_id || '0', student.username || 'Aluno');
-    console.log(`[DEBUG] Reactivated student:`, student.id);
+  // Garantir que o aluno exista na tabela users
+  let studentUser = await getUserByDiscordId(String(studentId));
+  if (!studentUser) {
+    studentUser = await reactivateOrAddUser(String(studentId), '0', 'Aluno');
   }
-
-  if (!student || !student.id) {
-    throw new Error(`Não foi possível obter um ID válido para o aluno ${studentId}`);
-  }
-
-  // Double check existence in 'users' table to avoid FK violation
-  const { data: userExists, error: checkError } = await supabase
-    .from('users')
-    .select('id')
-    .eq('id', student.id)
-    .single();
-
-  if (checkError || !userExists) {
-    console.error(`[ERROR] Student ID ${student.id} not found in users table despite creation attempt:`, checkError);
-    // Final fallback: search again by discord_id
-    const finalCheck = await getUserByDiscordId(studentId);
-    if (!finalCheck) {
-      throw new Error(`Erro crítico: Aluno ${studentId} não existe na tabela 'users' (FK constraint fail)`);
-    }
-    student = finalCheck;
-  }
-
-  console.log(`[DEBUG] Final student ID for association: ${student.id}`);
 
   const { data, error } = await supabase
     .from('student_instructors')
     .insert({
-      instructor_id: instructor.id,
-      student_id: student.id
+      instructor_id: String(instructorId),
+      student_id: String(studentId)
     })
     .select()
     .single();
@@ -453,6 +425,7 @@ export async function claimStudent(instructorId, studentId) {
     if (error.code === '23505') {
       throw new Error('Este aluno já está associado a um instrutor.');
     }
+    
     console.error('Erro ao reivindicar aluno:', error);
     throw error;
   }
@@ -461,48 +434,13 @@ export async function claimStudent(instructorId, studentId) {
 }
 
 export async function unclaimStudent(instructorId, studentId) {
-  // Convert Discord IDs to database UUIDs
-  const instructor = await getOrCreateInstructorByDiscordId(instructorId);
-  const student = await getUserByDiscordId(studentId);
-  
-  if (!instructor) {
-    throw new Error(`Instrutor com Discord ID ${instructorId} não encontrado no banco de dados.`);
-  }
-  
-  if (!student) {
-    throw new Error(`Aluno com Discord ID ${studentId} não encontrado no banco de dados.`);
-  }
-
-  console.log(`[DEBUG] unclaimStudent - instructor.id: ${instructor.id}, student.id: ${student.id}`);
-
-  // Verify both exist in their respective tables
-  const { data: verifyInstructor, error: verifyInstructorError } = await supabase
-    .from('instructors')
-    .select('id')
-    .eq('id', instructor.id)
-    .single();
-  
-  if (verifyInstructorError || !verifyInstructor) {
-    throw new Error(`O instrutor com UUID ${instructor.id} não existe na tabela instructors.`);
-  }
-
-  const { data: verifyStudent, error: verifyStudentError } = await supabase
-    .from('users')
-    .select('id')
-    .eq('id', student.id)
-    .single();
-  
-  if (verifyStudentError || !verifyStudent) {
-    throw new Error(`O aluno com UUID ${student.id} não existe na tabela users.`);
-  }
-
-  console.log('[DEBUG] Deleting student_instructors record with validated IDs');
+  console.log(`[DEBUG] Unclaiming: Instructor ${instructorId}, Student ${studentId}`);
 
   const { error } = await supabase
     .from('student_instructors')
     .delete()
-    .eq('instructor_id', instructor.id)
-    .eq('student_id', student.id);
+    .eq('instructor_id', String(instructorId))
+    .eq('student_id', String(studentId));
 
   if (error) {
     console.error('Erro ao remover associação:', error);
@@ -513,10 +451,11 @@ export async function unclaimStudent(instructorId, studentId) {
 }
 
 export async function getInstructorStudents(instructorId) {
+  // A tabela student_instructors usa IDs do Discord (strings numéricas)
   const { data, error } = await supabase
     .from('student_instructors')
     .select('student_id')
-    .eq('instructor_id', instructorId);
+    .eq('instructor_id', String(instructorId));
 
   if (error) {
     console.error('Erro ao buscar alunos do instrutor:', error);
@@ -528,13 +467,14 @@ export async function getInstructorStudents(instructorId) {
 }
 
 export async function getStudentInstructor(studentId) {
+  // A tabela student_instructors usa IDs do Discord (strings numéricas)
   const { data, error } = await supabase
     .from('student_instructors')
     .select(`
       instructor_id,
       instructor:users!student_instructors_instructor_id_fkey(discord_id, username)
     `)
-    .eq('student_id', studentId)
+    .eq('student_id', String(studentId))
     .single();
 
   if (error) {
@@ -555,7 +495,7 @@ export async function addTrainingSession(instructorId, studentId, type, duration
   const session = await createTrainingSession(instructorId, studentId, notes, duration);
   
   // Se for completed, marcar como completada
-  if (status === 'completed') {
+  if (status === 'completed' || status === 'complete') {
     await completeTrainingSession(session.id, notes);
   } else if (status === 'partial') {
     await partialTrainingSession(session.id, notes);
@@ -570,4 +510,61 @@ export async function addTrainingSession(instructorId, studentId, type, duration
   }
 
   return session;
+}
+
+export async function getInstructorLeaderboard(limit = 10) {
+  // Buscar todas as pontuações e agrupar por instrutor através das sessões
+  const { data, error } = await supabase
+    .from('training_scores')
+    .select(`
+      points,
+      trainings!inner (
+        trainer_id,
+        student_id,
+        trainer:users!trainings_trainer_id_fkey (
+          username,
+          discord_id
+        )
+      )
+    `);
+
+  if (error) {
+    console.error('Erro ao buscar ranking de instrutores:', error);
+    return [];
+  }
+
+  // Agrupar métricas por instrutor
+  const leaderboardMap = new Map();
+
+  data.forEach(row => {
+    const trainerId = row.trainings.trainer_id;
+    const studentId = row.trainings.student_id;
+    const trainerInfo = row.trainings.trainer;
+
+    if (!leaderboardMap.has(trainerId)) {
+      leaderboardMap.set(trainerId, {
+        instructor_id: trainerId,
+        username: trainerInfo?.username || 'Desconhecido',
+        discord_id: trainerInfo?.discord_id,
+        total_points: 0,
+        sessions_count: new Set(), // Usar Set para contar sessões únicas se necessário, mas aqui somamos pontos
+        students_count: new Set(),
+        total_sessions: 0
+      });
+    }
+
+    const stats = leaderboardMap.get(trainerId);
+    stats.total_points += row.points || 0;
+    stats.students_count.add(studentId);
+    stats.total_sessions += 1;
+  });
+
+  // Converter Map para Array, formatar e ordenar
+  return Array.from(leaderboardMap.values())
+    .map(stat => ({
+      ...stat,
+      students_count: stat.students_count.size
+    }))
+    .sort((a, b) => b.total_points - a.total_points)
+    .slice(0, limit);
 }

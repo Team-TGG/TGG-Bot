@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder } from 'discord.js';
-import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, addUser, deleteUser, deactivateUser, reactivateOrAddUser } from './src/db.js';
-import { addWarning, getWarningCount, getUserWarnings, clearWarnings, parseTime, formatTime } from './src/moderation.js';
+import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, addUser, deleteUser, deactivateUser, reactivateOrAddUser, getClient } from './src/db.js';
+import { addWarning, getWarningCount, getUserWarnings, clearWarnings, removeWarning, parseTime, formatTime } from './src/moderation.js';
 import { 
   getScoreTypes, 
   addTrainingSession, 
@@ -32,7 +32,7 @@ import { runAndPostGuildActivity } from './src/guildActivity.js';
 import { fetchMovimentacao, buildMovimentacaoEmbeds, getDefaultDateRange, isValidDate, formatMovimentacaoAsText } from './src/movimentacao.js';
 import { syncNicknames, updateMemberNicknameDiscordPortion, parseNickname, buildNickname, fetchBrawlhallaClanData, loadClanCache } from './src/nicknameSync.js';
 import { loadCustomNicknames } from './src/customNicknames.js';
-import { discord as discordConfig, ALLOWED_USER_IDS, inactivePlayers as inactivePlayersConfig } from './config/index.js';
+import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from './config/index.js';
 import { getUserByDiscordId } from './src/db.js';
 import { startCronJobs } from './src/scheduler/cron.js';
 
@@ -104,6 +104,9 @@ async function sendCleanMessage(originalMessage, newEmbed) {
     'entrou': 'entrou',
     'saiu': 'saiu',
     'warn': 'warn',
+    'unwarn': 'unwarn',
+    'warns': 'warns',
+    'warnings': 'warns',
     'mute': 'mute',
     'unmute': 'unmute',
     'ban': 'ban',
@@ -153,8 +156,8 @@ async function sendCleanMessage(originalMessage, newEmbed) {
     hourglass: '⏳'
   };
 
-  client.once('ready', () => {
-    console.log(`Logged in as ${client.user.tag}`);
+  client.once('clientReady', async (c) => {
+    console.log(`Logged in as ${c.user.tag}`);
     startCronJobs(client, {
       fetchBrawlhallaClanData,
       runSync,
@@ -195,7 +198,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
 
   client.on('messageCreate', async (message) => {
     try {
-      // Ignore bot messages and messages not starting with .
+      // Ignorar mensagens de bots e mensagens que não começam com .
       if (message.author.bot || !message.content.startsWith('.')) {
         return;
       }
@@ -204,7 +207,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
       const commandName = args.shift().toLowerCase();
       const command = COMMAND_ALIASES[commandName] || commandName;
 
-      // ============ .help ============
+      // ---- .help ----
       if (command === 'help') {
         const page1 = new EmbedBuilder()
           .setColor(0x5865f2)
@@ -266,7 +269,9 @@ async function sendCleanMessage(originalMessage, newEmbed) {
           .setColor(0x5865f2)
           .setTitle(`${EMOJIS.xis} Moderação`)
           .addFields(
-            { name: `${EMOJIS.arrowRight} .warn <@user> [reason] (admin)`, value: 'Adicionar aviso ao usuário (3 warns=mute, 5 warns=kick, 7 warns=ban)', inline: false },
+            { name: `${EMOJIS.arrowRight} .warn <@user> [reason] (admin)`, value: 'Adicionar aviso ao usuário (2 warns=mute, 3 warns=ban)', inline: false },
+            { name: `${EMOJIS.arrowRight} .warns [page] (admin)`, value: 'Listar avisos dos usuários (10 por página)', inline: false },
+            { name: `${EMOJIS.arrowRight} .unwarn <@user> [number] (admin)`, value: 'Remover aviso específico do usuário', inline: false },
             { name: `${EMOJIS.arrowRight} .mute <@user> <duration> (admin)`, value: 'Silenciar usuário por tempo específico (1s, 1m, 1h, 1d, 1M, 1y)', inline: false },
             { name: `${EMOJIS.arrowRight} .unmute <@user> (admin)`, value: 'Dessilenciar usuário manualmente', inline: false },
             { name: `${EMOJIS.arrowRight} .ban <@user> [reason] (admin)`, value: 'Banir usuário do servidor permanentemente', inline: false }
@@ -279,7 +284,8 @@ async function sendCleanMessage(originalMessage, newEmbed) {
           .setTitle(`${EMOJIS.success} Treinamento`)
           .addFields(
             { name: `${EMOJIS.arrowRight} .pontos [tipo] [aluno] [obs]`, value: 'Adicionar pontos automaticamente baseados no tipo de treinamento', inline: false },
-            { name: `${EMOJIS.arrowRight} .instrutor/.instrutorl <comando>`, value: 'Sistema simplificado para instrutores (pontos, sessao, concluir, parcial, historico, ranking, tipos)', inline: false },
+            { name: `${EMOJIS.arrowRight} .instrutor ranking`, value: 'Ver o ranking dos instrutores mais ativos', inline: false },
+            { name: `${EMOJIS.arrowRight} .instrutor [comando]`, value: 'Sistema simplificado (pontos, sessao, concluir, parcial, historico, ranking, tipos)', inline: false },
             { name: `${EMOJIS.arrowRight} .shop [categoria]`, value: 'Ver loja de recompensas com menu interativo\n**Abreviações:** .shop cos, .shop func, .shop stat', inline: false },
             { name: `${EMOJIS.arrowRight} .buy [ID]`, value: 'Comprar item da loja usando pontos', inline: false }
           )
@@ -336,8 +342,14 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         });
       }
 
-      // ============ .guild-activity ============
+      // ---- .guild-activity ----
       if (command === 'guild-activity') {
+        if (!(await isAdmin(message.author.id))) {
+          return message.reply({
+            embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
+          });
+        }
+        
         const loadingEmbed = new EmbedBuilder()
           .setColor(0xfaa61a)
           .setTitle(`${EMOJIS.loading} Sincronizando...`)
@@ -369,8 +381,14 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         }
       }
 
-      // ============ .movimentacao / .mov ============
+      // ---- .movimentacao / .mov ----
       if (command === 'movimentacao' || command === 'mov') {
+        if (!(await isAdmin(message.author.id))) {
+          return message.reply({
+            embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
+          });
+        }
+        
         const loadingEmbed = new EmbedBuilder()
           .setColor(0xfaa61a)
           .setTitle(`${EMOJIS.loading} Carregando...`)
@@ -442,8 +460,14 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         }
       }
 
-      // ============ .sync ============
+      // ---- .sync ----
       if (command === 'sync') {
+        if (!(await isAdmin(message.author.id))) {
+          return message.reply({
+            embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
+          });
+        }
+        
         const loadingEmbed = new EmbedBuilder()
           .setColor(0xfaa61a)
           .setTitle(`${EMOJIS.loading} Sincronizando...`)
@@ -472,8 +496,14 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         }
       }
 
-      // ============ .sync-nicknames / .sync-nick ============
+      // ---- .sync-nicknames / .sync-nick ----
       if (command === 'sync-nicknames' || command === 'sync-nick') {
+        if (!(await isAdmin(message.author.id))) {
+          return message.reply({
+            embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
+          });
+        }
+        
         const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando...`).setDescription('Sincronizando apelidos com clan Brawlhalla...')] });
         try {
           await loadCustomNicknames();
@@ -498,8 +528,14 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         }
       }
 
-      // ============ .refresh-clan-cache / .refresh-cache ============
+      // ---- .refresh-clan-cache / .refresh-cache ----
       if (command === 'refresh-clan-cache' || command === 'refresh-cache') {
+        if (!(await isAdmin(message.author.id))) {
+          return message.reply({
+            embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
+          });
+        }
+        
         const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Atualizando...`).setDescription('Atualizando cache do clan Brawlhalla...')] });
         try {
           const clanData = await fetchBrawlhallaClanData();
@@ -510,7 +546,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         }
       }
 
-      // ============ .active ============
+      // ---- .active ----
       if (command === 'active') {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
@@ -595,7 +631,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         }
       }
 
-      // ============ .regras ============
+      // ---- .regras ----
       if (command === 'regras') {
         const rulesEmbed = new EmbedBuilder()
           .setColor(0x5865f2)
@@ -635,8 +671,14 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         await message.reply({ embeds: [rulesEmbed] });
       }
 
-      // ============ .inac-all ============
+      // ---- .inac-all ----
       if (command === 'inac-all') {
+        if (!(await isAdmin(message.author.id))) {
+          return message.reply({
+            embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
+          });
+        }
+        
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
@@ -686,8 +728,14 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         }
       }
 
-      // ============ .inac-list ============
+      // ---- .inac-list ----
       if (command === 'inac-list') {
+        if (!(await isAdmin(message.author.id))) {
+          return message.reply({
+            embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
+          });
+        }
+        
         try {
           const inactivePlayers = await getInactivePlayers();
           
@@ -735,7 +783,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         }
       }
 
-      // ============ .missoes ============
+      // ---- .missoes ----
       if (command === 'missoes') {
         try {
           const missions = await getWeeklyMissions();
@@ -780,8 +828,14 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         }
       }
 
-      // ============ .entrou ============
+      // ---- .entrou ----
       if (command === 'entrou') {
+        if (!(await isAdmin(message.author.id))) {
+          return message.reply({
+            embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
+          });
+        }
+        
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
@@ -840,8 +894,14 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         }
       }
 
-      // ============ .saiu ============
+      // ---- .saiu ----
       if (command === 'saiu') {
+        if (!(await isAdmin(message.author.id))) {
+          return message.reply({
+            embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
+          });
+        }
+        
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
@@ -896,8 +956,14 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         }
       }
 
-      // ============ .warn ============
+      // ---- .warn ----
       if (command === 'warn') {
+        if (!(await isAdmin(message.author.id))) {
+          return message.reply({
+            embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
+          });
+        }
+        
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
@@ -919,48 +985,39 @@ async function sendCleanMessage(originalMessage, newEmbed) {
             });
           }
 
-          const warningCount = addWarning(targetId, message.author.id, reason);
+          const warningCount = await addWarning(targetId, message.author.id, reason);
 
           const embed = createSuccessEmbed(
             'Aviso Adicionado',
-            `${member.user.tag} recebeu um aviso.\n**Motivo:** ${reason}\n**Total de avisos:** ${warningCount}/7`
+            `${member.user.tag} recebeu um aviso.\n**Motivo:** ${reason}\n**Total de avisos:** ${warningCount}/3`
           );
 
           await message.reply({ embeds: [embed] });
 
-          if (warningCount === 3) {
-            // Auto mute on 3rd warning
+          if (warningCount === 2) {
+            // Mute automático após 2 avisos
             const muteRole = guild.roles.cache.find(r => r.name === 'Muted');
             if (muteRole) {
               await member.roles.add(muteRole);
               setTimeout(() => {
                 member.roles.remove(muteRole).catch(() => {});
-              }, 10 * 60 * 1000);
+              }, 15 * 60 * 1000);
               
               await message.channel.send({
                 embeds: [new EmbedBuilder()
                   .setColor(0xfaa61a)
-                  .setTitle('⚠️ Auto-Mute')
-                  .setDescription(`${member.user.tag} foi silenciado por 10 minutos devido a 3 avisos.`)]
+                  .setTitle('⚠️ Mute')
+                  .setDescription(`${member.user.tag} foi silenciado por 15 minutos devido a 2 avisos.`)]
               });
             }
-          } else if (warningCount === 5) {
-            // Auto kick on 5th warning
-            await member.kick('5 avisos acumulados');
+          } else if (warningCount >= 3) {
+            // Ban automático após 3 avisos
+            await member.ban({ reason: '3 avisos acumulados' });
             await message.channel.send({
               embeds: [new EmbedBuilder()
                 .setColor(0xed4245)
-                .setTitle('👢 Auto-Kick')
-                .setDescription(`${member.user.tag} foi expulso devido a 5 avisos acumulados.`)]
-            });
-          } else if (warningCount === 7) {
-            // Auto ban on 7th warning
-            await member.ban({ reason: '7 avisos acumulados' });
-            await message.channel.send({
-              embeds: [new EmbedBuilder()
-                .setColor(0xed4245)
-                .setTitle('🔨 Auto-Ban')
-                .setDescription(`${member.user.tag} foi banido devido a 7 avisos acumulados.`)]
+                .setTitle('🔨 Ban')
+                .setDescription(`${member.user.tag} foi banido devido a 3 avisos acumulados.`)]
             });
           }
 
@@ -971,8 +1028,288 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         }
       }
 
-      // ============ .mute ============
+      // ---- .unwarn ----
+      if (command === 'unwarn') {
+        if (!(await isAdmin(message.author.id))) {
+          return message.reply({
+            embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
+          });
+        }
+        
+        try {
+          const guild = client.guilds.cache.get(discordConfig.guildId);
+          if (!guild) throw new Error('Guild não encontrada');
+
+          const mentionMatch = message.content.match(/<@!?(\d+)>/);
+          if (!mentionMatch) {
+            return message.reply({
+              embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.unwarn <@user> [número]`')]
+            });
+          }
+
+          const targetId = mentionMatch[1];
+          const member = await guild.members.fetch(targetId).catch(() => null);
+          if (!member) {
+            return message.reply({
+              embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')]
+            });
+          }
+
+          // Se não especificou número, mostra lista de avisos
+          const warningNumber = args[1] ? parseInt(args[1]) : null;
+          
+          if (!warningNumber) {
+            const warnings = await getUserWarnings(targetId);
+            if (warnings.length === 0) {
+              return message.reply({
+                embeds: [createErrorEmbed('Sem Avisos', 'Este usuário não possui avisos.')]
+              });
+            }
+
+            const warningList = warnings.map((w, index) => 
+              `**${w.warning_number}.** ${w.reason}\n   • Por: <@${w.moderator_id}>\n   • Data: ${new Date(w.created_at).toLocaleDateString('pt-BR')}`
+            ).join('\n\n');
+
+            const embed = new EmbedBuilder()
+              .setColor(0xfaa61a)
+              .setTitle(`⚠️ Avisos de ${member.user.tag}`)
+              .setDescription(`**Total:** ${warnings.length} avisos\n\n${warningList}`)
+              .setFooter({ text: 'Use .unwarn <@user> [número] para remover um aviso específico' })
+              .setTimestamp();
+
+            return message.reply({ embeds: [embed] });
+          }
+
+          // Remove aviso específico
+          try {
+            await removeWarning(targetId, warningNumber);
+            
+            const embed = createSuccessEmbed(
+              'Aviso Removido',
+              `Aviso **${warningNumber}** de ${member.user.tag} foi removido com sucesso.`
+            );
+
+            await message.reply({ embeds: [embed] });
+          } catch (err) {
+            return message.reply({
+              embeds: [createErrorEmbed('Erro ao Remover', 'Não foi possível encontrar este aviso. Verifique o número e tente novamente.')]
+            });
+          }
+
+        } catch (err) {
+          await message.reply({
+            embeds: [createErrorEmbed('Erro ao Remover Aviso', err.message)]
+          });
+        }
+      }
+
+      // ---- .warns ----
+      if (command === 'warns') {
+        if (!(await isAdmin(message.author.id))) {
+          return message.reply({
+            embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
+          });
+        }
+        
+        try {
+          const page = parseInt(args[0]) || 1;
+          const pageSize = 10;
+          
+          // Get all users with warnings from database
+          const client = getClient();
+          const { data: allWarnings, error } = await client
+            .from('warnings')
+            .select('*')
+            .order('created_at', { ascending: false });
+          
+          if (error) throw error;
+          
+          if (!allWarnings || allWarnings.length === 0) {
+            return message.reply({
+              embeds: [createErrorEmbed('Sem Avisos', 'Nenhum aviso encontrado no sistema.')]
+            });
+          }
+          
+          // Group warnings by user
+          const warningsByUser = {};
+          allWarnings.forEach(warning => {
+            if (!warningsByUser[warning.user_id]) {
+              warningsByUser[warning.user_id] = {
+                user_id: warning.user_id,
+                warnings: [],
+                latest_warning: warning.created_at
+              };
+            }
+            warningsByUser[warning.user_id].warnings.push(warning);
+            if (new Date(warning.created_at) > new Date(warningsByUser[warning.user_id].latest_warning)) {
+              warningsByUser[warning.user_id].latest_warning = warning.created_at;
+            }
+          });
+          
+          // Sort users by latest warning
+          const sortedUsers = Object.values(warningsByUser)
+            .sort((a, b) => new Date(b.latest_warning) - new Date(a.latest_warning));
+          
+          // Paginate
+          const totalPages = Math.ceil(sortedUsers.length / pageSize);
+          const offset = (page - 1) * pageSize;
+          const startIndex = offset;
+          const endIndex = Math.min(startIndex + pageSize, sortedUsers.length);
+          const pageUsers = sortedUsers.slice(startIndex, endIndex);
+          
+          if (pageUsers.length === 0) {
+            return message.reply({
+              embeds: [createErrorEmbed('Página Inválida', `Página ${page} não existe. Total de páginas: ${totalPages || 1}`)]
+            });
+          }
+          
+          // Build embed
+          const embed = new EmbedBuilder()
+            .setColor(0xfaa61a)
+            .setTitle(`⚠️ Lista de Avisos (Página ${page}/${totalPages})`)
+            .setDescription(`Mostrando ${pageUsers.length} usuários com avisos`)
+            .setTimestamp();
+          
+          for (const userData of pageUsers) {
+            const user = await client.users.fetch(userData.user_id).catch(() => null);
+            const userName = user?.tag || `Usuário ${userData.user_id}`;
+            const warningCount = userData.warnings.length;
+            const latestWarning = new Date(userData.latest_warning).toLocaleDateString('pt-BR');
+            
+            embed.addFields({
+              name: `${warningCount} avisos - ${userName}`,
+              value: `**ID:** ${userData.user_id}\n**Último aviso:** ${latestWarning}\n**Avisos recentes:** ${userData.warnings.slice(0, 2).map(w => `• ${w.reason}`).join('\n')}`,
+              inline: false
+            });
+          }
+          
+          embed.setFooter({ 
+            text: `Total de usuários com avisos: ${sortedUsers.length}` 
+          });
+          
+          // Create pagination buttons
+          const row = new ActionRowBuilder();
+          
+          if (page > 1) {
+            row.addComponents(
+              new ButtonBuilder()
+                .setCustomId(`warns_page_${page - 1}`)
+                .setLabel('⬅️ Anterior')
+                .setStyle('Secondary')
+            );
+          }
+          
+          row.addComponents(
+            new ButtonBuilder()
+              .setLabel(`📄 ${page}/${totalPages}`)
+              .setStyle('Secondary')
+              .setDisabled(true)
+          );
+          
+          if (page < totalPages) {
+            row.addComponents(
+              new ButtonBuilder()
+                .setCustomId(`warns_page_${page + 1}`)
+                .setLabel('➡️ Próxima')
+                .setStyle('Secondary')
+            );
+          }
+          
+          const components = row.components.length > 0 ? [row] : [];
+          
+          const messageReply = await message.reply({ embeds: [embed], components });
+          
+          // Create collector for button interactions
+          const collector = messageReply.createMessageComponentCollector({
+            time: 60000 // 60 seconds
+          });
+          
+          collector.on('collect', async (interaction) => {
+            if (!interaction.isButton()) return;
+            
+            const newPage = parseInt(interaction.customId.split('_')[2]);
+            
+            // Update the embed with new page
+            const newOffset = (newPage - 1) * pageSize;
+            const newStartIndex = newOffset;
+            const newEndIndex = Math.min(newStartIndex + pageSize, sortedUsers.length);
+            const newPageUsers = sortedUsers.slice(newStartIndex, newEndIndex);
+            
+            const newEmbed = new EmbedBuilder()
+              .setColor(0xfaa61a)
+              .setTitle(`⚠️ Lista de Avisos (Página ${newPage}/${totalPages})`)
+              .setDescription(`Mostrando ${newPageUsers.length} usuários com avisos`)
+              .setTimestamp();
+            
+            for (const userData of newPageUsers) {
+              const user = await client.users.fetch(userData.user_id).catch(() => null);
+              const userName = user?.tag || `Usuário ${userData.user_id}`;
+              const warningCount = userData.warnings.length;
+              const latestWarning = new Date(userData.latest_warning).toLocaleDateString('pt-BR');
+              
+              newEmbed.addFields({
+                name: `${warningCount} avisos - ${userName}`,
+                value: `**ID:** ${userData.user_id}\n**Último aviso:** ${latestWarning}\n**Avisos recentes:** ${userData.warnings.slice(0, 2).map(w => `• ${w.reason}`).join('\n')}`,
+                inline: false
+              });
+            }
+            
+            newEmbed.setFooter({ 
+              text: `Total de usuários com avisos: ${sortedUsers.length}` 
+            });
+            
+            // Create new buttons
+            const newRow = new ActionRowBuilder();
+            
+            if (newPage > 1) {
+              newRow.addComponents(
+                new ButtonBuilder()
+                  .setCustomId(`warns_page_${newPage - 1}`)
+                  .setLabel('⬅️ Anterior')
+                  .setStyle('Secondary')
+              );
+            }
+            
+            newRow.addComponents(
+              new ButtonBuilder()
+                .setLabel(`📄 ${newPage}/${totalPages}`)
+                .setStyle('Secondary')
+                .setDisabled(true)
+            );
+            
+            if (newPage < totalPages) {
+              newRow.addComponents(
+                new ButtonBuilder()
+                  .setCustomId(`warns_page_${newPage + 1}`)
+                  .setLabel('➡️ Próxima')
+                  .setStyle('Secondary')
+              );
+            }
+            
+            const newComponents = newRow.components.length > 0 ? [newRow] : [];
+            
+            await interaction.update({ embeds: [newEmbed], components: newComponents });
+          });
+          
+          collector.on('end', () => {
+            messageReply.edit({ components: [] }).catch(() => {});
+          });
+          
+        } catch (err) {
+          await message.reply({
+            embeds: [createErrorEmbed('Erro ao Listar Avisos', err.message)]
+          });
+        }
+      }
+
+      // ---- .mute ----
       if (command === 'mute') {
+        if (!(await isAdmin(message.author.id))) {
+          return message.reply({
+            embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
+          });
+        }
+        
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
@@ -1069,8 +1406,14 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         }
       }
 
-      // ============ .ban ============
+      // ---- .ban ----
       if (command === 'ban') {
+        if (!(await isAdmin(message.author.id))) {
+          return message.reply({
+            embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
+          });
+        }
+        
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
@@ -1108,8 +1451,14 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         }
       }
 
-      // ============ .unmute ============
+      // ---- .unmute ----
       if (command === 'unmute') {
+        if (!(await isAdmin(message.author.id))) {
+          return message.reply({
+            embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
+          });
+        }
+        
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
@@ -1157,7 +1506,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         }
       }
 
-      // ============ .pontos ============
+      // ---- .pontos ----
       if (command === 'pontos') {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
@@ -1319,25 +1668,54 @@ async function sendCleanMessage(originalMessage, newEmbed) {
             });
           }
 
-          await claimStudent(message.author.id, student.id);
-
           // Assign role based on instructor
-          if (message.author.id === '1447168951963353209') {
-            try {
-              const roleToAdd = '1480538487747903519';
-              await student.roles.add(roleToAdd);
-            } catch (err) {
-              console.error('Erro ao adicionar cargo:', err);
+          const instructorRoles = {
+            '327909575799996417': '1480626791273201714', // kingeski
+            '216606510829142017': '1480627283738759338', // dekkosun
+            '252249131202904074': '1480627188025004083', // topson
+            '546492201555722240': '1480627247793573991', // senshi
+            '469616482721071134': '1480626743361671351', // crz
+            '1357876453680611420': '1480627424973688863', // capiata
+            '951624772792496198': '1480627360331202703', // vitor
+            '1087012465759485994': '1480627384062578800', // Kay
+            '827637149045882901': '1480627336951889941', // Henry
+            '466976133980880917': '1480627214289731665', // maid
+            '1447168951963353209': '1480538487747903519', // yaya
+          };
+
+          const instructorIds = [message.author.id];
+          
+          // Check for second instructor in args
+          if (args.length > 1) {
+            const secondId = args[1].replace(/[<@!>]/g, '');
+            if (instructorRoles[secondId]) {
+              instructorIds.push(secondId);
+            }
+          }
+
+          // Claim for each instructor
+          for (const instId of instructorIds) {
+            await claimStudent(instId, student.id);
+            
+            const roleToAdd = instructorRoles[instId];
+            if (roleToAdd) {
+              try {
+                if (!student.roles.cache.has(roleToAdd)) {
+                  await student.roles.add(roleToAdd);
+                }
+              } catch (err) {
+                console.error(`[ERROR] Failed to add role ${roleToAdd} to student:`, err);
+              }
             }
           }
 
           const embed = new EmbedBuilder()
             .setColor(0x00ff00)
             .setTitle('✅ Aluno Reivindicado')
-            .setDescription(`**${message.author.tag}** reivindicou **${student.user.tag}** como seu aluno.`)
+            .setDescription(`**${student.user.tag}** foi reivindicado como aluno.`)
             .addFields(
               { name: '👨‍🎓 Aluno', value: `<@${student.id}>`, inline: true },
-              { name: '👨‍🏫 Instrutor', value: `<@${message.author.id}>`, inline: true }
+              { name: '👨‍🏫 Instrutor(es)', value: instructorIds.map(id => `<@${id}>`).join(', '), inline: true }
             )
             .setTimestamp();
 
@@ -1410,17 +1788,34 @@ async function sendCleanMessage(originalMessage, newEmbed) {
             });
           }
 
-          // Remove role if the instructor is the specific user
-          if (currentInstructorData.instructor_id === '1447168951963353209') {
-            try {
-              const roleToRemove = '1480538487747903519';
-              await student.roles.remove(roleToRemove);
-            } catch (err) {
-              console.error('Erro ao remover cargo:', err);
-            }
-          }
+          // List of all instructor roles to remove
+          const instructorRolesToRemove = [
+            '1480626791273201714', // kingeski
+            '1480627283738759338', // dekkosun
+            '1480627188025004083', // topson
+            '1480627247793573991', // senshi
+            '1480626743361671351', // crz
+            '1480627424973688863', // capiata
+            '1480627360331202703', // vitor
+            '1480627384062578800', // Kay
+            '1480627336951889941', // Henry
+            '1480627214289731665', // maid
+            '1480538487747903519'  // yaya
+          ];
 
+          // Remove association from DB
           await unclaimStudent(currentInstructorData.instructor_id, student.id);
+
+          // Remove all instructor-specific roles from the student
+          try {
+            const rolesToRemove = student.roles.cache.filter(role => instructorRolesToRemove.includes(role.id));
+            if (rolesToRemove.size > 0) {
+              await student.roles.remove(rolesToRemove);
+              console.log(`[DEBUG] Removed ${rolesToRemove.size} instructor roles from student ${student.id}`);
+            }
+          } catch (err) {
+            console.error('[ERROR] Failed to remove instructor roles:', err);
+          }
 
           const embed = new EmbedBuilder()
             .setColor(0x00ff00)
@@ -1433,7 +1828,6 @@ async function sendCleanMessage(originalMessage, newEmbed) {
             .setTimestamp();
 
           return message.reply({ embeds: [embed] });
-
         } catch (err) {
           await message.reply({
             embeds: [createErrorEmbed('Erro ao Remover Reivindicação', err.message)]
@@ -1441,14 +1835,14 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         }
       }
 
-      // ============ .instrutor ============
-      if (command === 'instrutor') {
+      // ---- .instrutor ----
+      if (command === 'instrutor' || command === 'instrutorl') {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
 
           const member = await guild.members.fetch(message.author.id).catch(() => null);
-          const instructorRoleId = '1461134737505652806'; // You should replace this with your actual instructor role ID
+          const instructorRoleId = '1461134737505652806';
           
           if (!hasInstructorRole(member, instructorRoleId)) {
             return message.reply({
@@ -1475,7 +1869,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
               }
 
               const [cmdType, cmdPoints, cmdStudentId, ...cmdNotes] = args.slice(1);
-              const cmdScoreTypes = getScoreTypes();
+              const cmdScoreTypes = await getScoreTypes();
               const cmdResolvedType = TRAINING_TYPE_ALIASES[cmdType] || cmdType;
               const cmdScoreType = cmdScoreTypes[cmdResolvedType];
               
@@ -1492,19 +1886,19 @@ async function sendCleanMessage(originalMessage, newEmbed) {
                 });
               }
 
-              const cmdStudent = await guild.members.fetch(cmdStudentId).catch(() => null);
+              const cmdStudent = await guild.members.fetch(cmdStudentId.replace(/[<@!>]/g, '')).catch(() => null);
               if (!cmdStudent) {
                 return message.reply({
                   embeds: [createErrorEmbed('Aluno Não Encontrado', 'Não foi possível encontrar o aluno na guild.')]
                 });
               }
 
-              const cmdActualPoints = cmdParsedPoints * cmdScoreType.base_points * cmdScoreType.multiplier;
+              const cmdActualPoints = cmdParsedPoints * cmdScoreType.base_points;
               const cmdObservations = cmdNotes.join(' ') || 'Treinamento concluído';
 
-              const cmdSession = addTrainingSession(
+              await addTrainingSession(
                 instructorId,
-                cmdStudentId,
+                cmdStudent.id,
                 cmdResolvedType,
                 'Concluído',
                 cmdActualPoints,
@@ -1528,7 +1922,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
               }
 
               const [sessType, sessPoints, sessStudentId, sessDuration, ...sessNotes] = args.slice(1);
-              const sessScoreTypes = getScoreTypes();
+              const sessScoreTypes = await getScoreTypes();
               const sessResolvedType = TRAINING_TYPE_ALIASES[sessType] || sessType;
               const sessScoreType = sessScoreTypes[sessResolvedType];
               
@@ -1538,16 +1932,16 @@ async function sendCleanMessage(originalMessage, newEmbed) {
                 });
               }
 
-              const sessStudent = await guild.members.fetch(sessStudentId).catch(() => null);
+              const sessStudent = await guild.members.fetch(sessStudentId.replace(/[<@!>]/g, '')).catch(() => null);
               if (!sessStudent) {
                 return message.reply({
                   embeds: [createErrorEmbed('Aluno Não Encontrado', 'Não foi possível encontrar o aluno na guild.')]
                 });
               }
 
-              const sessSession = addTrainingSession(
+              const sessSession = await addTrainingSession(
                 instructorId,
-                sessStudentId,
+                sessStudent.id,
                 sessResolvedType,
                 sessDuration,
                 0,
@@ -1563,28 +1957,45 @@ async function sendCleanMessage(originalMessage, newEmbed) {
               await message.reply({ embeds: [sessEmbed] });
               break;
 
+            case 'ranking':
+            case 'leaderboard':
+            case 'top':
+              const leaderboard = await getInstructorLeaderboard(10);
+              
+              if (leaderboard.length === 0) {
+                return message.reply({
+                  embeds: [createErrorEmbed('Ranking Vazio', 'Ainda não há dados de instrutores no sistema.')]
+                });
+              }
+
+              const rankEmbed = new EmbedBuilder()
+                .setColor(0x5865f2)
+                .setTitle(`${EMOJIS.graduation} Ranking de Instrutores`)
+                .setDescription('Os instrutores mais ativos da guilda baseados em pontos de treinamento.')
+                .setTimestamp();
+
+              leaderboard.forEach((stat, index) => {
+                const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+                rankEmbed.addFields({
+                  name: `${medal} ${stat.username}`,
+                  value: `**Pontos:** ${stat.total_points} | **Sessões:** ${stat.total_sessions} | **Alunos:** ${stat.students_count}`,
+                  inline: false
+                });
+              });
+
+              await message.reply({ embeds: [rankEmbed] });
+              break;
+
             case 'tipos':
               const typesScoreTypes = await getScoreTypes();
-              const essentialTypes = [
-                { key: 'followup', name: 'Follow-up / Team combo', aliases: 'teamcombo, combo, follow', points: 2 },
-                { key: 'aulademovimentacao', name: 'Aula de movimentação', aliases: 'mov, movimentacao, aula', points: 1 },
-                { key: 'analisedereplay', name: 'Análise de replay', aliases: 'replay, analise', points: 3 },
-                { key: 'treinocompleto', name: 'Treino completo', aliases: 'treino, completo, tc', points: 4 },
-                { key: 'fundamentosdaarma', name: 'Fundamentos da arma', aliases: 'arma, fundamentos', points: 2 },
-                { key: 'correcaodehabitos', name: 'Correção de hábitos', aliases: 'habitos, correcao', points: 2 },
-                { key: 'acompanhamentocontinuo', name: 'Acompanhamento contínuo', aliases: 'acompanhamento, continuo', points: 3 },
-                { key: 'alunoplatina', name: 'Aluno chegou à Platina', aliases: 'platina', points: 3 },
-                { key: 'alunodiamante', name: 'Aluno chegou ao Diamante', aliases: 'diamante', points: 6 }
-              ];
-              
-              const typeDescriptions = essentialTypes.map(type => 
-                `**${type.name}** (${type.points} pts)\n   Atalhos: ${type.aliases}`
+              const typeDescriptions = Object.entries(typesScoreTypes).map(([key, type]) => 
+                `**${type.name}** (${type.base_points} pts)\n   Atalhos: ${Object.entries(TRAINING_TYPE_ALIASES).filter(([alias, real]) => real === key).map(([alias]) => alias).join(', ')}`
               ).join('\n\n');
               
               const typesEmbed = new EmbedBuilder()
                 .setColor(0x5865f2)
-                .setTitle('� Tipos de Treinamento')
-                .setDescription(typeDescriptions)
+                .setTitle('🎓 Tipos de Treinamento')
+                .setDescription(typeDescriptions || 'Nenhum tipo de treinamento configurado.')
                 .setFooter({ text: 'Use os atalhos para agilizar!' })
                 .setTimestamp();
               await message.reply({ embeds: [typesEmbed] });
@@ -1599,91 +2010,38 @@ async function sendCleanMessage(originalMessage, newEmbed) {
                 });
               }
 
-              // Process student details
               const studentDetails = [];
-              
               for (const studentData of instructorStudents) {
                 const student = await guild.members.fetch(studentData.student_id).catch(() => null);
                 if (student) {
-                  const trainings = studentData.trainings || [];
-                  const totalSessions = trainings.length;
-                  const completedSessions = trainings.filter(t => t.status === 'completed').length;
-                  const totalPoints = trainings
-                    .filter(t => t.status === 'completed')
-                    .reduce((sum, t) => {
-                      const trainingPoints = t.training_scores?.reduce((scoreSum, score) => scoreSum + (score.points || 0), 0) || 0;
-                      return sum + trainingPoints;
-                    }, 0);
-
                   studentDetails.push({
+                    nickname: student.nickname || student.user.username,
                     tag: student.user.tag,
-                    id: student.id,
-                    nickname: student.nickname || student.displayName,
-                    totalSessions,
-                    completedSessions,
-                    totalPoints
+                    id: student.id
                   });
                 }
               }
 
               const studentsList = studentDetails.map((student, index) => 
-                `**${index + 1}.** ${student.nickname} (${student.tag})\n   • Sessões: ${student.completedSessions}/${student.totalSessions}\n   • Pontos: ${student.totalPoints}`
-              ).join('\n\n');
+                `**${index + 1}.** ${student.nickname} (${student.tag}) - <@${student.id}>`
+              ).join('\n');
 
               const alunosEmbed = new EmbedBuilder()
                 .setColor(0x5865f2)
                 .setTitle(`👨‍🎓 Alunos de ${message.author.tag}`)
                 .setDescription(`Você tem **${studentDetails.length}** aluno(s) reivindicado(s):\n\n${studentsList}`)
-                .addFields(
-                  { name: '📊 Estatísticas Gerais', value: 
-                    `• Total de sessões: ${studentDetails.reduce((sum, s) => sum + s.totalSessions, 0)}\n` +
-                    `• Sessões concluídas: ${studentDetails.reduce((sum, s) => sum + s.completedSessions, 0)}\n` +
-                    `• Pontos totais: ${studentDetails.reduce((sum, s) => sum + s.totalPoints, 0)}`, 
-                    inline: false }
-                )
                 .setTimestamp();
 
               await message.reply({ embeds: [alunosEmbed] });
               break;
 
-            case 'role':
-            case 'cargo':
-              if (args.length < 2) {
-                return message.reply({
-                  embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.instrutor role [aluno|stats|top]`')]
-                });
-              }
-
-              const roleSubCommand = args[1].toLowerCase();
-              
-              switch (roleSubCommand) {
-                case 'stats':
-                  const roleStats = getRoleHolderStats(message.author.id);
-                  const roleEmbed = createSuccessEmbed(
-                    '📊 Estatísticas de Instrutor (Cargo)',
-                    `**Pontos totais:** ${roleStats.total_points}\n**Sessões completadas:** ${roleStats.sessions_completed}\n**Última atividade:** ${roleStats.last_activity ? new Date(roleStats.last_activity).toLocaleDateString('pt-BR') : 'Nunca'}\n\n**Tipos de treinamento:**\n${Object.entries(roleStats.types_completed || {}).map(([type, count]) => `• ${type}: ${count} sessões`).join('\n')}`
-                  );
-                  await message.reply({ embeds: [roleEmbed] });
-                  break;
-
-                case 'top':
-                  const roleLeaderboard = getRoleHolderLeaderboard();
-                  const roleTopEmbed = new EmbedBuilder()
-                    .setColor(0xfaa61a)
-                    .setTitle('🏆 Top Instrutores (Cargo 1461134737505652806)')
-                    .setDescription(roleLeaderboard.slice(0, 10).map((entry, index) => {
-                      return `**${index + 1}.** <@${entry.user_id}> - **${entry.total_points} pontos**\n   Sessões: ${entry.sessions_completed}`;
-                    }).join('\n\n'))
-                    .setFooter({ text: 'Ranking específico para detentores do cargo de instrutor' })
-                    .setTimestamp();
-                  await message.reply({ embeds: [roleTopEmbed] });
-                  break;
-
-                default:
-                  return message.reply({
-                    embeds: [createErrorEmbed('Subcomando Inválido', 'Use: `stats` para estatísticas pessoais ou `top` para ranking')]
-                  });
-              }
+            case 'stats':
+              const roleStats = getRoleHolderStats(message.author.id);
+              const statsOutput = createSuccessEmbed(
+                '📊 Minhas Estatísticas',
+                `**Pontos totais:** ${roleStats.total_points}\n**Sessões completadas:** ${roleStats.sessions_completed}\n**Última atividade:** ${roleStats.last_activity ? new Date(roleStats.last_activity).toLocaleDateString('pt-BR') : 'Nunca'}\n\n**Tipos de treinamento:**\n${Object.entries(roleStats.types_completed || {}).map(([type, count]) => `• ${type}: ${count} sessões`).join('\n')}`
+              );
+              await message.reply({ embeds: [statsOutput] });
               break;
 
             default:
@@ -1691,15 +2049,15 @@ async function sendCleanMessage(originalMessage, newEmbed) {
                 embeds: [createErrorEmbed('Subcomando Inválido', 'Subcomando não reconhecido. Use `.instrutor` para ver os comandos disponíveis.')]
               });
           }
-
         } catch (err) {
+          console.error('[Instructor Command Error]', err);
           await message.reply({
             embeds: [createErrorEmbed('Erro no Comando', err.message)]
           });
         }
       }
 
-      // ============ .shop ============
+      // ---- .shop ----
       if (command === 'shop') {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
@@ -1719,8 +2077,8 @@ async function sendCleanMessage(originalMessage, newEmbed) {
           let category = args[0]?.toLowerCase();
           
           if (!category) {
-            const allItems = getShopItems();
-            const userPoints = calculateTotalScore(message.author.id, false);
+            const allItems = await getShopItems();
+            const userPoints = await calculateTotalScore(message.author.id, false);
             
             const categorySelect = new StringSelectMenuBuilder()
               .setCustomId('shop_category_select')
@@ -1763,7 +2121,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
 
               let itemsToShow = selectedCategory === 'Todos' 
                 ? allItems 
-                : getShopItemsByCategory(selectedCategory);
+                : await getShopItemsByCategory(selectedCategory);
 
               const itemsPerPage = 3;
               const totalPages = Math.ceil(itemsToShow.length / itemsPerPage);
@@ -1862,7 +2220,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
           }
 
           const mappedCategory = categoryMap[category] || category;
-          const shopItems = getShopItemsByCategory(mappedCategory);
+          const shopItems = await getShopItemsByCategory(mappedCategory);
           
           if (shopItems.length === 0) {
             return message.reply({
@@ -1870,7 +2228,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
             });
           }
 
-          const userPoints = calculateTotalScore(message.author.id, false);
+          const userPoints = await calculateTotalScore(message.author.id, false);
           const shopEmbed = new EmbedBuilder()
             .setColor(0x57f287)
             .setTitle(`Loja - ${mappedCategory}`)
@@ -1903,7 +2261,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         }
       }
 
-      // ============ .buy ============
+      // ---- .buy ----
       if (command === 'buy') {
         try {
           if (args.length === 0) {
@@ -1913,10 +2271,10 @@ async function sendCleanMessage(originalMessage, newEmbed) {
           }
 
           const itemId = args[0];
-          const userPoints = calculateTotalScore(message.author.id, false);
+          const userPoints = await calculateTotalScore(message.author.id, false);
 
           try {
-            const result = purchaseItem(message.author.id, itemId);
+            const result = await purchaseItem(message.author.id, itemId);
             
             const embed = createSuccessEmbed(
               'Compra Realizada',
@@ -1925,7 +2283,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
 
             await message.reply({ embeds: [embed] });
 
-            applyRewardEffect(message.author.id, result.item);
+            await applyRewardEffect(message.author.id, result.item);
 
             const confirmationEmbed = new EmbedBuilder()
               .setColor(0x57f287)
@@ -1948,7 +2306,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         }
       }
 
-      // ============ .instrutorl ============
+      // ---- .instrutorl ----
       if (command === 'instrutorl') {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
@@ -2005,7 +2363,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
               }
 
               const [startType, startStudentId, startDuration] = args.slice(1);
-              const startScoreTypes = getScoreTypes();
+              const startScoreTypes = await getScoreTypes();
               const startScoreType = startScoreTypes[startType];
               
               if (!startScoreType) {
@@ -2040,14 +2398,15 @@ async function sendCleanMessage(originalMessage, newEmbed) {
               break;
 
             case 'finalizar':
-              const statsSessions = getInstructorSessions(instructorId, 5);
+              const statsSessions = await getInstructorSessions(instructorId, 5);
+              const scoreTypes = await getScoreTypes();
 
               const statsEmbed = createSuccessEmbed(
                 '📊 Minhas Estatísticas',
                 `**Pontos como Instrutor:** ${statsInstructorPoints}\n**Pontos como Aluno:** ${statsStudentPoints}\n**Total de Sessões:** ${statsSessions.length}\n\n**Últimas sessões:**\n` +
                 (statsSessions.length > 0 
                   ? statsSessions.slice(0, 3).map((s, i) => 
-                      `${i + 1}. ${s.status === 'complete' ? '✅' : '🔄'} <@${s.student_id}> - ${getScoreTypes()[s.type]?.name || s.type}`
+                      `${i + 1}. ${s.status === 'complete' ? '✅' : '🔄'} <@${s.student_id}> - ${scoreTypes[s.type]?.name || s.type}`
                     ).join('\n')
                   : 'Nenhuma sessão ainda'
                 )
@@ -2058,7 +2417,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
 
             case 'top':
             case 'ranking':
-              const topInstructors = getInstructorLeaderboard();
+              const topInstructors = await getInstructorLeaderboard();
               
               const topEmbed = new EmbedBuilder()
                 .setColor(0xfaa61a)
@@ -2074,8 +2433,8 @@ async function sendCleanMessage(originalMessage, newEmbed) {
 
             case 'loja':
             case 'shop':
-              const shopItems = getShopItems();
-              const userPoints = calculateTotalScore(message.author.id, false);
+              const shopItems = await getShopItems();
+              const userPoints = await calculateTotalScore(message.author.id, false);
               
               const shopEmbed = new EmbedBuilder()
                 .setColor(0x57f287)
@@ -2127,7 +2486,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         }
       }
 
-      // ============ .finduser ============
+      // ---- .finduser ----
       if (command === 'finduser') {
         try {
           if (args.length === 0) {

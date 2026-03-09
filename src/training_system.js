@@ -1,437 +1,574 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { getClient } from './db.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const TRAINING_FILE = path.join(__dirname, '..', 'training_system.json');
-
-function initTrainingFile() {
-  if (!fs.existsSync(TRAINING_FILE)) {
-    fs.writeFileSync(TRAINING_FILE, JSON.stringify({
-      score_types: {
-        acompanhamentocontinuo: { name: 'Acompanhamento Contínuo', base_points: 3, multiplier: 1.0 },
-        alunoplatina: { name: 'Aluno chegou à Platina', base_points: 3, multiplier: 1.0 },
-        alunodiamante: { name: 'Aluno chegou ao Diamante', base_points: 6, multiplier: 1.0 },
-        analisedereplay: { name: 'Análise de replay', base_points: 3, multiplier: 1.0 },
-        aulademovimentacao: { name: 'Aula de movimentação', base_points: 1, multiplier: 1.0 },
-        correcaodehabitos: { name: 'Correção de hábitos', base_points: 2, multiplier: 1.0 },
-        followup: { name: 'Follow-up / Team combo', base_points: 2, multiplier: 1.0 },
-        fundamentosdaarma: { name: 'Fundamentos da arma', base_points: 2, multiplier: 1.0 },
-        treinocompleto: { name: 'Treino completo', base_points: 4, multiplier: 1.0 }
-      },
-      instructor_scores: {},
-      student_scores: {},
-      instructor_role_points: {},
-      role_holder_sessions: [],
-      training_sessions: [],
-      leaderboards: {
-        instructors: [],
-        students: []
-      },
-      shop_items: [
-        { id: 'instrutor_destaque', category: 'Cosmética', name: 'Instrutor Destaque (30 dias)', description: 'Cargo exclusivo temporário', cost: 30, type: 'role_temp', duration_days: 30, role_id: 'YOUR_DISCORD_ROLE_ID' },
-        { id: 'cor_diferenciada', category: 'Cosmética', name: 'Cor diferenciada no Discord', description: 'Cor exclusiva no nome', cost: 15, type: 'custom_color' },
-        { id: 'post_elogio', category: 'Cosmética', name: 'Post fixado elogiando instrutor', description: 'Destaque público no servidor', cost: 30, type: 'public_praise' },
-        { id: 'card_postal', category: 'Cosmética', name: 'Card cartão postal do instrutor', description: 'Imagem editada com suas preferências', cost: 30, type: 'custom_image' },
-        { id: 'banner_pfp', category: 'Cosmética', name: 'Banner e PFP customizados', description: 'Feitas sob medidas com o Editor oficial', cost: 100, type: 'custom_art' },
-        { id: 'aluno_destaque', category: 'Cosmética', name: 'Aluno Destaque', description: 'Mostre pro seu aluno como você se importa com ele com um cargo customizado por você', cost: 10, type: 'student_highlight', role_id: 'YOUR_DISCORD_ROLE_ID' },
-        { id: 'multiplicador_pontos', category: 'Funcional', name: 'Multiplicador de pontos', description: 'Multiplicador (uso único)', cost: 15, type: 'point_multiplier', multiplier_value: 1.5, duration_sessions: 1 },
-        { id: 'ticket_premium', category: 'Funcional', name: 'Ticket Premium', description: 'Ticket vale x1,5 pontos', cost: 10, type: 'ticket_bonus', bonus_multiplier: 1.5 },
-        { id: 'aluno_prioritario', category: 'Funcional', name: 'Aluno prioritário', description: 'Acompanhar aluno específico com bônus', cost: 15, type: 'priority_student' },
-        { id: 'acesso_antecipado', category: 'Status', name: 'Acesso antecipado a cargos', description: 'Elegível a promoção antes (25% OFF)', cost: 50, type: 'early_access_promo', discount_percentage: 25 },
-        { id: 'voto_consultivo', category: 'Status', name: 'Voto consultivo', description: 'Participa de decisões do sistema', cost: 30, type: 'consultative_vote' },
-        { id: 'instrutor_mentor', category: 'Status', name: 'Instrutor Mentor', description: 'Supervisiona outros instrutores, ganha em cima de ', cost: 0, type: 'mentor_role' }
-      ]
-    }, null, 2));
-  }
-}
-
-function readTrainingData() {
-  initTrainingFile();
+// Training Score Types
+export async function getScoreTypes() {
+  const client = getClient();
+  
   try {
-    const data = fs.readFileSync(TRAINING_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Error reading training system file:', error);
-    return {
-      score_types: {},
-      instructor_scores: {},
-      student_scores: {},
-      training_sessions: [],
-      leaderboards: { instructors: [], students: [] }
-    };
-  }
-}
-
-function writeTrainingData(data) {
-  try {
-    fs.writeFileSync(TRAINING_FILE, JSON.stringify(data, null, 2));
-  } catch (error) {
-    console.error('Error writing training system file:', error);
-  }
-}
-
-export function getScoreTypes() {
-  const data = readTrainingData();
-  return data.score_types;
-}
-
-export function addTrainingSession(instructorId, studentId, type, duration, points, notes = '', status = 'complete') {
-  const data = readTrainingData();
-  
-  const session = {
-    id: Date.now().toString(),
-    instructor_id: instructorId,
-    student_id: studentId,
-    type: type,
-    duration: duration,
-    points: points,
-    notes: notes,
-    status: status,
-    timestamp: new Date().toISOString()
-  };
-  
-  data.training_sessions.push(session);
-  
-  // Update scores
-  if (status === 'complete') {
-    if (!data.student_scores[studentId]) {
-      data.student_scores[studentId] = {};
-    }
-    if (!data.student_scores[studentId][type]) {
-      data.student_scores[studentId][type] = 0;
-    }
-    data.student_scores[studentId][type] += points;
+    const { data, error } = await client
+      .from('training_score_types')
+      .select('*');
     
-    if (!data.instructor_scores[instructorId]) {
-      data.instructor_scores[instructorId] = {};
-    }
-    if (!data.instructor_scores[instructorId][type]) {
-      data.instructor_scores[instructorId][type] = 0;
-    }
-    data.instructor_scores[instructorId][type] += points;
+    if (error) throw error;
+    
+    // Convert to object format for compatibility
+    const scoreTypes = {};
+    data.forEach(type => {
+      scoreTypes[type.type_key] = {
+        name: type.name,
+        base_points: type.base_points,
+        multiplier: type.multiplier
+      };
+    });
+    
+    return scoreTypes;
+  } catch (error) {
+    console.error('Error getting score types:', error);
+    return {};
   }
-  // Update leaderboards
-  updateLeaderboards(data);
-  
-  writeTrainingData(data);
-  return session;
 }
 
-export function addRoleHolderPoints(instructorId, points, type = 'general') {
-  const data = readTrainingData();
+// Training Sessions
+export async function addTrainingSession(instructorId, studentId, type, duration, points, notes = '', status = 'complete') {
+  const client = getClient();
   
-  if (!data.instructor_role_points) {
-    data.instructor_role_points = {};
+  try {
+    // Insert training session
+    const { data, error } = await client
+      .from('training_sessions')
+      .insert({
+        instructor_id: instructorId,
+        student_id: studentId,
+        type_key: type,
+        duration: duration,
+        points: points,
+        notes: notes,
+        status: status
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
+    // Update instructor stats if session is complete
+    if (status === 'complete') {
+      await updateInstructorStats(instructorId, type, points);
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error adding training session:', error);
+    throw error;
   }
+}
+
+export async function getInstructorSessions(instructorId, limit = 10) {
+  const client = getClient();
   
-  if (!data.instructor_role_points[instructorId]) {
-    data.instructor_role_points[instructorId] = {
+  try {
+    const { data, error } = await client
+      .from('training_sessions')
+      .select('*')
+      .eq('instructor_id', instructorId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    
+    if (error) throw error;
+    
+    return data || [];
+  } catch (error) {
+    console.error('Error getting instructor sessions:', error);
+    return [];
+  }
+}
+
+export async function getStudentSessions(studentId, limit = 10) {
+  const client = getClient();
+  
+  try {
+    const { data, error } = await client
+      .from('training_sessions')
+      .select('*')
+      .eq('student_id', studentId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    
+    if (error) throw error;
+    
+    return data || [];
+  } catch (error) {
+    console.error('Error getting student sessions:', error);
+    return [];
+  }
+}
+
+// Instructor Stats
+async function updateInstructorStats(instructorId, type, points) {
+  const client = getClient();
+  
+  try {
+    // Check if stats exist
+    const { data: existingStats, error: fetchError } = await client
+      .from('instructor_stats')
+      .select('*')
+      .eq('instructor_id', instructorId)
+      .single();
+    
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      throw fetchError;
+    }
+    
+    if (existingStats) {
+      // Update existing stats
+      const typesCompleted = existingStats.types_completed || {};
+      typesCompleted[type] = (typesCompleted[type] || 0) + 1;
+      
+      const { error: updateError } = await client
+        .from('instructor_stats')
+        .update({
+          total_points: existingStats.total_points + points,
+          sessions_completed: existingStats.sessions_completed + 1,
+          types_completed: typesCompleted,
+          last_activity: new Date().toISOString()
+        })
+        .eq('instructor_id', instructorId);
+      
+      if (updateError) throw updateError;
+    } else {
+      // Create new stats
+      const { error: insertError } = await client
+        .from('instructor_stats')
+        .insert({
+          instructor_id: instructorId,
+          total_points: points,
+          sessions_completed: 1,
+          types_completed: { [type]: 1 },
+          last_activity: new Date().toISOString()
+        });
+      
+      if (insertError) throw insertError;
+    }
+  } catch (error) {
+    console.error('Error updating instructor stats:', error);
+    throw error;
+  }
+}
+
+export async function addRoleHolderPoints(instructorId, points, type = 'general') {
+  await updateInstructorStats(instructorId, type, points);
+  
+  // Return updated stats
+  return await getRoleHolderStats(instructorId);
+}
+
+export async function getRoleHolderStats(instructorId) {
+  const client = getClient();
+  
+  try {
+    const { data, error } = await client
+      .from('instructor_stats')
+      .select('*')
+      .eq('instructor_id', instructorId)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') {
+      throw error;
+    }
+    
+    return data || {
+      total_points: 0,
+      sessions_completed: 0,
+      types_completed: {},
+      last_activity: null
+    };
+  } catch (error) {
+    console.error('Error getting role holder stats:', error);
+    return {
       total_points: 0,
       sessions_completed: 0,
       types_completed: {},
       last_activity: null
     };
   }
-  
-  data.instructor_role_points[instructorId].total_points += points;
-  data.instructor_role_points[instructorId].sessions_completed += 1;
-  data.instructor_role_points[instructorId].last_activity = new Date().toISOString();
-  
-  if (!data.instructor_role_points[instructorId].types_completed[type]) {
-    data.instructor_role_points[instructorId].types_completed[type] = 0;
-  }
-  data.instructor_role_points[instructorId].types_completed[type] += 1;
-  
-  writeTrainingData(data);
-  return data.instructor_role_points[instructorId];
 }
 
-export function getRoleHolderStats(instructorId) {
-  const data = readTrainingData();
-  return data.instructor_role_points[instructorId] || {
-    total_points: 0,
-    sessions_completed: 0,
-    types_completed: {},
-    last_activity: null
-  };
-}
-
-export function getRoleHolderLeaderboard() {
-  const data = readTrainingData();
-  if (!data.instructor_role_points) {
+export async function getRoleHolderLeaderboard() {
+  const client = getClient();
+  
+  try {
+    const { data, error } = await client
+      .from('instructor_stats')
+      .select('*')
+      .order('total_points', { ascending: false })
+      .limit(10);
+    
+    if (error) throw error;
+    
+    return data || [];
+  } catch (error) {
+    console.error('Error getting role holder leaderboard:', error);
     return [];
   }
-  return Object.entries(data.instructor_role_points)
-    .map(([userId, stats]) => ({
-      user_id: userId,
-      ...stats
-    }))
-    .sort((a, b) => b.total_points - a.total_points)
-    .slice(0, 10);
 }
 
-function updateLeaderboards(data) {
-  data.leaderboards.instructors = Object.entries(data.instructor_scores).map(([instructorId, scores]) => {
-    const totalPoints = Object.entries(scores).reduce((total, [type, points]) => {
-      const scoreType = data.score_types[type];
-      if (scoreType) {
-        return total + (points * scoreType.base_points * scoreType.multiplier);
-      }
-      return total;
-    }, 0);
+// Leaderboards
+export async function getInstructorLeaderboard() {
+  const client = getClient();
+  
+  try {
+    const { data: sessions, error: sessionsError } = await client
+      .from('training_sessions')
+      .select('instructor_id, type_key, points, created_at')
+      .eq('status', 'complete');
     
-    return {
-      instructor_id: instructorId,
-      total_points: totalPoints,
-      scores: scores
-    };
-  }).sort((a, b) => b.total_points - a.total_points).slice(0, 10);
-  
-  // Student leaderboard
-  data.leaderboards.students = Object.entries(data.student_scores).map(([studentId, scores]) => {
-    const totalPoints = Object.entries(scores).reduce((total, [type, points]) => {
-      const scoreType = data.score_types[type];
-      if (scoreType) {
-        return total + (points * scoreType.base_points * scoreType.multiplier);
-      }
-      return total;
-    }, 0);
+    if (sessionsError) throw sessionsError;
     
-    return {
-      student_id: studentId,
-      total_points: totalPoints,
-      scores: scores
-    };
-  }).sort((a, b) => b.total_points - a.total_points).slice(0, 10);
-}
-
-export function getInstructorSessions(instructorId, limit = 10) {
-  const data = readTrainingData();
-  return data.training_sessions
-    .filter(session => session.instructor_id === instructorId)
-    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-    .slice(0, limit);
-}
-
-export function getStudentSessions(studentId, limit = 10) {
-  const data = readTrainingData();
-  return data.training_sessions
-    .filter(session => session.student_id === studentId)
-    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-    .slice(0, limit);
-}
-
-export function getInstructorLeaderboard() {
-  const data = readTrainingData();
-  return data.leaderboards.instructors;
-}
-
-export function getStudentLeaderboard() {
-  const data = readTrainingData();
-  return data.leaderboards.students;
-}
-
-export function calculateTotalScore(userId, isInstructor = false) {
-  const data = readTrainingData();
-  const scores = isInstructor ? data.instructor_scores[userId] : data.student_scores[userId];
-  const scoreTypes = data.score_types;
-  
-  if (!scores) return 0;
-  
-  return Object.entries(scores).reduce((total, [type, points]) => {
-    const scoreType = scoreTypes[type];
-    if (!scoreType) return total;
-    return total + (points * scoreType.base_points * scoreType.multiplier);
-  }, 0);
-}
-
-export function getShopItems() {
-  const data = readTrainingData();
-  return data.shop_items || [];
-}
-
-export function getShopItemsByCategory(category) {
-  const data = readTrainingData();
-  return (data.shop_items || []).filter(item => item.category === category);
-}
-
-export function purchaseItem(userId, itemId) {
-  const data = readTrainingData();
-  const item = data.shop_items.find(i => i.id === itemId);
-  
-  if (!item) {
-    throw new Error('Item não encontrado na loja.');
+    const scoreTypes = await getScoreTypes();
+    
+    // Aggregate instructor scores
+    const instructorScores = {};
+    sessions.forEach(session => {
+      const { instructor_id, type_key, points } = session;
+      const scoreType = scoreTypes[type_key];
+      
+      if (!instructorScores[instructor_id]) {
+        instructorScores[instructor_id] = {
+          instructor_id,
+          total_points: 0,
+          scores: {}
+        };
+      }
+      
+      const actualPoints = scoreType ? points * scoreType.base_points * scoreType.multiplier : points;
+      instructorScores[instructor_id].total_points += actualPoints;
+      
+      if (!instructorScores[instructor_id].scores[type_key]) {
+        instructorScores[instructor_id].scores[type_key] = 0;
+      }
+      instructorScores[instructor_id].scores[type_key] += points;
+    });
+    
+    // Sort and return top 10
+    return Object.values(instructorScores)
+      .sort((a, b) => b.total_points - a.total_points)
+      .slice(0, 10);
+  } catch (error) {
+    console.error('Error getting instructor leaderboard:', error);
+    return [];
   }
+}
+
+export async function getStudentLeaderboard() {
+  const client = getClient();
   
-  const userScores = data.student_scores[userId] || {};
-  const scoreTypes = data.score_types;
-  let totalPoints = 0;
+  try {
+    const { data: sessions, error: sessionsError } = await client
+      .from('training_sessions')
+      .select('student_id, type_key, points, created_at')
+      .eq('status', 'complete');
+    
+    if (sessionsError) throw sessionsError;
+    
+    const scoreTypes = await getScoreTypes();
+    
+    // Aggregate student scores
+    const studentScores = {};
+    sessions.forEach(session => {
+      const { student_id, type_key, points } = session;
+      const scoreType = scoreTypes[type_key];
+      
+      if (!studentScores[student_id]) {
+        studentScores[student_id] = {
+          student_id,
+          total_points: 0,
+          scores: {}
+        };
+      }
+      
+      const actualPoints = scoreType ? points * scoreType.base_points * scoreType.multiplier : points;
+      studentScores[student_id].total_points += actualPoints;
+      
+      if (!studentScores[student_id].scores[type_key]) {
+        studentScores[student_id].scores[type_key] = 0;
+      }
+      studentScores[student_id].scores[type_key] += points;
+    });
+    
+    // Sort and return top 10
+    return Object.values(studentScores)
+      .sort((a, b) => b.total_points - a.total_points)
+      .slice(0, 10);
+  } catch (error) {
+    console.error('Error getting student leaderboard:', error);
+    return [];
+  }
+}
+
+export async function calculateTotalScore(userId, isInstructor = false) {
+  const client = getClient();
   
-  Object.entries(userScores).forEach(([type, points]) => {
-    const scoreType = scoreTypes[type];
-    if (scoreType) {
-      totalPoints += points * scoreType.base_points * scoreType.multiplier;
+  try {
+    const { data: sessions, error } = await client
+      .from('training_sessions')
+      .select('type_key, points')
+      .eq(isInstructor ? 'instructor_id' : 'student_id', userId)
+      .eq('status', 'complete');
+    
+    if (error) throw error;
+    
+    const scoreTypes = await getScoreTypes();
+    
+    return sessions.reduce((total, session) => {
+      const scoreType = scoreTypes[session.type_key];
+      if (!scoreType) return total;
+      return total + (session.points * scoreType.base_points * scoreType.multiplier);
+    }, 0);
+  } catch (error) {
+    console.error('Error calculating total score:', error);
+    return 0;
+  }
+}
+
+// Shop System
+export async function getShopItems() {
+  const client = getClient();
+  
+  try {
+    const { data, error } = await client
+      .from('shop_items')
+      .select('*');
+    
+    if (error) throw error;
+    
+    // Convert to old format for compatibility
+    return (data || []).map(item => ({
+      id: item.item_id,
+      category: item.category,
+      name: item.name,
+      description: item.description,
+      cost: item.cost,
+      type: item.type,
+      ...item.properties
+    }));
+  } catch (error) {
+    console.error('Error getting shop items:', error);
+    return [];
+  }
+}
+
+export async function getShopItemsByCategory(category) {
+  const items = await getShopItems();
+  return items.filter(item => item.category === category);
+}
+
+export async function purchaseItem(userId, itemId) {
+  const client = getClient();
+  
+  try {
+    // Get item details
+    const { data: item, error: itemError } = await client
+      .from('shop_items')
+      .select('*')
+      .eq('item_id', itemId)
+      .single();
+    
+    if (itemError) throw itemError;
+    if (!item) throw new Error('Item não encontrado na loja.');
+    
+    // Check user points
+    const userPoints = await calculateTotalScore(userId);
+    if (userPoints < item.cost) {
+      throw new Error(`Pontos insuficientes. Você tem ${userPoints} pontos, mas precisa de ${item.cost} pontos.`);
     }
-  });
-  
-  if (totalPoints < item.cost) {
-    throw new Error(`Pontos insuficientes. Você tem ${totalPoints} pontos, mas precisa de ${item.cost} pontos.`);
+    
+    // Record purchase
+    const { error: purchaseError } = await client
+      .from('purchase_history')
+      .insert({
+        user_id: userId,
+        item_id: itemId,
+        cost: item.cost
+      });
+    
+    if (purchaseError) throw purchaseError;
+    
+    // Apply reward effect
+    await applyRewardEffect(userId, {
+      id: item.item_id,
+      type: item.type,
+      ...item.properties
+    });
+    
+    return {
+      success: true,
+      item: {
+        id: item.item_id,
+        category: item.category,
+        name: item.name,
+        description: item.description,
+        cost: item.cost,
+        type: item.type,
+        ...item.properties
+      },
+      remaining_points: userPoints - item.cost
+    };
+  } catch (error) {
+    console.error('Error purchasing item:', error);
+    throw error;
   }
-  
-  if (!data.student_scores[userId]) {
-    data.student_scores[userId] = {};
-  }
-  if (!data.student_scores[userId][item.category]) {
-    data.student_scores[userId][item.category] = 0;
-  }
-  data.student_scores[userId][item.category] -= item.cost;
-  
-  if (!data.purchase_history) {
-    data.purchase_history = [];
-  }
-  
-  data.purchase_history.push({
-    user_id: userId,
-    item_id: itemId,
-    cost: item.cost,
-    timestamp: new Date().toISOString()
-  });
-  
-  writeTrainingData(data);
-  
-  return {
-    success: true,
-    item: item,
-    remaining_points: totalPoints - item.cost
-  };
 }
 
-export function applyRewardEffect(userId, item) {
-  const data = readTrainingData();
+export async function applyRewardEffect(userId, item) {
+  const client = getClient();
   
-  switch (item.type) {
-    case 'role_temp':
-      break;
+  try {
+    // Get current preferences
+    const { data: currentPrefs, error: fetchError } = await client
+      .from('user_preferences')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+    
+    const preferences = currentPrefs?.preferences || {};
+    
+    // Apply effect based on item type
+    let updatedPreferences = { ...preferences };
+    
+    switch (item.type) {
+      case 'custom_color':
+        updatedPreferences.custom_color = item.color;
+        break;
+        
+      case 'custom_image':
+        updatedPreferences.custom_pfp = item.image_url;
+        break;
+        
+      case 'student_highlight':
+        updatedPreferences.highlighted_student = item.target_student_id;
+        break;
+        
+      case 'priority_student':
+        updatedPreferences.priority_student = item.target_student_id;
+        break;
+        
+      case 'point_multiplier':
+        updatedPreferences.point_multiplier = item.multiplier_value;
+        break;
+        
+      case 'ticket_bonus':
+        updatedPreferences.ticket_bonus = item.bonus_multiplier;
+        break;
+        
+      case 'early_access_promo':
+        updatedPreferences.early_access_promo = item.discount_percentage;
+        break;
+        
+      case 'consultative_vote':
+        updatedPreferences.consultative_vote = true;
+        break;
+        
+      case 'mentor_role':
+        updatedPreferences.mentor_role = true;
+        break;
+        
+      default:
+        // For other types like role_temp, public_praise, etc.
+        // These would be handled by Discord bot logic
+        break;
+    }
+    
+    // Update preferences
+    if (currentPrefs) {
+      const { error: updateError } = await client
+        .from('user_preferences')
+        .update({ preferences: updatedPreferences })
+        .eq('user_id', userId);
       
-    case 'custom_color':
-      if (!data.user_preferences) {
-        data.user_preferences = {};
-      }
-      data.user_preferences[userId] = {
-        ...data.user_preferences[userId],
-        custom_color: item.color
-      };
-      writeTrainingData(data);
-      break;
+      if (updateError) throw updateError;
+    } else {
+      const { error: insertError } = await client
+        .from('user_preferences')
+        .insert({
+          user_id: userId,
+          preferences: updatedPreferences
+        });
       
-    case 'public_praise':
-      break;
-      
-    case 'custom_image':
-      if (!data.user_preferences) {
-        data.user_preferences = {};
-      }
-      data.user_preferences[userId] = {
-        ...data.user_preferences[userId],
-        custom_pfp: item.image_url
-      };
-      writeTrainingData(data);
-      break;
-      
-    case 'student_highlight':
-      if (!data.user_preferences) {
-        data.user_preferences = {};
-      }
-      data.user_preferences[userId] = {
-        ...data.user_preferences[userId],
-        highlighted_student: item.target_student_id
-      };
-      writeTrainingData(data);
-      break;
-      
-    case 'priority_student':
-      if (!data.user_preferences) {
-        data.user_preferences = {};
-      }
-      data.user_preferences[userId] = {
-        ...data.user_preferences[userId],
-        priority_student: item.target_student_id
-      };
-      writeTrainingData(data);
-      break;
-      
-    case 'point_multiplier':
-      if (!data.user_preferences) {
-        data.user_preferences = {};
-      }
-      data.user_preferences[userId] = {
-        ...data.user_preferences[userId],
-        point_multiplier: item.multiplier_value
-      };
-      writeTrainingData(data);
-      break;
-      
-    case 'ticket_bonus':
-      if (!data.user_preferences) {
-        data.user_preferences = {};
-      }
-      data.user_preferences[userId] = {
-        ...data.user_preferences[userId],
-        ticket_bonus: item.bonus_multiplier
-      };
-      writeTrainingData(data);
-      break;
-      
-    case 'early_access_promo':
-      if (!data.user_preferences) {
-        data.user_preferences = {};
-      }
-      data.user_preferences[userId] = {
-        ...data.user_preferences[userId],
-        early_access_promo: item.discount_percentage
-      };
-      writeTrainingData(data);
-      break;
-      
-    case 'consultative_vote':
-      if (!data.user_preferences) {
-        data.user_preferences = {};
-      }
-      data.user_preferences[userId] = {
-        ...data.user_preferences[userId],
-        consultative_vote: true
-      };
-      writeTrainingData(data);
-      break;
-      
-    case 'mentor_role':
-      if (!data.user_preferences) {
-        data.user_preferences = {};
-      }
-      data.user_preferences[userId] = {
-        ...data.user_preferences[userId],
-        mentor_role: true
-      };
-      writeTrainingData(data);
-      break;
+      if (insertError) throw insertError;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error applying reward effect:', error);
+    throw error;
   }
+}
+
+export async function getUserPurchaseHistory(userId) {
+  const client = getClient();
   
-  return true;
+  try {
+    const { data, error } = await client
+      .from('purchase_history')
+      .select(`
+        *,
+        shop_items:item_id (
+          item_id,
+          name,
+          category,
+          description,
+          cost,
+          type,
+          properties
+        )
+      `)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    return (data || []).map(purchase => ({
+      user_id: purchase.user_id,
+      item_id: purchase.item_id,
+      cost: purchase.cost,
+      timestamp: purchase.created_at,
+      item: purchase.shop_items ? {
+        id: purchase.shop_items.item_id,
+        name: purchase.shop_items.name,
+        category: purchase.shop_items.category,
+        description: purchase.shop_items.description,
+        cost: purchase.shop_items.cost,
+        type: purchase.shop_items.type,
+        ...purchase.shop_items.properties
+      } : null
+    }));
+  } catch (error) {
+    console.error('Error getting user purchase history:', error);
+    return [];
+  }
 }
 
-export function getUserPurchaseHistory(userId) {
-  const data = readTrainingData();
-  return (data.purchase_history || []).filter(purchase => purchase.user_id === userId);
+export async function getUserPreferences(userId) {
+  const client = getClient();
+  
+  try {
+    const { data, error } = await client
+      .from('user_preferences')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') {
+      throw error;
+    }
+    
+    return data?.preferences || {};
+  } catch (error) {
+    console.error('Error getting user preferences:', error);
+    return {};
+  }
 }
 
-export function getUserPreferences(userId) {
-  const data = readTrainingData();
-  return data.user_preferences?.[userId] || {};
-}
-
+// Utility function
 export function hasInstructorRole(member, instructorRoleId) {
   if (!instructorRoleId) return true;
   return member.roles.cache.has(instructorRoleId);

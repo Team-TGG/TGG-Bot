@@ -9,9 +9,23 @@ let client = null;
 export function getClient() {
   if (!client) {
     if (!supabaseConfig.url) throw new Error('SUPABASE_URL is not set in .env');
+    
+    // Prioritize service role key to bypass RLS and avoid FK issues due to isolation
     const key = supabaseConfig.serviceRoleKey || supabaseConfig.anonKey;
     if (!key) throw new Error('Set SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY in .env');
-    client = createClient(supabaseConfig.url, key);
+    
+    if (supabaseConfig.serviceRoleKey) {
+      console.log('[DEBUG] Using Supabase Service Role Key');
+    } else {
+      console.warn('[WARNING] Using Supabase Anon Key. This may cause RLS issues.');
+    }
+    
+    client = createClient(supabaseConfig.url, key, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    });
   }
   return client;
 }

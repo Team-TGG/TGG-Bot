@@ -1,76 +1,146 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { getClient } from './db.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const WARNINGS_FILE = path.join(__dirname, '..', 'warnings.json');
-
-// cria arquivo se não existir
-function initWarningsFile() {
-  if (!fs.existsSync(WARNINGS_FILE)) {
-    fs.writeFileSync(WARNINGS_FILE, JSON.stringify({}, null, 2));
-  }
-}
-
-// lê avisos do arquivo
-function readWarnings() {
-  initWarningsFile();
+// Adiciona aviso no banco de dados
+export async function addWarning(userId, moderatorId, reason) {
+  const client = getClient();
+  
   try {
-    const data = fs.readFileSync(WARNINGS_FILE, 'utf8');
-    return JSON.parse(data);
+    // Busca avisos existentes do usuário
+    const { data: existingWarnings, error: fetchError } = await client
+      .from('warnings')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    
+    if (fetchError) throw fetchError;
+    
+    const warningCount = (existingWarnings?.length || 0) + 1;
+    
+    // Insere novo aviso
+    const { data, error } = await client
+      .from('warnings')
+      .insert({
+        user_id: userId,
+        moderator_id: moderatorId,
+        reason: reason,
+        warning_number: warningCount
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
+    return warningCount;
   } catch (error) {
-    console.error('Error reading warnings file:', error);
-    return {};
+    console.error('Error adding warning:', error);
+    throw error;
   }
 }
 
-// salva avisos no arquivo
-function writeWarnings(warnings) {
+// Conta avisos do usuário
+export async function getWarningCount(userId) {
+  const client = getClient();
+  
   try {
-    fs.writeFileSync(WARNINGS_FILE, JSON.stringify(warnings, null, 2));
+    const { count, error } = await client
+      .from('warnings')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId);
+    
+    if (error) throw error;
+    
+    return count || 0;
   } catch (error) {
-    console.error('Error writing warnings file:', error);
+    console.error('Error getting warning count:', error);
+    return 0;
   }
 }
 
-export function addWarning(userId, moderatorId, reason) {
-  const warnings = readWarnings();
+// Busca todos os avisos de um usuário
+export async function getUserWarnings(userId) {
+  const client = getClient();
   
-  if (!warnings[userId]) {
-    warnings[userId] = {
-      count: 0,
-      warnings: []
-    };
+  try {
+    const { data, error } = await client
+      .from('warnings')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    return data || [];
+  } catch (error) {
+    console.error('Error getting user warnings:', error);
+    return [];
   }
+}
+
+// Remove todos os avisos de um usuário
+export async function clearWarnings(userId) {
+  const client = getClient();
   
-  warnings[userId].count++;
-  warnings[userId].warnings.push({
-    id: warnings[userId].count,
-    moderator_id: moderatorId,
-    reason: reason,
-    timestamp: new Date().toISOString()
-  });
+  try {
+    const { error } = await client
+      .from('warnings')
+      .delete()
+      .eq('user_id', userId);
+    
+    if (error) throw error;
+    
+    return true;
+  } catch (error) {
+    console.error('Error clearing warnings:', error);
+    throw error;
+  }
+}
+
+// Remove um aviso específico
+export async function removeWarning(userId, warningNumber) {
+  const client = getClient();
   
-  writeWarnings(warnings);
-  return warnings[userId].count;
+  try {
+    const { error } = await client
+      .from('warnings')
+      .delete()
+      .eq('user_id', userId)
+      .eq('warning_number', warningNumber);
+    
+    if (error) throw error;
+    
+    // Reordena os números dos avisos restantes
+    await reorderWarnings(userId);
+    
+    return true;
+  } catch (error) {
+    console.error('Error removing warning:', error);
+    throw error;
+  }
 }
 
-export function getWarningCount(userId) {
-  const warnings = readWarnings();
-  return warnings[userId]?.count || 0;
-}
-
-export function getUserWarnings(userId) {
-  const warnings = readWarnings();
-  return warnings[userId]?.warnings || [];
-}
-
-export function clearWarnings(userId) {
-  const warnings = readWarnings();
-  delete warnings[userId];
-  writeWarnings(warnings);
+// Reordena os números dos avisos após remoção
+async function reorderWarnings(userId) {
+  const client = getClient();
+  
+  try {
+    const { data: warnings, error } = await client
+      .from('warnings')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true });
+    
+    if (error) throw error;
+    
+    // Atualiza números sequencialmente
+    for (let i = 0; i < warnings.length; i++) {
+      await client
+        .from('warnings')
+        .update({ warning_number: i + 1 })
+        .eq('id', warnings[i].id);
+    }
+  } catch (error) {
+    console.error('Error reordering warnings:', error);
+  }
 }
 
 // converte string de tempo (1s, 1m, 1h, 1d, 1M, 1y)
