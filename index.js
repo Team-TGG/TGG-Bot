@@ -1,6 +1,6 @@
 import 'dotenv/config';
-import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder } from 'discord.js';
-import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions } from './src/db.js';
+import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder } from 'discord.js';
+import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient } from './src/db.js';
 import { createClient, runSync, runEloSync } from './src/discord.js';
 import { runAndPostGuildActivity } from './src/guildActivity.js';
 import { fetchMovimentacao, buildMovimentacaoEmbeds, getDefaultDateRange, isValidDate, formatMovimentacaoAsText } from './src/movimentacao.js';
@@ -9,6 +9,8 @@ import { loadCustomNicknames } from './src/customNicknames.js';
 import { discord as discordConfig, ALLOWED_USER_IDS, inactivePlayers as inactivePlayersConfig } from './config/index.js';
 import { getUserByDiscordId } from './src/db.js';
 import { startCronJobs } from './src/scheduler/cron.js';
+import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createClanEmbed, getUserBrawlhallaId, getCached } from './src/brawlhalla.js';
+import { addWarning, getUserWarnings, removeWarning, parseTime, formatTime as formatModTime } from './src/moderation.js';
 
 async function main() {
   if (!discordConfig.token || !discordConfig.guildId) {
@@ -42,6 +44,17 @@ async function main() {
     'rules': 'regras',
     'missoes': 'missoes',
     'missions': 'missoes',
+    'stats': 'stats',
+    'estatisticas': 'stats',
+    'clan': 'clan',
+    'clã': 'clan',
+    'warn': 'warn',
+    'unwarn': 'unwarn',
+    'warns': 'warns',
+    'warnings': 'warns',
+    'mute': 'mute',
+    'unmute': 'unmute',
+    'ban': 'ban',
   };
 // emoji constant idek if that is actually useful besides junk code but it help later on ig
   const EMOJIS = {
@@ -119,11 +132,20 @@ async function main() {
     if (!command) return; // impede "." e comandos inexistentes
 
     // Commands that don't require admin access
-    const publicCommands = ['active', 'regras', 'help', 'missoes'];
+    const publicCommands = ['active', 'regras', 'help', 'missoes', 'stats', 'clan'];
     
     // Admin check for admin-only commands
     if (!publicCommands.includes(command) && !(await isAdmin(message.author.id))) {
       return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar estes comandos.')] });
+    }
+
+    async function sendCleanMessage(originalMessage, newEmbed) {
+      try {
+        await originalMessage.delete();
+        return await originalMessage.channel.send({ embeds: [newEmbed] });
+      } catch (err) {
+        return await originalMessage.reply({ embeds: [newEmbed] });
+      }
     }
 
     try {
@@ -649,6 +671,259 @@ async function main() {
               createErrorEmbed('Erro ao buscar missões', err.message)
             ]
           });
+        }
+      }
+
+      // ---- .warn ----
+      if (command === 'warn') {
+        try {
+          const guild = client.guilds.cache.get(discordConfig.guildId);
+          if (!guild) throw new Error('Guild não encontrada');
+          const mentionMatch = message.content.match(/<@!?(\d+)>/);
+          if (!mentionMatch) {
+            return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.warn <@user> [motivo]`')] });
+          }
+          const targetId = mentionMatch[1];
+          const reason = message.content.split('>').slice(1).join('>').trim() || 'Sem motivo especificado';
+          const member = await guild.members.fetch(targetId).catch(() => null);
+          if (!member) return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')] });
+
+          const warningCount = await addWarning(targetId, message.author.id, reason);
+          await message.reply({ embeds: [createSuccessEmbed('Aviso Adicionado', `${member.user.tag} recebeu um aviso.\n**Motivo:** ${reason}\n**Total de avisos:** ${warningCount}/3`)] });
+
+          if (warningCount === 2) {
+            const muteRole = guild.roles.cache.find(r => r.name === 'Muted');
+            if (muteRole) {
+              await member.roles.add(muteRole);
+              setTimeout(() => member.roles.remove(muteRole).catch(() => {}), 15 * 60 * 1000);
+              await message.channel.send({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle('⚠️ Mute Automático').setDescription(`${member.user.tag} foi silenciado por 15 minutos (2 avisos).`)] });
+            }
+          } else if (warningCount >= 3) {
+            await member.ban({ reason: '3 avisos acumulados' });
+            await message.channel.send({ embeds: [new EmbedBuilder().setColor(0xed4245).setTitle('🔨 Ban Automático').setDescription(`${member.user.tag} foi banido por 3 avisos acumulados.`)] });
+          }
+        } catch (err) {
+          await message.reply({ embeds: [createErrorEmbed('Erro ao Adicionar Aviso', err.message)] });
+        }
+      }
+
+      // ---- .unwarn ----
+      if (command === 'unwarn') {
+        try {
+          const guild = client.guilds.cache.get(discordConfig.guildId);
+          if (!guild) throw new Error('Guild não encontrada');
+          const mentionMatch = message.content.match(/<@!?(\d+)>/);
+          if (!mentionMatch) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.unwarn <@user> [número]`')] });
+          const targetId = mentionMatch[1];
+          const member = await guild.members.fetch(targetId).catch(() => null);
+          if (!member) return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')] });
+
+          const warningNumber = args[1] ? parseInt(args[1]) : null;
+          if (!warningNumber) {
+            const warnings = await getUserWarnings(targetId);
+            if (warnings.length === 0) return message.reply({ embeds: [createErrorEmbed('Sem Avisos', 'Este usuário não possui avisos.')] });
+            const list = warnings.map(w => `**${w.warning_number}.** ${w.reason} — <@${w.moderator_id}>`).join('\n');
+            return message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`⚠️ Avisos de ${member.user.tag}`).setDescription(`${list}\n\nUse \`.unwarn <@user> [número]\` para remover.`).setTimestamp()] });
+          }
+          await removeWarning(targetId, warningNumber);
+          await message.reply({ embeds: [createSuccessEmbed('Aviso Removido', `Aviso **${warningNumber}** de ${member.user.tag} removido.`)] });
+        } catch (err) {
+          await message.reply({ embeds: [createErrorEmbed('Erro ao Remover Aviso', err.message)] });
+        }
+      }
+
+      // ---- .warns ----
+      if (command === 'warns') {
+        try {
+          const page = parseInt(args[0]) || 1;
+          const pageSize = 10;
+          const dbClient = getClient();
+          const { data: allWarnings, error } = await dbClient.from('warnings').select('*').order('created_at', { ascending: false });
+          if (error) throw error;
+          if (!allWarnings || allWarnings.length === 0) return message.reply({ embeds: [createErrorEmbed('Sem Avisos', 'Nenhum aviso encontrado no sistema.')] });
+
+          const byUser = {};
+          allWarnings.forEach(w => {
+            if (!byUser[w.user_id]) byUser[w.user_id] = { user_id: w.user_id, warnings: [], latest: w.created_at };
+            byUser[w.user_id].warnings.push(w);
+            if (new Date(w.created_at) > new Date(byUser[w.user_id].latest)) byUser[w.user_id].latest = w.created_at;
+          });
+          const sorted = Object.values(byUser).sort((a, b) => new Date(b.latest) - new Date(a.latest));
+          const totalPages = Math.ceil(sorted.length / pageSize);
+          const pageData = sorted.slice((page - 1) * pageSize, page * pageSize);
+          if (pageData.length === 0) return message.reply({ embeds: [createErrorEmbed('Página Inválida', `Apenas ${totalPages} página(s) disponíveis.`)] });
+
+          const embed = new EmbedBuilder().setColor(0xfaa61a).setTitle(`⚠️ Lista de Avisos (${page}/${totalPages})`).setDescription(`${sorted.length} usuários com avisos`).setTimestamp();
+          for (const ud of pageData) {
+            const user = await client.users.fetch(ud.user_id).catch(() => null);
+            embed.addFields({ name: `${ud.warnings.length} avisos — ${user?.tag || ud.user_id}`, value: `Último: ${new Date(ud.latest).toLocaleDateString('pt-BR')}\n${ud.warnings.slice(0, 2).map(w => `• ${w.reason}`).join('\n')}`, inline: false });
+          }
+
+          const navRow = new ActionRowBuilder();
+          if (page > 1) navRow.addComponents(new ButtonBuilder().setCustomId(`warns_${page-1}`).setLabel('⬅️').setStyle(2));
+          navRow.addComponents(new ButtonBuilder().setLabel(`${page}/${totalPages}`).setStyle(2).setDisabled(true).setCustomId('page_label'));
+          if (page < totalPages) navRow.addComponents(new ButtonBuilder().setCustomId(`warns_${page+1}`).setLabel('➡️').setStyle(2));
+
+          const reply = await message.reply({ embeds: [embed], components: navRow.components.length > 1 ? [navRow] : [] });
+          const col = reply.createMessageComponentCollector({ filter: i => i.user.id === message.author.id, time: 60000 });
+          col.on('collect', async i => {
+            const np = parseInt(i.customId.split('_')[1]);
+            const nd = sorted.slice((np-1)*pageSize, np*pageSize);
+            const ne = new EmbedBuilder().setColor(0xfaa61a).setTitle(`⚠️ Lista de Avisos (${np}/${totalPages})`).setDescription(`${sorted.length} usuários com avisos`).setTimestamp();
+            for (const ud of nd) {
+              const user = await client.users.fetch(ud.user_id).catch(() => null);
+              ne.addFields({ name: `${ud.warnings.length} avisos — ${user?.tag || ud.user_id}`, value: `Último: ${new Date(ud.latest).toLocaleDateString('pt-BR')}\n${ud.warnings.slice(0, 2).map(w => `• ${w.reason}`).join('\n')}`, inline: false });
+            }
+            const nr = new ActionRowBuilder();
+            if (np > 1) nr.addComponents(new ButtonBuilder().setCustomId(`warns_${np-1}`).setLabel('⬅️').setStyle(2));
+            nr.addComponents(new ButtonBuilder().setLabel(`${np}/${totalPages}`).setStyle(2).setDisabled(true).setCustomId('page_label'));
+            if (np < totalPages) nr.addComponents(new ButtonBuilder().setCustomId(`warns_${np+1}`).setLabel('➡️').setStyle(2));
+            await i.update({ embeds: [ne], components: nr.components.length > 1 ? [nr] : [] });
+          });
+          col.on('end', () => reply.edit({ components: [] }).catch(() => {}));
+        } catch (err) {
+          await message.reply({ embeds: [createErrorEmbed('Erro ao Listar Avisos', err.message)] });
+        }
+      }
+
+      // ---- .mute ----
+      if (command === 'mute') {
+        try {
+          const guild = client.guilds.cache.get(discordConfig.guildId);
+          if (!guild) throw new Error('Guild não encontrada');
+          const mentionMatch = message.content.match(/<@!?(\d+)>/);
+          if (!mentionMatch) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.mute <@user> <duração>` — ex: 1m, 1h, 1d')] });
+          const targetId = mentionMatch[1];
+          const durationMatch = message.content.match(/\b(\d+[smhdMy])\b/);
+          if (!durationMatch) return message.reply({ embeds: [createErrorEmbed('Duração Inválida', 'Formatos: 1s, 1m, 1h, 1d, 1M, 1y')] });
+          const durationMs = parseTime(durationMatch[1]);
+          if (!durationMs) return message.reply({ embeds: [createErrorEmbed('Duração Inválida', 'Formato não reconhecido.')] });
+          const member = await guild.members.fetch(targetId).catch(() => null);
+          if (!member) return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')] });
+
+          let muteRole = guild.roles.cache.find(r => r.name === 'Muted');
+          if (!muteRole) muteRole = await guild.roles.create({ name: 'Muted', color: 0x808080, reason: 'Cargo para silenciados' });
+          await member.roles.add(muteRole);
+          if (member.voice.channel) await member.voice.setMute(true, 'Moderação').catch(() => {});
+          await message.reply({ embeds: [createSuccessEmbed('Silenciado', `${member.user.tag} silenciado por ${formatModTime(durationMs)}.`)] });
+
+          setTimeout(async () => {
+            const m = await guild.members.fetch(targetId).catch(() => null);
+            if (m?.roles.cache.has(muteRole.id)) {
+              await m.roles.remove(muteRole).catch(() => {});
+              if (m.voice.serverMute) await m.voice.setMute(false, 'Auto-unmute').catch(() => {});
+              await message.channel.send({ embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('✅ Desmutado').setDescription(`${m.user.tag} desmutado automaticamente.`)] }).catch(() => {});
+            }
+          }, durationMs);
+        } catch (err) {
+          await message.reply({ embeds: [createErrorEmbed('Erro ao Silenciar', err.message)] });
+        }
+      }
+
+      // ---- .unmute ----
+      if (command === 'unmute') {
+        try {
+          const guild = client.guilds.cache.get(discordConfig.guildId);
+          if (!guild) throw new Error('Guild não encontrada');
+          const mentionMatch = message.content.match(/<@!?(\d+)>/);
+          if (!mentionMatch) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.unmute <@user>`')] });
+          const targetId = mentionMatch[1];
+          const member = await guild.members.fetch(targetId).catch(() => null);
+          if (!member) return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')] });
+          const muteRole = guild.roles.cache.find(r => r.name === 'Muted');
+          if (!muteRole || !member.roles.cache.has(muteRole.id)) return message.reply({ embeds: [createErrorEmbed('Não Silenciado', 'Este usuário não está silenciado.')] });
+          await member.roles.remove(muteRole);
+          if (member.voice.serverMute) await member.voice.setMute(false, 'Moderação').catch(() => {});
+          await message.reply({ embeds: [createSuccessEmbed('Desmutado', `${member.user.tag} desmutado com sucesso.`)] });
+        } catch (err) {
+          await message.reply({ embeds: [createErrorEmbed('Erro ao Desmutar', err.message)] });
+        }
+      }
+
+      // ---- .ban ----
+      if (command === 'ban') {
+        try {
+          const guild = client.guilds.cache.get(discordConfig.guildId);
+          if (!guild) throw new Error('Guild não encontrada');
+          const mentionMatch = message.content.match(/<@!?(\d+)>/);
+          if (!mentionMatch) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.ban <@user> [motivo]`')] });
+          const targetId = mentionMatch[1];
+          const reason = message.content.split('>').slice(1).join('>').trim() || 'Sem motivo especificado';
+          const member = await guild.members.fetch(targetId).catch(() => null);
+          if (!member) return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')] });
+          await member.ban({ reason });
+          await message.reply({ embeds: [createSuccessEmbed('Banido', `${member.user.tag} foi banido.\n**Motivo:** ${reason}`)] });
+        } catch (err) {
+          await message.reply({ embeds: [createErrorEmbed('Erro ao Banir', err.message)] });
+        }
+      }
+
+      // ---- .stats ----
+      if (command === 'stats') {
+        try {
+          let targetUserId = message.author.id;
+          if (args.length > 0) {
+            const mentionMatch = args[0].match(/^<@!?(\d+)>$/);
+            if (mentionMatch) {
+              targetUserId = mentionMatch[1];
+            } else if (/^\d+$/.test(args[0])) {
+              targetUserId = args[0];
+            }
+          }
+
+          const brawlhallaId = await getUserBrawlhallaId(targetUserId);
+          if (!brawlhallaId) {
+            return await message.reply({ embeds: [createErrorEmbed('Brawlhalla ID Não Encontrado', 'Este usuário não tem um Brawlhalla ID registrado.')] });
+          }
+
+          // Instant Result Strategy: Check cache first (including stale)
+          const cachedData = getCached(`player:${brawlhallaId}`, true);
+          if (cachedData) {
+            return await message.reply({ embeds: [createStatsEmbed(cachedData)] });
+          }
+
+          // No cache: show loading and fetch
+          const loadingEmbed = new EmbedBuilder()
+            .setColor(0xfaa61a)
+            .setTitle(`${EMOJIS.loading} Carregando estatísticas...`)
+            .setDescription('Buscando dados do Brawlhalla...');
+
+          const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
+          const playerData = await fetchPlayerStats(brawlhallaId);
+          await sendCleanMessage(loadingMsg, createStatsEmbed(playerData));
+
+        } catch (err) {
+          console.error('Error fetching stats:', err);
+          await message.reply({ embeds: [createErrorEmbed('Erro ao Buscar Estatísticas', err.message)] });
+        }
+      }
+
+      // ---- .clan ----
+      if (command === 'clan') {
+        try {
+          let clanId = process.env.BRAWLHALLA_CLAN_ID || '396943';
+          if (args.length > 0 && /^\d+$/.test(args[0])) {
+            clanId = args[0];
+          }
+
+          // Instant Result Strategy: Check cache first (including stale)
+          const cachedData = getCached(`clan:${clanId}`, true);
+          if (cachedData) {
+            return await message.reply({ embeds: [createClanEmbed(cachedData)] });
+          }
+
+          const loadingEmbed = new EmbedBuilder()
+            .setColor(0xfaa61a)
+            .setTitle(`${EMOJIS.loading} Carregando informações do clã...`)
+            .setDescription('Buscando dados do Brawlhalla...');
+
+          const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
+          const clanData = await fetchClanStats(clanId);
+          await sendCleanMessage(loadingMsg, createClanEmbed(clanData));
+
+        } catch (err) {
+          console.error('Error fetching clan stats:', err);
+          await message.reply({ embeds: [createErrorEmbed('Erro ao Buscar Estatísticas do Clã', err.message)] });
         }
       }
 

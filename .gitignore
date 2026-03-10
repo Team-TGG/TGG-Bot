@@ -1,3 +1,4 @@
 node_modules/
 .env
 .brawlhalla-clan-cache.json
+brawlhalla_cache.json

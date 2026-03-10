@@ -11,7 +11,7 @@ let client = null;
 /**
  * Get Supabase client (lazy init). Uses SUPABASE_URL + service role key.
  */
-function getClient() {
+export function getClient() {
   if (!client) {
     if (!supabaseConfig.url) throw new Error('SUPABASE_URL is not set in .env');
     const key = supabaseConfig.serviceRoleKey || supabaseConfig.anonKey;
