@@ -3,6 +3,13 @@ import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuil
 import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, addUser, deleteUser, deactivateUser, reactivateOrAddUser, getClient } from './src/db.js';
 import { addWarning, getWarningCount, getUserWarnings, clearWarnings, removeWarning, parseTime, formatTime } from './src/moderation.js';
 import { 
+  fetchPlayerStats, 
+  fetchClanStats, 
+  createStatsEmbed, 
+  createClanEmbed, 
+  getUserBrawlhallaId 
+} from './src/brawlhalla.js';
+import { 
   getScoreTypes, 
   addTrainingSession, 
   getInstructorSessions, 
@@ -119,6 +126,10 @@ async function sendCleanMessage(originalMessage, newEmbed) {
     'resgatar': 'buy',
     'buy': 'buy',
     'comprar': 'buy',
+    'stats': 'stats',
+    'estatisticas': 'stats',
+    'clan': 'clan',
+    'clã': 'clan',
     'claim': 'claim',
     'reivindicar': 'claim',
     'unclaim': 'unclaim',
@@ -216,7 +227,8 @@ async function sendCleanMessage(originalMessage, newEmbed) {
           .setTitle(`${EMOJIS.crossedSwords} Guilda`)
           .addFields(
             { name: `${EMOJIS.arrowRight} .missoes`, value: 'Mostrar as missões da semana atual', inline: false },
-            { name: `${EMOJIS.arrowRight} .stats (WIP)`, value: 'Trazer seus status atualizados do jogo', inline: false },
+            { name: `${EMOJIS.arrowRight} .stats [@usuário]`, value: 'Mostrar estatísticas de Brawlhalla do usuário (sem menção usa você)', inline: false },
+            { name: `${EMOJIS.arrowRight} .clan [ID]`, value: 'Exibir informações de um clã', inline: false },
             { name: `${EMOJIS.arrowRight} .progresso (WIP)`, value: 'Verificar seu progresso na missão semanal (somente do que for possível rastrear)', inline: false }
           )
           .setFooter({ text: 'Selecione uma categoria no dropdown' })
@@ -289,7 +301,17 @@ async function sendCleanMessage(originalMessage, newEmbed) {
             { name: `${EMOJIS.arrowRight} .unclaim <@user|user_id>`, value: 'Remover sua reivindicação de aluno', inline: false },
             { name: `${EMOJIS.arrowRight} .pontos [tipo] [aluno] [obs]`, value: 'Adicionar pontos automaticamente baseados no tipo de treinamento', inline: false },
             { name: `${EMOJIS.arrowRight} .instrutor ranking`, value: 'Ver o ranking dos instrutores mais ativos', inline: false },
-            { name: `${EMOJIS.arrowRight} .instrutor [comando]`, value: 'Sistema simplificado (pontos, sessao, concluir, parcial, historico, ranking, tipos)', inline: false },
+            { name: `${EMOJIS.arrowRight} .instrutor [comando]`, value: 'Sistema simplificado (pontos, sessao, concluir, parcial, historico, ranking, tipos)', inline: false }
+          )
+          .setFooter({ text: 'Selecione uma categoria no dropdown' })
+          .setTimestamp();
+
+        const page8 = new EmbedBuilder()
+          .setColor(0x5865f2)
+          .setTitle(`${EMOJIS.crossedSwords} Brawlhalla`)
+          .addFields(
+            { name: `${EMOJIS.arrowRight} .stats [@user]`, value: 'Ver estatísticas do Brawlhalla do usuário', inline: false },
+            { name: `${EMOJIS.arrowRight} .clan [clan_id]`, value: 'Ver estatísticas do clã (padrão: 396943)', inline: false },
             { name: `${EMOJIS.arrowRight} .shop [categoria]`, value: 'Ver loja de recompensas com menu interativo\n**Abreviações:** .shop cos, .shop func, .shop stat', inline: false },
             { name: `${EMOJIS.arrowRight} .buy [ID]`, value: 'Comprar item da loja usando pontos', inline: false }
           )
@@ -306,7 +328,8 @@ async function sendCleanMessage(originalMessage, newEmbed) {
             { label: 'Gerenciamento', value: 'users', emoji: EMOJIS.gear, description: 'Gerenciamento de usuários' },
             { label: 'Inativos', value: 'inac', emoji: EMOJIS.sleep, description: 'Comandos de inatividade' },
             { label: 'Moderação', value: 'mod', emoji: EMOJIS.hammer, description: 'Comandos de moderação' },
-            { label: 'Treinamento', value: 'training', emoji: EMOJIS.graduation, description: 'Sistema de treinamento' }
+            { label: 'Treinamento', value: 'training', emoji: EMOJIS.graduation, description: 'Sistema de treinamento' },
+            { label: 'Brawlhalla', value: 'brawlhalla', emoji: EMOJIS.crossedSwords, description: 'Estatísticas do Brawlhalla' }
           );
 
         const backButton = new ButtonBuilder()
@@ -335,6 +358,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
             if (selected === 'inac') embedToShow = page5;
             if (selected === 'mod') embedToShow = page6;
             if (selected === 'training') embedToShow = page7;
+            if (selected === 'brawlhalla') embedToShow = page8;
             await interaction.update({ embeds: [embedToShow], components: [row, rowWithBack] });
           } else if (interaction.customId === 'help_back') {
             await interaction.update({ embeds: [page1], components: [row] });
@@ -1120,8 +1144,8 @@ async function sendCleanMessage(originalMessage, newEmbed) {
           const pageSize = 10;
           
           // Get all users with warnings from database
-          const client = getClient();
-          const { data: allWarnings, error } = await client
+          const dbClient = getClient();
+          const { data: allWarnings, error } = await dbClient
             .from('warnings')
             .select('*')
             .order('created_at', { ascending: false });
@@ -1175,7 +1199,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
             .setTimestamp();
           
           for (const userData of pageUsers) {
-            const user = await client.users.fetch(userData.user_id).catch(() => null);
+            const user = await message.client.users.fetch(userData.user_id).catch(() => null);
             const userName = user?.tag || `Usuário ${userData.user_id}`;
             const warningCount = userData.warnings.length;
             const latestWarning = new Date(userData.latest_warning).toLocaleDateString('pt-BR');
@@ -1246,7 +1270,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
               .setTimestamp();
             
             for (const userData of newPageUsers) {
-              const user = await client.users.fetch(userData.user_id).catch(() => null);
+              const user = await message.client.users.fetch(userData.user_id).catch(() => null);
               const userName = user?.tag || `Usuário ${userData.user_id}`;
               const warningCount = userData.warnings.length;
               const latestWarning = new Date(userData.latest_warning).toLocaleDateString('pt-BR');
@@ -2500,6 +2524,79 @@ async function sendCleanMessage(originalMessage, newEmbed) {
         } catch (err) {
           await message.reply({
             embeds: [createErrorEmbed('Erro no Comando', err.message)]
+          });
+        }
+      }
+
+      // ---- .stats ----
+      if (command === 'stats') {
+        try {
+          const loadingEmbed = new EmbedBuilder()
+            .setColor(0xfaa61a)
+            .setTitle(`${EMOJIS.loading} Carregando estatísticas...`)
+            .setDescription('Buscando dados do Brawlhalla...');
+
+          const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
+
+          let targetUserId = message.author.id;
+
+          // Check if user mentioned someone
+          if (args.length > 0) {
+            const mentionMatch = args[0].match(/^<@!?(\d+)>$/);
+            if (mentionMatch) {
+              targetUserId = mentionMatch[1];
+            } else if (/^\d+$/.test(args[0])) {
+              targetUserId = args[0];
+            }
+          }
+
+          const brawlhallaId = await getUserBrawlhallaId(targetUserId);
+
+          if (!brawlhallaId) {
+            return await sendCleanMessage(loadingMsg, createErrorEmbed(
+              'Brawlhalla ID Não Encontrado',
+              'Este usuário não tem um Brawlhalla ID registrado no banco de dados.'
+            ));
+          }
+
+          const playerData = await fetchPlayerStats(brawlhallaId);
+          const statsEmbed = createStatsEmbed(playerData);
+
+          await sendCleanMessage(loadingMsg, statsEmbed);
+
+        } catch (err) {
+          console.error('Error fetching stats:', err);
+          await message.reply({
+            embeds: [createErrorEmbed('Erro ao Buscar Estatísticas', err.message)]
+          });
+        }
+      }
+
+      // ---- .clan ----
+      if (command === 'clan') {
+        try {
+          const loadingEmbed = new EmbedBuilder()
+            .setColor(0xfaa61a)
+            .setTitle(`${EMOJIS.loading} Carregando informações do clã...`)
+            .setDescription('Buscando dados do Brawlhalla...');
+
+          const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
+
+          let clanId = process.env.BRAWLHALLA_CLAN_ID || '396943'; // Default clan ID (env var overrides)
+
+          if (args.length > 0 && /^\d+$/.test(args[0])) {
+            clanId = args[0];
+          }
+
+          const clanData = await fetchClanStats(clanId);
+          const clanEmbed = createClanEmbed(clanData);
+
+          await sendCleanMessage(loadingMsg, clanEmbed);
+
+        } catch (err) {
+          console.error('Error fetching clan stats:', err);
+          await message.reply({
+            embeds: [createErrorEmbed('Erro ao Buscar Estatísticas do Clã', err.message)]
           });
         }
       }

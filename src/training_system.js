@@ -1,6 +1,5 @@
 import { getClient } from './db.js';
 
-// Training Score Types
 export async function getScoreTypes() {
   const client = getClient();
   
@@ -11,7 +10,7 @@ export async function getScoreTypes() {
     
     if (error) throw error;
     
-    // Convert to object format for compatibility
+
     const scoreTypes = {};
     data.forEach(type => {
       scoreTypes[type.type_key] = {
@@ -28,12 +27,12 @@ export async function getScoreTypes() {
   }
 }
 
-// Training Sessions
+
 export async function addTrainingSession(instructorId, studentId, type, duration, points, notes = '', status = 'complete') {
   const client = getClient();
   
   try {
-    // Insert training session
+
     const { data, error } = await client
       .from('training_sessions')
       .insert({
@@ -50,7 +49,7 @@ export async function addTrainingSession(instructorId, studentId, type, duration
     
     if (error) throw error;
     
-    // Update instructor stats if session is complete
+  
     if (status === 'complete') {
       await updateInstructorStats(instructorId, type, points);
     }
@@ -102,12 +101,12 @@ export async function getStudentSessions(studentId, limit = 10) {
   }
 }
 
-// Instructor Stats
+
 async function updateInstructorStats(instructorId, type, points) {
   const client = getClient();
   
   try {
-    // Check if stats exist
+
     const { data: existingStats, error: fetchError } = await client
       .from('instructor_stats')
       .select('*')
@@ -119,7 +118,7 @@ async function updateInstructorStats(instructorId, type, points) {
     }
     
     if (existingStats) {
-      // Update existing stats
+
       const typesCompleted = existingStats.types_completed || {};
       typesCompleted[type] = (typesCompleted[type] || 0) + 1;
       
@@ -135,7 +134,7 @@ async function updateInstructorStats(instructorId, type, points) {
       
       if (updateError) throw updateError;
     } else {
-      // Create new stats
+
       const { error: insertError } = await client
         .from('instructor_stats')
         .insert({
@@ -211,7 +210,6 @@ export async function getRoleHolderLeaderboard() {
   }
 }
 
-// Leaderboards
 export async function getInstructorLeaderboard() {
   const client = getClient();
   
@@ -225,7 +223,6 @@ export async function getInstructorLeaderboard() {
     
     const scoreTypes = await getScoreTypes();
     
-    // Aggregate instructor scores
     const instructorScores = {};
     sessions.forEach(session => {
       const { instructor_id, type_key, points } = session;
@@ -248,7 +245,6 @@ export async function getInstructorLeaderboard() {
       instructorScores[instructor_id].scores[type_key] += points;
     });
     
-    // Sort and return top 10
     return Object.values(instructorScores)
       .sort((a, b) => b.total_points - a.total_points)
       .slice(0, 10);
@@ -271,7 +267,6 @@ export async function getStudentLeaderboard() {
     
     const scoreTypes = await getScoreTypes();
     
-    // Aggregate student scores
     const studentScores = {};
     sessions.forEach(session => {
       const { student_id, type_key, points } = session;
@@ -294,7 +289,6 @@ export async function getStudentLeaderboard() {
       studentScores[student_id].scores[type_key] += points;
     });
     
-    // Sort and return top 10
     return Object.values(studentScores)
       .sort((a, b) => b.total_points - a.total_points)
       .slice(0, 10);
@@ -329,7 +323,6 @@ export async function calculateTotalScore(userId, isInstructor = false) {
   }
 }
 
-// Shop System
 export async function getShopItems() {
   const client = getClient();
   
@@ -340,7 +333,6 @@ export async function getShopItems() {
     
     if (error) throw error;
     
-    // Convert to old format for compatibility
     return (data || []).map(item => ({
       id: item.item_id,
       category: item.category,
@@ -365,7 +357,6 @@ export async function purchaseItem(userId, itemId) {
   const client = getClient();
   
   try {
-    // Get item details
     const { data: item, error: itemError } = await client
       .from('shop_items')
       .select('*')
@@ -375,13 +366,11 @@ export async function purchaseItem(userId, itemId) {
     if (itemError) throw itemError;
     if (!item) throw new Error('Item não encontrado na loja.');
     
-    // Check user points
     const userPoints = await calculateTotalScore(userId);
     if (userPoints < item.cost) {
       throw new Error(`Pontos insuficientes. Você tem ${userPoints} pontos, mas precisa de ${item.cost} pontos.`);
     }
-    
-    // Record purchase
+
     const { error: purchaseError } = await client
       .from('purchase_history')
       .insert({
@@ -422,7 +411,6 @@ export async function applyRewardEffect(userId, item) {
   const client = getClient();
   
   try {
-    // Get current preferences
     const { data: currentPrefs, error: fetchError } = await client
       .from('user_preferences')
       .select('*')
@@ -431,7 +419,6 @@ export async function applyRewardEffect(userId, item) {
     
     const preferences = currentPrefs?.preferences || {};
     
-    // Apply effect based on item type
     let updatedPreferences = { ...preferences };
     
     switch (item.type) {
@@ -472,12 +459,10 @@ export async function applyRewardEffect(userId, item) {
         break;
         
       default:
-        // For other types like role_temp, public_praise, etc.
-        // These would be handled by Discord bot logic
+
         break;
     }
     
-    // Update preferences
     if (currentPrefs) {
       const { error: updateError } = await client
         .from('user_preferences')
@@ -568,7 +553,6 @@ export async function getUserPreferences(userId) {
   }
 }
 
-// Utility function
 export function hasInstructorRole(member, instructorRoleId) {
   if (!instructorRoleId) return true;
   return member.roles.cache.has(instructorRoleId);

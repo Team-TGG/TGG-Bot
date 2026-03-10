@@ -1,5 +1,5 @@
 // adm user ids
-const ENABLE_INACTIVE_REMINDER = true;
+const ENABLE_INACTIVE_REMINDER = false;
 
 export const discord = {
   token: process.env.DISCORD_TOKEN,
