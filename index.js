@@ -120,7 +120,9 @@ async function sendCleanMessage(originalMessage, newEmbed) {
     'buy': 'buy',
     'comprar': 'buy',
     'claim': 'claim',
-    'unclaim': 'unclaim'
+    'reivindicar': 'claim',
+    'unclaim': 'unclaim',
+    'desreivindicar': 'unclaim',
   };
 
   const EMOJIS = {
@@ -283,6 +285,8 @@ async function sendCleanMessage(originalMessage, newEmbed) {
           .setColor(0x5865f2)
           .setTitle(`${EMOJIS.success} Treinamento`)
           .addFields(
+            { name: `${EMOJIS.arrowRight} .claim <@user|user_id> [instructor2]`, value: 'Reivindicar aluno (múltiplos instrutores permitidos)', inline: false },
+            { name: `${EMOJIS.arrowRight} .unclaim <@user|user_id>`, value: 'Remover sua reivindicação de aluno', inline: false },
             { name: `${EMOJIS.arrowRight} .pontos [tipo] [aluno] [obs]`, value: 'Adicionar pontos automaticamente baseados no tipo de treinamento', inline: false },
             { name: `${EMOJIS.arrowRight} .instrutor ranking`, value: 'Ver o ranking dos instrutores mais ativos', inline: false },
             { name: `${EMOJIS.arrowRight} .instrutor [comando]`, value: 'Sistema simplificado (pontos, sessao, concluir, parcial, historico, ranking, tipos)', inline: false },
@@ -1625,7 +1629,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
 
           if (args.length === 0) {
             return message.reply({
-              embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.claim [aluno]` - Reivindica um aluno como seu estudante')]
+              embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.claim <@user|user_id> [instructor2]` - Reivindica um aluno como seu estudante')]
             });
           }
 
@@ -1633,23 +1637,21 @@ async function sendCleanMessage(originalMessage, newEmbed) {
           let student;
 
           if (studentIdentifier.startsWith('<@') || studentIdentifier.startsWith('<!')) {
+            // Handle ping
             const userId = studentIdentifier.replace(/[<@!>]/g, '');
             student = await guild.members.fetch(userId).catch(() => null);
+          } else if (/^\d+$/.test(studentIdentifier)) {
+            // Handle raw user ID
+            student = await guild.members.fetch(studentIdentifier).catch(() => null);
           } else {
+            // Handle username/nickname
             const cleanIdentifier = studentIdentifier.replace(/^@/, '');
-            
-            if (/^\d+$/.test(cleanIdentifier)) {
-              student = await guild.members.fetch(cleanIdentifier).catch(() => null);
-            }
-            
-            if (!student) {
-              const allMembers = await guild.members.fetch({ cache: false }).catch(() => []);
-              student = allMembers.find(m => 
-                m.nickname === cleanIdentifier || 
-                m.user.username === cleanIdentifier ||
-                m.displayName === cleanIdentifier
-              );
-            }
+            const allMembers = await guild.members.fetch({ cache: false }).catch(() => []);
+            student = allMembers.find(m => 
+              m.nickname === cleanIdentifier || 
+              m.user.username === cleanIdentifier ||
+              m.displayName === cleanIdentifier
+            );
           }
 
           if (!student) {
@@ -1660,11 +1662,11 @@ async function sendCleanMessage(originalMessage, newEmbed) {
 
           const currentInstructorData = await getStudentInstructor(student.id);
           
-          if (currentInstructorData && currentInstructorData.instructor_id !== message.author.id) {
-            const instructorName = currentInstructorData.instructor ? currentInstructorData.instructor.username : 'Desconhecido';
-            
+          // Check if current instructor already claimed this student
+          const alreadyClaimed = currentInstructorData.find(instructor => instructor.instructor_id === message.author.id);
+          if (alreadyClaimed) {
             return message.reply({
-              embeds: [createErrorEmbed('Aluno Já Reivindicado', `Este aluno já foi reivindicado por **${instructorName}**.`)]
+              embeds: [createErrorEmbed('Aluno Já Reivindicado', 'Você já reivindicou este aluno.')]
             });
           }
 
@@ -1709,13 +1711,17 @@ async function sendCleanMessage(originalMessage, newEmbed) {
             }
           }
 
+          // Get all instructors for this student after claiming
+          const allInstructors = await getStudentInstructor(student.id);
+          const instructorTags = allInstructors.map(instructor => `<@${instructor.instructor_id}>`).join(', ');
+
           const embed = new EmbedBuilder()
             .setColor(0x00ff00)
             .setTitle('✅ Aluno Reivindicado')
             .setDescription(`**${student.user.tag}** foi reivindicado como aluno.`)
             .addFields(
               { name: '👨‍🎓 Aluno', value: `<@${student.id}>`, inline: true },
-              { name: '👨‍🏫 Instrutor(es)', value: instructorIds.map(id => `<@${id}>`).join(', '), inline: true }
+              { name: '👨‍🏫 Instrutor(es)', value: instructorTags || 'Nenhum', inline: true }
             )
             .setTimestamp();
 
@@ -1736,7 +1742,7 @@ async function sendCleanMessage(originalMessage, newEmbed) {
 
           if (args.length === 0) {
             return message.reply({
-              embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.unclaim [aluno]` - Remove a reivindicação de um aluno')]
+              embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.unclaim <@user|user_id>` - Remove sua reivindicação de um aluno')]
             });
           }
 
@@ -1744,23 +1750,21 @@ async function sendCleanMessage(originalMessage, newEmbed) {
           let student;
 
           if (studentIdentifier.startsWith('<@') || studentIdentifier.startsWith('<!')) {
+            // Handle ping
             const userId = studentIdentifier.replace(/[<@!>]/g, '');
             student = await guild.members.fetch(userId).catch(() => null);
+          } else if (/^\d+$/.test(studentIdentifier)) {
+            // Handle raw user ID
+            student = await guild.members.fetch(studentIdentifier).catch(() => null);
           } else {
+            // Handle username/nickname
             const cleanIdentifier = studentIdentifier.replace(/^@/, '');
-            
-            if (/^\d+$/.test(cleanIdentifier)) {
-              student = await guild.members.fetch(cleanIdentifier).catch(() => null);
-            }
-            
-            if (!student) {
-              const allMembers = await guild.members.fetch({ cache: false }).catch(() => []);
-              student = allMembers.find(m => 
-                m.nickname === cleanIdentifier || 
-                m.user.username === cleanIdentifier ||
-                m.displayName === cleanIdentifier
-              );
-            }
+            const allMembers = await guild.members.fetch({ cache: false }).catch(() => []);
+            student = allMembers.find(m => 
+              m.nickname === cleanIdentifier || 
+              m.user.username === cleanIdentifier ||
+              m.displayName === cleanIdentifier
+            );
           }
 
           if (!student) {
@@ -1771,20 +1775,22 @@ async function sendCleanMessage(originalMessage, newEmbed) {
 
           const currentInstructorData = await getStudentInstructor(student.id);
           
-          if (!currentInstructorData) {
+          if (!currentInstructorData || currentInstructorData.length === 0) {
             return message.reply({
               embeds: [createErrorEmbed('Aluno Não Reivindicado', `Este aluno não foi reivindicado por nenhum instrutor.`)]
             });
           }
 
           const isAdminUser = await isAdmin(message.author.id);
-          const isClaimedInstructor = currentInstructorData.instructor_id === message.author.id;
+          const isClaimedInstructor = currentInstructorData.some(instructor => instructor.instructor_id === message.author.id);
 
           if (!isClaimedInstructor && !isAdminUser) {
-            const instructorName = currentInstructorData.instructor ? currentInstructorData.instructor.username : 'Desconhecido';
+            const instructorNames = currentInstructorData.map(instructor => 
+              instructor.instructor ? instructor.instructor.username : 'Desconhecido'
+            ).join(', ');
             
             return message.reply({
-              embeds: [createErrorEmbed('Acesso Negado', `Este aluno foi reivindicado por **${instructorName}**. Apenas o instrutor que reivindicou ou um administrador pode remover a reivindicação.`)]
+              embeds: [createErrorEmbed('Acesso Negado', `Este aluno foi reivindicado por **${instructorNames}**. Apenas um dos instrutores que reivindicou ou um administrador pode remover a reivindicação.`)]
             });
           }
 
@@ -1803,27 +1809,39 @@ async function sendCleanMessage(originalMessage, newEmbed) {
             '1480538487747903519'  // yaya
           ];
 
-          // Remove association from DB
-          await unclaimStudent(currentInstructorData.instructor_id, student.id);
+          // Remove only this instructor's association from DB
+          await unclaimStudent(message.author.id, student.id);
 
-          // Remove all instructor-specific roles from the student
-          try {
-            const rolesToRemove = student.roles.cache.filter(role => instructorRolesToRemove.includes(role.id));
-            if (rolesToRemove.size > 0) {
-              await student.roles.remove(rolesToRemove);
-              console.log(`[DEBUG] Removed ${rolesToRemove.size} instructor roles from student ${student.id}`);
+          // Check if there are still other instructors after removing this one
+          const remainingInstructors = await getStudentInstructor(student.id);
+          
+          // Only remove instructor roles if no other instructors remain
+          if (!remainingInstructors || remainingInstructors.length === 0) {
+            try {
+              const rolesToRemove = student.roles.cache.filter(role => instructorRolesToRemove.includes(role.id));
+              if (rolesToRemove.size > 0) {
+                await student.roles.remove(rolesToRemove);
+                console.log(`[DEBUG] Removed ${rolesToRemove.size} instructor roles from student ${student.id} (no remaining instructors)`);
+              }
+            } catch (err) {
+              console.error('[ERROR] Failed to remove instructor roles:', err);
             }
-          } catch (err) {
-            console.error('[ERROR] Failed to remove instructor roles:', err);
+          } else {
+            console.log(`[DEBUG] Kept instructor roles for student ${student.id} (still has ${remainingInstructors.length} instructors)`);
           }
+
+          // Get remaining instructors for the message
+          const remainingInstructorTags = remainingInstructors && remainingInstructors.length > 0 
+            ? remainingInstructors.map(instructor => `<@${instructor.instructor_id}>`).join(', ')
+            : 'Nenhum';
 
           const embed = new EmbedBuilder()
             .setColor(0x00ff00)
             .setTitle('✅ Reivindicação Removida')
-            .setDescription(`**${message.author.tag}** removeu a reivindicação de **${student.user.tag}**.`)
+            .setDescription(`**${message.author.tag}** removeu sua reivindicação de **${student.user.tag}**.`)
             .addFields(
               { name: '👨‍🎓 Aluno', value: `<@${student.id}>`, inline: true },
-              { name: '👨‍🏫 Removido por', value: `<@${message.author.id}>`, inline: true }
+              { name: '👨‍🏫 Instrutores restantes', value: remainingInstructorTags, inline: true }
             )
             .setTimestamp();
 

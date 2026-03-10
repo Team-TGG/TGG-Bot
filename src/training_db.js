@@ -412,6 +412,18 @@ export async function claimStudent(instructorId, studentId) {
     studentUser = await reactivateOrAddUser(String(studentId), '0', 'Aluno');
   }
 
+  // Check if this instructor already claimed this student
+  const { data: existing, error: checkError } = await supabase
+    .from('student_instructors')
+    .select('*')
+    .eq('instructor_id', String(instructorId))
+    .eq('student_id', String(studentId))
+    .single();
+
+  if (existing) {
+    throw new Error('Você já reivindicou este aluno.');
+  }
+
   const { data, error } = await supabase
     .from('student_instructors')
     .insert({
@@ -422,10 +434,6 @@ export async function claimStudent(instructorId, studentId) {
     .single();
 
   if (error) {
-    if (error.code === '23505') {
-      throw new Error('Este aluno já está associado a um instrutor.');
-    }
-    
     console.error('Erro ao reivindicar aluno:', error);
     throw error;
   }
@@ -468,24 +476,21 @@ export async function getInstructorStudents(instructorId) {
 
 export async function getStudentInstructor(studentId) {
   // A tabela student_instructors usa IDs do Discord (strings numéricas)
+  // Return ALL instructors for this student
   const { data, error } = await supabase
     .from('student_instructors')
     .select(`
       instructor_id,
       instructor:users!student_instructors_instructor_id_fkey(discord_id, username)
     `)
-    .eq('student_id', String(studentId))
-    .single();
+    .eq('student_id', String(studentId));
 
   if (error) {
-    if (error.code === 'PGRST116') { 
-      return null;
-    }
-    console.error('Erro ao buscar instrutor do aluno:', error);
-    return null;
+    console.error('Erro ao buscar instrutores do aluno:', error);
+    return [];
   }
 
-  return data;
+  return data || [];
 }
 
 // ============ FUNÇÕES LEGADAS (Compatibilidade) ============
