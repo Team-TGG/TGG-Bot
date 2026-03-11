@@ -325,4 +325,87 @@ export async function getWeeklyMissions() {
 
   return data ?? [];
 }
+
+/**
+ * Deactivate a user in the database by Discord ID or Brawlhalla ID
+ * @param {string} identifier - Discord ID (starts with @) or Brawlhalla ID (numbers only)
+ * @returns {Promise<Object>} The updated record
+ */
+export async function deactivateUser(identifier) {
+  const supabase = getClient();
+  
+  let query;
+  if (identifier.startsWith('@')) {
+    const discordId = identifier.slice(1);
+    query = supabase.from('users').update({ active: false }).eq('discord_id', discordId);
+  } else {
+    query = supabase.from('users').update({ active: false }).eq('brawlhalla_id', identifier);
+  }
+  
+  const { data, error } = await query.select();
+  
+  if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error(`Usuário não encontrado com ${identifier.startsWith('@') ? 'Discord ID' : 'Brawlhalla ID'}: ${identifier}`);
+  }
+  
+  return data[0];
+}
+
+/**
+ * Add a new user or reactivate an existing one
+ * @param {string} discord_id - The Discord user ID
+ * @param {string} brawlhalla_id - The Brawlhalla user ID
+ * @param {string} username - The Discord username
+ * @returns {Promise<Object>} The inserted/updated record with a 'reactivated' flag
+ */
+export async function reactivateOrAddUser(discord_id, brawlhalla_id, username) {
+  const supabase = getClient();
+  
+  // Check if user already exists (including inactive ones)
+  const { data: existing, error: checkError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('discord_id', String(discord_id))
+    .single();
+  
+  if (checkError && checkError.code !== 'PGRST116') throw checkError;
+  
+  if (existing) {
+    // User exists, reactivate them
+    const { data, error } = await supabase
+      .from('users')
+      .update({ 
+        active: true,
+        username: username,
+        brawlhalla_id: String(brawlhalla_id),
+        role: 'recruit'
+      })
+      .eq('discord_id', String(discord_id))
+      .select();
+    
+    if (error) throw error;
+    if (!data || data.length === 0) throw new Error(`Falha ao atualizar usuário ${discord_id}`);
+
+    return { ...data[0], reactivated: true };
+  } else {
+    // User doesn't exist, create new one
+    const { data, error } = await supabase
+      .from('users')
+      .insert({
+        discord_id: String(discord_id),
+        brawlhalla_id: String(brawlhalla_id),
+        username: username,
+        role: 'recruit',
+        active: true,
+        created_at: new Date().toISOString().slice(0, 19).replace('T', ' ')
+      })
+      .select();
+    
+    if (error) throw error;
+    if (!data || data.length === 0) throw new Error(`Falha ao inserir novo usuário ${discord_id}`);
+
+    return { ...data[0], reactivated: false };
+  }
+}
 
