@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder } from 'discord.js';
-import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient } from './src/db.js';
+import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, deactivateUser } from './src/db.js';
 import { createClient, runSync, runEloSync } from './src/discord.js';
 import { runAndPostGuildActivity } from './src/guildActivity.js';
 import { fetchMovimentacao, buildMovimentacaoEmbeds, getDefaultDateRange, isValidDate, formatMovimentacaoAsText } from './src/movimentacao.js';
@@ -44,6 +44,8 @@ async function main() {
     'rules': 'regras',
     'missoes': 'missoes',
     'missions': 'missoes',
+    'entrou': 'entrou',
+    'saiu': 'saiu',
     'stats': 'stats',
     'estatisticas': 'stats',
     'clan': 'clan',
@@ -186,6 +188,16 @@ async function main() {
 
         const page4 = new EmbedBuilder()
           .setColor(0x5865f2)
+          .setTitle(`${EMOJIS.success} Gerenciamento de Usuários`)
+          .addFields(
+            { name: `${EMOJIS.arrowRight} .entrou <@user> <bhid> (admin)`, value: 'Adicionar novo usuário ou reativar existente no banco de dados', inline: false },
+            { name: `${EMOJIS.arrowRight} .saiu <@user|@discord_id|bhid> (admin)`, value: 'Desativar usuário do banco de dados (não exclui permanentemente)', inline: false }
+          )
+          .setFooter({ text: 'Selecione uma categoria no dropdown' })
+          .setTimestamp();
+
+        const page5 = new EmbedBuilder()
+          .setColor(0x5865f2)
           .setTitle(`${EMOJIS.xis} Inativos`)
           .addFields(
             { name: `${EMOJIS.arrowRight} .inac-all (admin)`, value: 'Dar o cargo "ina" a todos os players inativos', inline: false },
@@ -203,6 +215,7 @@ async function main() {
             { label: 'Guilda', value: 'guild', emoji: EMOJIS.crossedSwords, description: 'Comandos da guilda' },
             { label: 'Sincronização', value: 'sync', emoji: EMOJIS.hourglass, description: 'Comandos de sincronização' },
             { label: 'Informações', value: 'info', emoji: EMOJIS.clipboard, description: 'Comandos de informação' },
+            { label: 'Gerenciamento', value: 'users', emoji: EMOJIS.success, description: 'Gerenciamento de usuários' },
             { label: 'Inativos', value: 'inac', emoji: EMOJIS.xis, description: 'Comandos de inatividade' }
           );
 
@@ -222,7 +235,8 @@ async function main() {
             let embedToShow = page1;
             if (selected === 'sync') embedToShow = page2;
             if (selected === 'info') embedToShow = page3;
-            if (selected === 'inac') embedToShow = page4;
+            if (selected === 'users') embedToShow = page4;
+            if (selected === 'inac') embedToShow = page5;
             await interaction.update({ embeds: [embedToShow], components: [row] });
           }
         });
@@ -670,6 +684,151 @@ async function main() {
             embeds: [
               createErrorEmbed('Erro ao buscar missões', err.message)
             ]
+          });
+        }
+      }
+
+      // ---- .entrou ----
+      if (command === 'entrou') {
+        if (!(await isAdmin(message.author.id))) {
+          return message.reply({
+            embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
+          });
+        }
+        
+        try {
+          const guild = client.guilds.cache.get(discordConfig.guildId);
+          if (!guild) throw new Error('Guild não encontrada');
+
+          const mentionMatch = message.content.match(/<@!?(\d+)>/);
+          if (!mentionMatch) {
+            return message.reply({
+              embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.entrou <@user> <brawlhalla_id>`')]
+            });
+          }
+
+          const targetId = mentionMatch[1];
+          const brawlhallaId = args[1];
+
+          if (!brawlhallaId || !/^\d+$/.test(brawlhallaId)) {
+            return message.reply({
+              embeds: [createErrorEmbed('Brawlhalla ID Inválido', 'O Brawlhalla ID deve conter apenas números.')]
+            });
+          }
+
+          const member = await guild.members.fetch(targetId).catch(() => null);
+          if (!member) {
+            return message.reply({
+              embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')]
+            });
+          }
+
+          const result = await reactivateOrAddUser(targetId, brawlhallaId, member.user.tag);
+
+          const rolesToRemove = ['1466815420630565069', '1478477041077588098', '1437447173896802395'];
+          const rolesToAdd = ['1437441679572471940', '1437427750209327297'];
+
+          for (const roleId of rolesToRemove) {
+            if (member.roles.cache.has(roleId)) {
+              await member.roles.remove(roleId);
+            }
+          }
+
+          for (const roleId of rolesToAdd) {
+            if (!member.roles.cache.has(roleId)) {
+              await member.roles.add(roleId);
+            }
+          }
+
+          const embed = createSuccessEmbed(
+            result.reactivated ? 'Usuário Reativado' : 'Usuário Adicionado',
+            `${member.user.tag} foi ${result.reactivated ? 'reativado' : 'adicionado'} ao banco de dados.\n**Brawlhalla ID:** ${brawlhallaId}\n**Cargo:** Recruit\n\nCargos atualizados com sucesso!`
+          );
+
+          await message.reply({ embeds: [embed] });
+
+        } catch (err) {
+          await message.reply({
+            embeds: [createErrorEmbed('Erro ao Adicionar Usuário', err.message)]
+          });
+        }
+      }
+
+      // ---- .saiu ----
+      if (command === 'saiu') {
+        if (!(await isAdmin(message.author.id))) {
+          return message.reply({
+            embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
+          });
+        }
+        
+        try {
+          const guild = client.guilds.cache.get(discordConfig.guildId);
+          if (!guild) throw new Error('Guild não encontrada');
+
+          if (args.length === 0) {
+            return message.reply({
+              embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.saiu <@user|@discord_id|brawlhalla_id>`')]
+            });
+          }
+
+          const identifier = args[0];
+          let deactivatedUser;
+          let member = null;
+          let actualIdentifier = identifier;
+
+          if (identifier.startsWith('<@') && identifier.endsWith('>')) {            
+            const mentionMatch = identifier.match(/<@!?(\d+)>/);
+            if (mentionMatch) {
+              actualIdentifier = mentionMatch[1];
+              member = await guild.members.fetch(actualIdentifier).catch(() => null);
+            }
+          } else if (identifier.startsWith('@')) {
+            actualIdentifier = identifier.slice(1);
+            member = await guild.members.fetch(actualIdentifier).catch(() => null);
+          } else {
+            member = await guild.members.fetch(identifier).catch(() => null);
+            if (member) {
+              actualIdentifier = identifier;
+            }
+          }          
+          
+          let dbIdentifier;
+          if (member) {
+            dbIdentifier = `@${member.id}`;
+          } else if (identifier.startsWith('@') || identifier.startsWith('<@')) {
+            dbIdentifier = `@${actualIdentifier}`;
+          } else {
+            dbIdentifier = actualIdentifier;
+          }
+          
+          deactivatedUser = await deactivateUser(dbIdentifier);          
+          
+          if (member) {
+            const recruitRoles = ['1437441679572471940', '1437427750209327297'];
+            for (const roleId of recruitRoles) {
+              if (member.roles.cache.has(roleId)) {
+                await member.roles.remove(roleId);
+              }
+            }
+          }
+
+          const embed = createSuccessEmbed(
+            'Usuário Desativado',
+            `**Usuário:** ${deactivatedUser.username}\n**Discord ID:** ${deactivatedUser.discord_id}\n**Brawlhalla ID:** ${deactivatedUser.brawlhalla_id}\n\nUsuário desativado no banco de dados com sucesso!${member ? '\nCargos de recruit removidos.' : ''}`
+          );
+
+          await message.reply({ embeds: [embed] });
+
+        } catch (err) {
+          if (err.message.includes('não encontrado')) {
+            return message.reply({
+              embeds: [createErrorEmbed('Usuário Não Encontrado', err.message)]
+            });
+          }
+
+          await message.reply({
+            embeds: [createErrorEmbed('Erro ao Desativar Usuário', err.message)]
           });
         }
       }

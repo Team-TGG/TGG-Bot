@@ -5,6 +5,7 @@
  * Example: "yaya_s2/disneyritozx"
  */
 
+import 'dotenv/config';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -77,7 +78,7 @@ export async function fetchBrawlhallaClanData() {
     throw new Error('BRAWLHALLA_API_KEY not set in .env');
   }
 
-  const url = `https://api.brawlhalla.com/clan/${brawlhalla.clanId}?api_key=${brawlhalla.apiKey}`;
+  const url = `https://api.brawlhalla.com/clan/${brawlhalla.clanId}?api_key=${process.env.BRAWLHALLA_API_KEY}`;
 
   try {
     const response = await fetch(url);
