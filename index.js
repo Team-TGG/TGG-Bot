@@ -440,8 +440,15 @@ async function main() {
             targetId = message.author.id;
             note = args.join(' ').trim();
 
-            if (!note || note.length === 0) {
-              note = 'usou o comando /active';
+            if (!note || note.length < 15) {
+              return message.reply({
+                embeds: [
+                  createErrorEmbed(
+                    'Justificativa obrigatória',
+                    'Informe uma justificativa com **pelo menos 15 caracteres**.'
+                  )
+                ]
+              });
             }
           }
 
