@@ -83,26 +83,39 @@ export async function getUsers() {
  * Fetch discord_id + highest peak elo (1v1, 2v2 or 3v3) per user.
  * Uses player_elo_history and returns the highest peak among all modes.
  */
+
+// Alt -> Conta principal
+const BRAWLHALLA_ALIASES = {
+  '127174058' : '124178779', // Vitor (951624772792496198)
+  '122945577' : '69764588',  // Gotix (1093379724870430740)
+  '115180142' : '106754358', // Yaya (1447168951963353209)
+  '133266534' : '61968457',  // AmorimLeo18 (1220941650923098135)
+};
+
+function resolveBrawlhallaId(id) {
+  return BRAWLHALLA_ALIASES[id] || id;
+}
+
 export async function getUsersWithElo() {
   const supabase = getClient();
 
-  // Busca histórico de elo
   const { data: history, error: historyError } = await supabase
     .from('player_elo_history')
     .select('brawlhalla_id, peak_1v1, peak_2v2, peak_3v3');
+
   if (historyError) throw historyError;
 
-  // Busca usuários
   const { data: users, error: usersError } = await supabase
     .from('users')
-    .select('discord_id, brawlhalla_id');
+    .select('discord_id, brawlhalla_id')
+    .eq('active', true);
+
   if (usersError) throw usersError;
 
-  // brawlhalla_id -> maior elo entre todos os peaks
   const eloByBrawlhalla = new Map();
 
   for (const row of history ?? []) {
-    const id = row.brawlhalla_id;
+    const id = resolveBrawlhallaId(row.brawlhalla_id);
 
     const peak1 = row.peak_1v1 != null ? Number(row.peak_1v1) : 0;
     const peak2 = row.peak_2v2 != null ? Number(row.peak_2v2) : 0;
@@ -111,6 +124,7 @@ export async function getUsersWithElo() {
     const highestPeak = Math.max(peak1, peak2, peak3);
 
     const current = eloByBrawlhalla.get(id);
+
     eloByBrawlhalla.set(
       id,
       current == null ? highestPeak : Math.max(current, highestPeak)
@@ -122,11 +136,14 @@ export async function getUsersWithElo() {
   for (const u of users ?? []) {
     if (!u.discord_id) continue;
 
-    const elo = eloByBrawlhalla.get(u.brawlhalla_id);
+    const resolvedId = resolveBrawlhallaId(u.brawlhalla_id);
+
+    const elo = eloByBrawlhalla.get(resolvedId);
     if (elo == null) continue;
 
     result.push({
       discord_id: u.discord_id,
+      brawlhalla_id: resolvedId,
       elo,
     });
   }
@@ -327,32 +344,6 @@ export async function getWeeklyMissions() {
 }
 
 /**
- * Deactivate a user in the database by Discord ID or Brawlhalla ID
- * @param {string} identifier - Discord ID (starts with @) or Brawlhalla ID (numbers only)
- * @returns {Promise<Object>} The updated record
- */
-export async function deactivateUser(identifier) {
-  const supabase = getClient();
-  
-  let query;
-  if (identifier.startsWith('@')) {
-    const discordId = identifier.slice(1);
-    query = supabase.from('users').update({ active: false }).eq('discord_id', discordId);
-  } else {
-    query = supabase.from('users').update({ active: false }).eq('brawlhalla_id', identifier);
-  }
-  
-  const { data, error } = await query.select();
-  
-  if (error) throw error;
-  if (!data || data.length === 0) {
-    throw new Error(`Usuário não encontrado com ${identifier.startsWith('@') ? 'Discord ID' : 'Brawlhalla ID'}: ${identifier}`);
-  }
-  
-  return data[0];
-}
-
-/**
  * Add a new user or reactivate an existing one
  * @param {string} discord_id - The Discord user ID
  * @param {string} brawlhalla_id - The Brawlhalla user ID
@@ -408,4 +399,4 @@ export async function reactivateOrAddUser(discord_id, brawlhalla_id, username) {
     return { ...data[0], reactivated: false };
   }
 }
-
+

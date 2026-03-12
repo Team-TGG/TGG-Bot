@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder } from 'discord.js';
-import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, deactivateUser } from './src/db.js';
+import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser } from './src/db.js';
 import { createClient, runSync, runEloSync } from './src/discord.js';
 import { runAndPostGuildActivity } from './src/guildActivity.js';
 import { fetchMovimentacao, buildMovimentacaoEmbeds, getDefaultDateRange, isValidDate, formatMovimentacaoAsText } from './src/movimentacao.js';
@@ -20,7 +20,8 @@ async function main() {
 
   const client = createClient();
   const PREFIX = '.';
-//think please
+
+  // Command Alises
   const COMMAND_ALIASES = {
     'sync': 'sync',
     'sync-guild': 'sync',
@@ -45,7 +46,6 @@ async function main() {
     'missoes': 'missoes',
     'missions': 'missoes',
     'entrou': 'entrou',
-    'saiu': 'saiu',
     'stats': 'stats',
     'estatisticas': 'stats',
     'clan': 'clan',
@@ -189,8 +189,7 @@ async function main() {
           .setColor(0x5865f2)
           .setTitle(`${EMOJIS.success} Gerenciamento de Usuários`)
           .addFields(
-            { name: `${EMOJIS.arrowRight} .entrou <@user> <bhid> (admin)`, value: 'Adicionar novo usuário ou reativar existente no banco de dados', inline: false },
-            { name: `${EMOJIS.arrowRight} .saiu <@user|@discord_id|bhid> (admin)`, value: 'Desativar usuário do banco de dados (não exclui permanentemente)', inline: false }
+            { name: `${EMOJIS.arrowRight} .entrou <@user> <bhid> (admin)`, value: 'Adicionar novo usuário ou reativar existente no banco de dados', inline: false }
           )
           .setFooter({ text: 'Selecione uma categoria no dropdown' })
           .setTimestamp();
@@ -753,85 +752,6 @@ async function main() {
         }
       }
 
-      // ---- .saiu ----
-      if (command === 'saiu') {
-        if (!(await isAdmin(message.author.id))) {
-          return message.reply({
-            embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
-          });
-        }
-        
-        try {
-          const guild = client.guilds.cache.get(discordConfig.guildId);
-          if (!guild) throw new Error('Guild não encontrada');
-
-          if (args.length === 0) {
-            return message.reply({
-              embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.saiu <@user|@discord_id|brawlhalla_id>`')]
-            });
-          }
-
-          const identifier = args[0];
-          let deactivatedUser;
-          let member = null;
-          let actualIdentifier = identifier;
-
-          if (identifier.startsWith('<@') && identifier.endsWith('>')) {            
-            const mentionMatch = identifier.match(/<@!?(\d+)>/);
-            if (mentionMatch) {
-              actualIdentifier = mentionMatch[1];
-              member = await guild.members.fetch(actualIdentifier).catch(() => null);
-            }
-          } else if (identifier.startsWith('@')) {
-            actualIdentifier = identifier.slice(1);
-            member = await guild.members.fetch(actualIdentifier).catch(() => null);
-          } else {
-            member = await guild.members.fetch(identifier).catch(() => null);
-            if (member) {
-              actualIdentifier = identifier;
-            }
-          }          
-          
-          let dbIdentifier;
-          if (member) {
-            dbIdentifier = `@${member.id}`;
-          } else if (identifier.startsWith('@') || identifier.startsWith('<@')) {
-            dbIdentifier = `@${actualIdentifier}`;
-          } else {
-            dbIdentifier = actualIdentifier;
-          }
-          
-          deactivatedUser = await deactivateUser(dbIdentifier);          
-          
-          if (member) {
-            const recruitRoles = ['1437441679572471940', '1437427750209327297'];
-            for (const roleId of recruitRoles) {
-              if (member.roles.cache.has(roleId)) {
-                await member.roles.remove(roleId);
-              }
-            }
-          }
-
-          const embed = createSuccessEmbed(
-            'Usuário Desativado',
-            `**Usuário:** ${deactivatedUser.username}\n**Discord ID:** ${deactivatedUser.discord_id}\n**Brawlhalla ID:** ${deactivatedUser.brawlhalla_id}\n\nUsuário desativado no banco de dados com sucesso!${member ? '\nCargos de recruit removidos.' : ''}`
-          );
-
-          await message.reply({ embeds: [embed] });
-
-        } catch (err) {
-          if (err.message.includes('não encontrado')) {
-            return message.reply({
-              embeds: [createErrorEmbed('Usuário Não Encontrado', err.message)]
-            });
-          }
-
-          await message.reply({
-            embeds: [createErrorEmbed('Erro ao Desativar Usuário', err.message)]
-          });
-        }
-      }
-
       // ---- .warn ----
       if (command === 'warn') {
         try {
@@ -1147,7 +1067,7 @@ async function main() {
         .setTitle('⚠️ Lembrete: Usuários Inativos')
         .setDescription(`Olá! Vocês estão marcados como inativos
           Se você está nesta lista, significa que fez menos de 500 de contribuição na semana passada. 
-          Para saber como contribuir, veja o canal <#${'1465513473583616011'}> ou fale com um membro da staff.
+          Para saber como contribuir, veja o canal <#${'1480627066792579072'}> ou fale com um membro da staff.
           Para mostrar que está ativo, use o comando \`.active\` com uma justificativa para se remover da lista.
           Ex: \`.active Estava viajando e não consegui jogar.\``)
         .setTimestamp();
