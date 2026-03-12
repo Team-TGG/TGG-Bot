@@ -9,7 +9,7 @@ import { loadCustomNicknames } from './src/customNicknames.js';
 import { discord as discordConfig, ALLOWED_USER_IDS, inactivePlayers as inactivePlayersConfig } from './config/index.js';
 import { getUserByDiscordId } from './src/db.js';
 import { startCronJobs } from './src/scheduler/cron.js';
-import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createClanEmbed, getUserBrawlhallaId, getCached } from './src/brawlhalla.js';
+import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createClanEmbed, getUserBrawlhallaId, getCached } from './src/brawlhalla.js';
 import { addWarning, getUserWarnings, removeWarning, parseTime, formatTime as formatModTime } from './src/moderation.js';
 
 async function main() {
@@ -141,12 +141,12 @@ async function main() {
       return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar estes comandos.')] });
     }
 
-    async function sendCleanMessage(originalMessage, newEmbed) {
+    async function sendCleanMessage(originalMessage, options) {
       try {
         await originalMessage.delete();
-        return await originalMessage.channel.send({ embeds: [newEmbed] });
+        return await originalMessage.channel.send(options);
       } catch (err) {
-        return await originalMessage.reply({ embeds: [newEmbed] });
+        return await originalMessage.reply(options);
       }
     }
 
@@ -157,8 +157,7 @@ async function main() {
           .setTitle(`${EMOJIS.crossedSwords} Guilda`)
           .addFields(
             { name: `${EMOJIS.arrowRight} .missoes`, value: 'Mostrar as missões da semana atual', inline: false },
-            { name: `${EMOJIS.arrowRight} .stats (WIP)`, value: 'Trazer seus status atualizados do jogo', inline: false },
-            { name: `${EMOJIS.arrowRight} .progresso (WIP)`, value: 'Verificar seu progresso na missão semanal (somente do que for possível rastrear)', inline: false }
+            { name: `${EMOJIS.arrowRight} .stats`, value: 'Trazer seus status atualizados do jogo', inline: false }
           )
           .setFooter({ text: 'Selecione uma categoria no dropdown' })
           .setTimestamp();
@@ -1035,13 +1034,6 @@ async function main() {
             return await message.reply({ embeds: [createErrorEmbed('Brawlhalla ID Não Encontrado', 'Este usuário não tem um Brawlhalla ID registrado.')] });
           }
 
-          // Instant Result Strategy: Check cache first (including stale)
-          const cachedData = getCached(`player:${brawlhallaId}`, true);
-          if (cachedData) {
-            return await message.reply({ embeds: [createStatsEmbed(cachedData)] });
-          }
-
-          // No cache: show loading and fetch
           const loadingEmbed = new EmbedBuilder()
             .setColor(0xfaa61a)
             .setTitle(`${EMOJIS.loading} Carregando estatísticas...`)
@@ -1049,7 +1041,38 @@ async function main() {
 
           const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
           const playerData = await fetchPlayerStats(brawlhallaId);
-          await sendCleanMessage(loadingMsg, createStatsEmbed(playerData));
+          
+          const mainEmbed = createStatsEmbed(playerData);
+          const rankedEmbed = createRankedEmbed(playerData);
+
+          const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('stats_main').setLabel('Geral').setStyle(1),
+            new ButtonBuilder().setCustomId('stats_ranked').setLabel('Ranked').setStyle(1)
+          );
+
+          const statsMsg = await sendCleanMessage(loadingMsg, { embeds: [mainEmbed], components: [row] });
+
+          const collector = statsMsg.createMessageComponentCollector({ time: 300000 });
+
+          collector.on('collect', async (i) => {
+            try {
+              if (i.user.id !== message.author.id) {
+                return i.reply({ content: 'Você não pode usar estes botões.', ephemeral: true }).catch(() => {});
+              }
+
+              if (i.customId === 'stats_main') {
+                await i.update({ embeds: [mainEmbed], components: [row] }).catch(() => {});
+              } else if (i.customId === 'stats_ranked') {
+                await i.update({ embeds: [rankedEmbed], components: [row] }).catch(() => {});
+              }
+            } catch (err) {
+              console.error('[Interaction] Error handled in collector:', err.message);
+            }
+          });
+
+          collector.on('end', () => {
+            statsMsg.delete().catch(() => {});
+          });
 
         } catch (err) {
           console.error('Error fetching stats:', err);

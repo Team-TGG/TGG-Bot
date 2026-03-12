@@ -4,17 +4,27 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 
 // ─── Cache config ─────────────────────────────────────────────────────────────
-const CACHE_FILE = resolve(process.cwd(), 'brawlhalla_cache.json');
-const CACHE_TTL  = 20 * 60 * 1000; // 20 min – safe with 180 req/15 min limit
+const CACHE_DIR = resolve(process.cwd(), 'cache');
+const SHARED_FILE = resolve(CACHE_DIR, 'shared.json');
+const CACHE_TTL = 20 * 60 * 1000; // 20 min
+
+if (!existsSync(CACHE_DIR)) {
+  try {
+    const fs = require('fs');
+    fs.mkdirSync(CACHE_DIR, { recursive: true });
+    console.log(`[Brawlhalla] Created cache directory: ${CACHE_DIR}`);
+  } catch (err) {
+    console.warn('[Brawlhalla] Failed to create cache directory:', err.message);
+  }
+}
 
 // ─── Rate limiter: 180 requests per 15 minutes ────────────────────────────────
-const RATE_LIMIT   = 180;
-const RATE_WINDOW  = 15 * 60 * 1000;
-const requestLog   = [];
+const RATE_LIMIT = 180;
+const RATE_WINDOW = 15 * 60 * 1000;
+const requestLog = [];
 
 function canRequest() {
   const now = Date.now();
-  // Remove entries older than the window
   while (requestLog.length && now - requestLog[0] > RATE_WINDOW) requestLog.shift();
   return requestLog.length < RATE_LIMIT;
 }
@@ -27,58 +37,64 @@ function rateLimitWait() {
   const now = Date.now();
   while (requestLog.length && now - requestLog[0] > RATE_WINDOW) requestLog.shift();
   if (requestLog.length < RATE_LIMIT) return 0;
-  // Time until oldest request expires
   return RATE_WINDOW - (now - requestLog[0]) + 50;
 }
 
 async function apiFetch(url) {
   const wait = rateLimitWait();
-  if (wait > 0) {
-    console.warn(`[Brawlhalla] Rate limit reached, waiting ${wait}ms`);
-    await new Promise(r => setTimeout(r, wait));
-  }
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
   recordRequest();
   const res = await fetch(url);
   if (!res.ok) throw new Error(`API Error ${res.status}: ${await res.text().catch(() => '')}`);
   return res.json();
 }
 
-// ─── JSON file cache persistence ──────────────────────────────────────────────
-let cache = {};
-
-function loadCache() {
+// ─── Cache helpers ────────────────────────────────────────────────────────────
+function getSharedData() {
   try {
-    if (existsSync(CACHE_FILE)) {
-      cache = JSON.parse(readFileSync(CACHE_FILE, 'utf8'));
-      console.log(`[Brawlhalla] Cache loaded from ${CACHE_FILE}`);
+    if (existsSync(SHARED_FILE)) {
+      return JSON.parse(readFileSync(SHARED_FILE, 'utf8'));
     }
-  } catch (err) {
-    console.warn('[Brawlhalla] Failed to load cache file:', err.message);
-    cache = {};
-  }
+  } catch { }
+  return {};
 }
 
-function saveCache() {
+function setSharedData(data) {
   try {
-    writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2), 'utf8');
-  } catch (err) {
-    console.warn('[Brawlhalla] Failed to save cache file:', err.message);
-  }
+    writeFileSync(SHARED_FILE, JSON.stringify(data, null, 2), 'utf8');
+  } catch { }
 }
 
 export function getCached(key, ignoreTtl = false) {
-  const entry = cache[key];
-  if (!entry) return null;
-  if (!ignoreTtl && Date.now() - entry.timestamp > CACHE_TTL) {
-    delete cache[key];
-    return null;
-  }
-  return entry.data;
+  try {
+    if (key === '__legends__') {
+      return getSharedData()['__legends__']?.data || null;
+    }
+    if (key.startsWith('player:')) {
+      const bhid = key.split(':')[1];
+      const path = resolve(CACHE_DIR, `player_${bhid}.json`);
+      if (existsSync(path)) {
+        const entry = JSON.parse(readFileSync(path, 'utf8'));
+        if (!ignoreTtl && Date.now() - entry.timestamp > CACHE_TTL) return null;
+        return entry.data;
+      }
+    }
+  } catch { }
+  return null;
 }
 
 function setCached(key, data) {
-  cache[key] = { data, timestamp: Date.now() };
-  saveCache();
+  try {
+    const entry = { data, timestamp: Date.now() };
+    if (key === '__legends__') {
+      const shared = getSharedData();
+      shared['__legends__'] = entry;
+      setSharedData(shared);
+    } else if (key.startsWith('player:')) {
+      const bhid = key.split(':')[1];
+      writeFileSync(resolve(CACHE_DIR, `player_${bhid}.json`), JSON.stringify(entry, null, 2));
+    }
+  } catch { }
 }
 
 
@@ -117,7 +133,6 @@ async function fetchLegends() {
   return legendsDataCache;
 }
 
-// ─── Icon maps ────────────────────────────────────────────────────────────────
 const LEGEND_EMOJIS = {
   'ada': '<:Ada:1480883379275563040>',
   'arcadia': '<:Arcadia:1480883381754658866>',
@@ -193,14 +208,20 @@ const LEGEND_EMOJIS = {
 const WEAPON_ICONS = {
   'axe': '<:Axe:1480882487348428920>',
   'battleboots': '<:BattleBoots:1480882462769807423>',
+  'boots': '<:BattleBoots:1480882462769807423>',
   'blasters': '<:Blasters:1480882489198117026>',
+  'pistol': '<:Blasters:1480882489198117026>',
   'bow': '<:Bow:1480882490511196231>',
   'cannon': '<:Cannon:1480882492503494697>',
   'chakram': '<:Chakram:1480882494470361158>',
+  'gauntlets': '<:Gauntlets:1480882496764907642>',
   'gauntlet': '<:Gauntlets:1480882496764907642>',
+  'fists': '<:Gauntlets:1480882496764907642>',
+  'hammer': '<:GrappleHammer:1480882498186514492>',
   'grapplehammer': '<:GrappleHammer:1480882498186514492>',
   'greatsword': '<:Greatsword:1480882500283797715>',
   'katars': '<:Katars:1480882501684822126>',
+  'katar': '<:Katars:1480882501684822126>',
   'orb': '<:Orb:1480882503265943704>',
   'rocketlance': '<:RocketLance:1480882504918372352>',
   'scythe': '<:Scythe:1480882506638299147>',
@@ -266,15 +287,16 @@ const LEGEND_NAMES = {
 function normalizeWeapon(w) {
   if (!w) return w;
   const lw = w.toLowerCase().replace(/\s+/g, '');
-  if (lw === 'fists' || lw === 'gauntlets') return 'Gauntlet';
-  if (lw === 'pistol') return 'Blasters';
+  if (lw === 'fists' || lw === 'gauntlet' || lw === 'gauntlets') return 'Gauntlets';
+  if (lw === 'katar' || lw === 'katars') return 'Katars';
+  if (lw === 'pistol' || lw === 'blasters') return 'Blasters';
   if (lw === 'boots' || lw === 'battleboots') return 'Battle Boots';
-  if (lw === 'rocketlance') return 'RocketLance';
-  if (lw === 'hammer') return 'GrappleHammer';
+  if (lw === 'rocketlance') return 'Rocket Lance';
+  if (lw === 'hammer' || lw === 'grapplehammer') return 'Hammer';
   return w;
 }
 
-// ─── Utility helpers ──────────────────────────────────────────────────────────
+
 function formatTime(seconds) {
   if (!seconds || seconds <= 0) return '0h 0m 0s';
   const h = Math.floor(seconds / 3600);
@@ -305,9 +327,19 @@ function getRankIcon(tier) {
 function normalizeUnicode(str) {
   if (!str || typeof str !== 'string') return str;
   try {
-    return decodeURIComponent(escape(str));
+    const decoded = decodeURIComponent(escape(str));
+    return decoded.normalize('NFC');
   } catch {
-    return str.normalize('NFC');
+    return str
+      .replace(/â„¢/g, '™')
+      .replace(/â¢/g, '™')
+      .replace(/â\x84\xA2/g, '™')
+      .replace(/â€¢/g, '•')
+      .replace(/â€“/g, '–')
+      .replace(/â€”/g, '—')
+      .replace(/â€/g, '"')
+      .replace(/â€™/g, "'")
+      .normalize('NFC');
   }
 }
 
@@ -331,14 +363,29 @@ export async function fetchPlayerStats(brawlhallaId) {
       apiFetch(`https://api.brawlhalla.com/player/${brawlhallaId}/ranked?api_key=${process.env.BRAWLHALLA_API_KEY}`)
     ]);
 
-    if (statsData.name)             statsData.name             = normalizeUnicode(statsData.name);
-    if (statsData.clan?.clan_name)  statsData.clan.clan_name   = normalizeUnicode(statsData.clan.clan_name);
+    if (statsData.name) statsData.name = normalizeUnicode(statsData.name);
+    if (statsData.clan?.clan_name) statsData.clan.clan_name = normalizeUnicode(statsData.clan.clan_name);
+
+    if (rankedData.name) rankedData.name = normalizeUnicode(rankedData.name);
+    if (Array.isArray(rankedData['2v2'])) {
+      rankedData['2v2'] = rankedData['2v2'].map(t => ({ ...t, teamname: normalizeUnicode(t.teamname) }));
+    }
+    if (rankedData.rotating_ranked) {
+      if (Array.isArray(rankedData.rotating_ranked)) {
+        rankedData.rotating_ranked = rankedData.rotating_ranked.map(t => ({
+          ...t,
+          teamname: normalizeUnicode(t.teamname || t.name)
+        }));
+      } else if (typeof rankedData.rotating_ranked === 'object') {
+        const t = rankedData.rotating_ranked;
+        t.teamname = normalizeUnicode(t.teamname || t.name);
+      }
+    }
 
     const combined = { ...statsData, ranked: rankedData };
     setCached(key, combined);
     return combined;
   } catch (err) {
-    console.warn(`[Brawlhalla] API fetch failed for player ${brawlhallaId}, checking stale cache:`, err.message);
     const stale = getCached(key, true);
     if (stale) return stale;
     throw err;
@@ -386,14 +433,14 @@ export async function getUserBrawlhallaId(discordId) {
 // ─── Embed builders ───────────────────────────────────────────────────────────
 
 export function createStatsEmbed(playerData) {
-  const stats  = playerData || {};
+  const stats = playerData || {};
   const ranked = stats.ranked || {};
   const legends = stats.legends || [];
 
   const rankIcon = getRankIcon(ranked.tier);
 
   const mostPlayedLegend = legends.length
-    ? legends.reduce((a, b) => ((b.games || 0) > (a.games || 0) ? b : a))
+    ? legends.reduce((a, b) => ((b.matchtime || 0) > (a.matchtime || 0) ? b : a))
     : null;
 
   let displayLegendName = 'Unknown';
@@ -406,97 +453,206 @@ export function createStatsEmbed(playerData) {
 
   const totalPlaytime = legends.reduce((s, l) => s + parseInt(l.matchtime || 0), 0);
 
-  let weaponName = 'Unknown';
-  let weaponIcon = '❓';
-  if (mostPlayedLegend) {
-    const legendKey = cleanLegendName(mostPlayedLegend.legend_name_key);
-    const mapping   = legendsDataCache?.[mostPlayedLegend.legend_name_key];
-    const w1 = parseInt(mostPlayedLegend.timeheldweaponone || 0);
-    const w2 = parseInt(mostPlayedLegend.timeheldweapontwo || 0);
-    weaponName = w1 > w2 ? (mapping?.weapon_one || 'Weapon One') : (mapping?.weapon_two || 'Weapon Two');
-    weaponIcon = WEAPON_ICONS[weaponName.toLowerCase().replace(/\s+/g, '')] || '❓';
+  // Weapon playtime logic
+  const weaponTimes = {};
+  legends.forEach(l => {
+    const mapping = legendsDataCache?.[l.legend_name_key];
+    if (mapping) {
+      const w1 = mapping.weapon_one;
+      const w2 = mapping.weapon_two;
+      const t1 = parseInt(l.timeheldweaponone || 0);
+      const t2 = parseInt(l.timeheldweapontwo || 0);
+      if (w1) weaponTimes[w1] = (weaponTimes[w1] || 0) + t1;
+      if (w2) weaponTimes[w2] = (weaponTimes[w2] || 0) + t2;
+    }
+  });
+
+  let topWeapon = 'Unknown';
+  let topWeaponTime = 0;
+  for (const [w, t] of Object.entries(weaponTimes)) {
+    if (t > topWeaponTime) {
+      topWeapon = w;
+      topWeaponTime = t;
+    }
   }
 
-  const totalKos      = legends.reduce((s, l) => s + parseInt(l.kos        || 0), 0);
-  const totalFalls    = legends.reduce((s, l) => s + parseInt(l.falls       || 0), 0);
-  const totalSuicides = legends.reduce((s, l) => s + parseInt(l.suicides    || 0), 0);
-  const totalTeamKos  = legends.reduce((s, l) => s + parseInt(l.teamkos     || 0), 0);
-  const totalDealt    = legends.reduce((s, l) => s + parseInt(l.damagedealt || 0), 0);
-  const totalTaken    = legends.reduce((s, l) => s + parseInt(l.damagetaken || 0), 0);
+  const weaponIcon = WEAPON_ICONS[topWeapon.toLowerCase().replace(/\s+/g, '')] || '❓';
 
-  const events    = totalKos + totalFalls;
-  const koRate    = events > 0 ? ((totalKos   / events) * 100).toFixed(1) : 0;
-  const fallRate  = events > 0 ? ((totalFalls / events) * 100).toFixed(1) : 0;
-  const totalDmg  = totalDealt + totalTaken;
-  const dealtPct  = totalDmg > 0 ? ((totalDealt / totalDmg) * 100).toFixed(1) : 0;
-  const takenPct  = totalDmg > 0 ? ((totalTaken / totalDmg) * 100).toFixed(1) : 0;
+  const totalKos = legends.reduce((s, l) => s + parseInt(l.kos || 0), 0);
+  const totalFalls = legends.reduce((s, l) => s + parseInt(l.falls || 0), 0);
+  const totalSuicides = legends.reduce((s, l) => s + parseInt(l.suicides || 0), 0);
+  const totalTeamKos = legends.reduce((s, l) => s + parseInt(l.teamkos || 0), 0);
+  const totalDealt = legends.reduce((s, l) => s + parseInt(l.damagedealt || 0), 0);
+  const totalTaken = legends.reduce((s, l) => s + parseInt(l.damagetaken || 0), 0);
 
-  const wins    = stats.wins  || 0;
-  const games   = stats.games || 0;
-  const losses  = games - wins;
-  const winRate = games > 0 ? ((wins / games) * 100).toFixed(1) : 0;
-  const rating  = ranked.rating || 'Unranked';
-  const tier    = ranked.tier   || 'N/A';
+  const events = totalKos + totalFalls;
+  const koRate = events > 0 ? ((totalKos / events) * 100).toFixed(1) : 0;
+  const fallRate = events > 0 ? ((totalFalls / events) * 100).toFixed(1) : 0;
+  const totalDmg = totalDealt + totalTaken;
+  const dealtPct = totalDmg > 0 ? ((totalDealt / totalDmg) * 100).toFixed(1) : 0;
+  const takenPct = totalDmg > 0 ? ((totalTaken / totalDmg) * 100).toFixed(1) : 0;
+
+  const wins = stats.wins || 0;
+  const games = stats.games || 0;
+  const losses = games - wins;
+  const winRatio = games > 0 ? ((wins / games) * 100).toFixed(1) : '0.0';
+  const rating = ranked.rating || 'Unranked';
+  const tier = ranked.tier || 'N/A';
   const mostLegendTime = mostPlayedLegend ? parseInt(mostPlayedLegend.matchtime || 0) : 0;
+
+  const embedFields = [
+    {
+      name: '📊 Main Stats',
+      value:
+        `**Level:** \`${stats.level || 0}\` · **XP:** \`${formatNumber(stats.xp || 0)}\`\n` +
+        `**Playtime:** \`${formatTime(totalPlaytime)}\`\n` +
+        `**Rating:** \`${typeof rating === 'number' ? formatNumber(rating) : rating}\` · **Tier:** \`${tier}\``,
+      inline: false
+    },
+    {
+      name: '⚔️ Overall Record',
+      value: `\`${formatNumber(wins)} W\` · \`${formatNumber(losses)} L\` · \`${formatNumber(games)} games\` (\`${winRatio}%\`)`,
+      inline: false
+    },
+    {
+      name: '🏆 Most Played Legend',
+      value: mostPlayedLegend
+        ? `${legendIcon} **${displayLegendName}** — \`${mostPlayedLegend.games} games\` · \`Lv ${mostPlayedLegend.level}\`\nTime: \`${formatTime(mostLegendTime)}\``
+        : 'No data',
+      inline: false
+    },
+    {
+      name: '🗡️ Main Weapon',
+      value: `${weaponIcon} **${normalizeWeapon(topWeapon)}** — \`${formatTime(topWeaponTime)}\``,
+      inline: true
+    },
+    {
+      name: '💥 Combat',
+      value:
+        `**KOs:** \`${formatNumber(totalKos)}\` (\`${koRate}%\`) · **Falls:** \`${formatNumber(totalFalls)}\` (\`${fallRate}%\`)\n` +
+        `**Team KOs:** \`${formatNumber(totalTeamKos)}\` · **Suicides:** \`${formatNumber(totalSuicides)}\``,
+      inline: false
+    },
+    {
+      name: '📈 Damage',
+      value:
+        `**Dealt:** \`${formatNumber(totalDealt)}\` (\`${dealtPct}%\`) · **Taken:** \`${formatNumber(totalTaken)}\` (\`${takenPct}%\`)`,
+      inline: false
+    }
+  ];
 
   return new EmbedBuilder()
     .setColor(0x00ff00)
-    .setTitle(`${rankIcon} ${stats.name || 'Player'} — Brawlhalla Stats`)
-    .addFields(
-      {
-        name: '📊 Main Stats',
-        value:
-          `**Level:** ${stats.level || 0}\n` +
-          `**XP:** ${formatNumber(stats.xp || 0)}\n` +
-          `**Playtime:** ${formatTime(totalPlaytime)}\n` +
-          `**Rating:** ${typeof rating === 'number' ? formatNumber(rating) : rating}\n` +
-          `**Tier:** ${tier}`,
-        inline: false
-      },
-      {
-        name: '⚔️ Overall Record',
-        value: `${formatNumber(wins)} W · ${formatNumber(losses)} L · ${formatNumber(games)} games (${winRate}%)`,
-        inline: false
-      },
-      {
-        name: '🏆 Most Played Legend',
-        value: mostPlayedLegend
-          ? `${legendIcon} **${displayLegendName}** — ${mostPlayedLegend.games} games · Lv ${mostPlayedLegend.level}\nTime: ${formatTime(mostLegendTime)}`
-          : 'No data',
-        inline: false
-      },
-      {
-        name: '🗡️ Main Weapon',
-        value: `${weaponIcon} **${weaponName}**`,
-        inline: true
-      },
-      {
-        name: '💥 Combat',
-        value:
-          `**KOs:** ${formatNumber(totalKos)} (${koRate}%)\n` +
-          `**Falls:** ${formatNumber(totalFalls)} (${fallRate}%)\n` +
-          `**Suicides:** ${formatNumber(totalSuicides)} · **Team KOs:** ${formatNumber(totalTeamKos)}`,
-        inline: false
-      },
-      {
-        name: '📈 Damage',
-        value:
-          `**Dealt:** ${formatNumber(totalDealt)} (${dealtPct}%)\n` +
-          `**Taken:** ${formatNumber(totalTaken)} (${takenPct}%)`,
-        inline: false
-      }
-    )
-    .setFooter({ text: 'Brawlhalla Stats • TGG Bot' })
+    .setTitle(`${rankIcon} ${stats.name || 'Player'} (${stats.brawlhalla_id || 'N/A'}) — Brawlhalla Stats`)
+    .addFields(embedFields)
+    .setFooter({ text: 'Brawlhalla Stats • Geral' })
+    .setTimestamp();
+}
+
+export function createRankedEmbed(playerData) {
+  const stats = playerData || {};
+  const ranked = stats.ranked || {};
+  const legendsRanked = ranked.legends || [];
+  const teams2v2 = ranked['2v2'] || [];
+  const rotating = ranked.rotating_ranked || [];
+
+  const rankIcon = getRankIcon(ranked.tier);
+
+  // Highest Elo Legend
+  const bestLegend = legendsRanked.length
+    ? legendsRanked.reduce((a, b) => ((b.rating || 0) > (a.rating || 0) ? b : a))
+    : null;
+
+  let bestLegendName = 'N/A';
+  let bestLegendIcon = '❓';
+  if (bestLegend) {
+    const key = cleanLegendName(bestLegend.legend_name_key);
+    bestLegendName = LEGEND_NAMES[key] || bestLegend.legend_name_key || 'Unknown';
+    bestLegendIcon = LEGEND_EMOJIS[key] || '❓';
+  }
+
+  // Highest Elo 2v2 Team
+  const bestTeam = teams2v2.length
+    ? teams2v2.reduce((a, b) => ((b.rating || 0) > (a.rating || 0) ? b : a))
+    : null;
+
+  // Highest Rotating Ranked (if any)
+  const bestRotating = rotating.length
+    ? rotating.reduce((a, b) => ((b.rating || 0) > (a.rating || 0) ? b : a))
+    : null;
+
+  const embed = new EmbedBuilder()
+    .setColor(0x00ff00)
+    .setTitle(`${rankIcon} ${stats.name || 'Player'} (${stats.brawlhalla_id || 'N/A'}) — Ranked Data`);
+
+  const rankedFields = [
+    {
+      name: '🏆 1v1 Ranked',
+      value: (() => {
+        const w = ranked.wins || 0;
+        const g = ranked.games || 0;
+        const l = g - w;
+        const pct = g > 0 ? ((w / g) * 100).toFixed(1) : '0.0';
+        return `**Rating:** \`${formatNumber(ranked.rating || 0)}\` (Peak: \`${formatNumber(ranked.peak_rating || 0)}\`)\n` +
+          `**Tier:** \`${ranked.tier || 'N/A'}\`\n` +
+          `\`${formatNumber(w)} W\` · \`${formatNumber(l)} L\` (\`${pct}%\`)`;
+      })(),
+      inline: false
+    }
+  ];
+
+  if (bestLegend) {
+    rankedFields.push({
+      name: '👑 Best Legend (Peak)',
+      value: `${bestLegendIcon} **${bestLegendName}** — \`${formatNumber(bestLegend.rating)}\` Elo`,
+      inline: false
+    });
+  }
+
+  if (bestTeam) {
+    const w = bestTeam.wins || 0;
+    const g = bestTeam.games || 0;
+    const l = g - w;
+    const pct = g > 0 ? ((w / g) * 100).toFixed(1) : '0.0';
+    rankedFields.push({
+      name: '👯 2v2 Ranked',
+      value:
+        `**Team:** \`${bestTeam.teamname}\`\n` +
+        `**Rating:** \`${formatNumber(bestTeam.rating)}\` (Peak: \`${formatNumber(bestTeam.peak_rating)}\`)\n` +
+        `**Tier:** \`${bestTeam.tier}\` · \`${formatNumber(w)} W\` · \`${formatNumber(l)} L\` (\`${pct}%\`)`,
+      inline: false
+    });
+  }
+
+  if (bestRotating) {
+    const w = bestRotating.wins || 0;
+    const g = bestRotating.games || 0;
+    const l = g - w;
+    const pct = g > 0 ? ((w / g) * 100).toFixed(1) : '0.0';
+    rankedFields.push({
+      name: '🎨 3v3 Ranked',
+      value:
+        `**Team:** \`${bestRotating.teamname || 'N/A'}\`\n` +
+        `**Rating:** \`${formatNumber(bestRotating.rating)}\` (Peak: \`${formatNumber(bestRotating.peak_rating)}\`)\n` +
+        `**Tier:** \`${bestRotating.tier}\` · \`${formatNumber(w)} W\` · \`${formatNumber(l)} L\` (\`${pct}%\`)`,
+      inline: false
+    });
+  }
+
+  embed.addFields(rankedFields);
+
+  return embed
+    .setFooter({ text: 'Brawlhalla Stats • Ranked' })
     .setTimestamp();
 }
 
 export function createClanEmbed(clanData) {
-  const clanName     = normalizeUnicode(clanData.clan_name || 'Unknown Clan');
-  const clanId       = clanData.clan_id || 'N/A';
-  const createDate   = clanData.clan_create_date || 0;
-  const lifetimeXp   = clanData.clan_lifetime_xp || 0;
-  const members      = clanData.clan || [];
-  const topMembers   = [...members].sort((a, b) => (b.xp || 0) - (a.xp || 0)).slice(0, 10);
+  const clanName = normalizeUnicode(ata.clan_name || 'Unknown Clan');
+  const clanId = clanData.clan_id || 'N/A';
+  const createDate = clanData.clan_create_date || 0;
+  const lifetimeXp = clanData.clan_lifetime_xp || 0;
+  const members = clanData.clan || [];
+  const topMembers = [...members].sort((a, b) => (b.xp || 0) - (a.xp || 0)).slice(0, 10);
 
   return new EmbedBuilder()
     .setColor(0x0099ff)
@@ -515,9 +671,9 @@ export function createClanEmbed(clanData) {
         name: '🏆 Top 10 Members',
         value: topMembers.length > 0
           ? topMembers.map((m, i) => {
-              const badge = m.rank === 'Leader' ? '👑' : m.rank === 'Officer' ? '⚔️' : '🗡️';
-              return `**${i + 1}.** ${badge} ${normalizeUnicode(m.name || 'Unknown')} — ${formatNumber(m.xp || 0)} XP`;
-            }).join('\n')
+            const badge = m.rank === 'Leader' ? '👑' : m.rank === 'Officer' ? '⚔️' : '🗡️';
+            return `**${i + 1}.** ${badge} ${normalizeUnicode(m.name || 'Unknown')} — ${formatNumber(m.xp || 0)} XP`;
+          }).join('\n')
           : 'No members',
         inline: false
       }
@@ -527,14 +683,17 @@ export function createClanEmbed(clanData) {
 }
 
 export function clearCache() {
-  cache = {};
-  saveCache();
+  // Clear the whole directory and memory cache
+  try {
+    const fs = require('fs');
+    if (existsSync(CACHE_DIR)) {
+      const files = fs.readdirSync(CACHE_DIR);
+      for (const file of files) fs.unlinkSync(resolve(CACHE_DIR, file));
+    }
+  } catch { }
   legendsDataCache = null;
 }
 
 // ─── Initialization ───────────────────────────────────────────────────────────
-// Load on module init and pre-warm legend mapping
-loadCache();
 // Eagerly populate legend mapping — runs once per process lifetime.
-// If the JSON cache already has __legends__, this costs 0 API calls.
 fetchLegends().catch(err => console.warn('[Brawlhalla] Pre-warm legends failed:', err.message));
