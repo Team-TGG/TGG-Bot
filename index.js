@@ -584,7 +584,7 @@ async function main() {
                 embeds: [new EmbedBuilder()
                   .setColor(0xed4245)
                   .setTitle('⚠️ Aviso de Inatividade')
-                  .setDescription(`Você está inativo. Para mostrar que está ativo, use o comando \`.active <justificativa>\` no servidor.`)
+                  .setDescription(`Você está inativo. Para mostrar que está ativo, use o comando \`.active <justificativa>\` no canal <#1468600851290521692>.`)
                   .setTimestamp()]
               }).catch(() => console.log(`Could not send DM to ${player.discord_id}`));
 
@@ -1130,13 +1130,19 @@ async function main() {
         }
       });
 
-      // Enviar no DM também
+      // DM
+      const dmEmbed = new EmbedBuilder()
+        .setColor(0xed4245)
+        .setTitle('⚠️ Aviso de Inatividade')
+        .setDescription(`Você está inativo. Para mostrar que está ativo, use o comando \`.active <justificativa>\` no canal <#1468600851290521692>.`)
+        .setTimestamp();
+
       for (const player of inactivePlayers) {
         if (!player.discord_id) continue;
         try {
           const user = await client.users.fetch(player.discord_id).catch(() => null);
           if (user) {
-            await user.send({ embeds: [embed] }).catch(() => {
+            await user.send({ embeds: [dmEmbed] }).catch(() => {
               console.log(`[Inactive Reminder] Could not send DM to ${player.discord_id}`);
             });
           }
