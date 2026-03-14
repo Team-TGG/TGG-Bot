@@ -1,21 +1,8 @@
-/**
- * Guild Movimentacao API: fetch movement logs with date ranges and display as embeds.
- */
 
 import { EmbedBuilder } from 'discord.js';
 import { movimentacao as config } from '../config/index.js';
 
-/**
- * Build the API URL with query parameters
- * @param {Object} options - Query parameters
- * @param {string} options.date - Specific date in YYYY-MM-DD format (takes precedence over start/end)
- * @param {string} options.startDate - Start date in YYYY-MM-DD format
- * @param {string} options.endDate - End date in YYYY-MM-DD format
- * @param {string} options.action - Filter by action (entrou, saiu, promovido, rebaixado)
- * @param {string} options.search - Search by player name
- * @param {number} options.limit - Max records (default 5000, max 5000)
- * @returns {string}
- */
+
 function buildMovimentacaoUrl(options = {}) {
   if (!config.baseUrl || !config.endpoint) return null;
   
@@ -28,7 +15,6 @@ function buildMovimentacaoUrl(options = {}) {
     limit = 5000,
   } = options;
   
-  // Apply default date range if neither date nor startDate/endDate is provided
   if (!date && !startDate && !endDate) {
     const now = new Date();
     const sevenDaysAgo = new Date(now);
@@ -54,19 +40,8 @@ function buildMovimentacaoUrl(options = {}) {
   return u.toString();
 }
 
-/**
- * Fetch guild movimentacao data from API
- * @param {Object} options - Query options
- * @param {string} options.date - Specific date in YYYY-MM-DD format
- * @param {string} options.startDate - Start date in YYYY-MM-DD format
- * @param {string} options.endDate - End date in YYYY-MM-DD format
- * @param {string} options.action - Filter by action (entrou, saiu, promovido, rebaixado)
- * @param {string} options.search - Search by player name
- * @param {number} options.limit - Max records (default 5000)
- * @returns {Promise<{ ok: boolean, data?: array, summary?: object, message?: string }>}
- */
+
 export async function fetchMovimentacao(options = {}) {
-  // Support both old signature (startDate, endDate, limit) and new object signature
   const queryOptions = typeof options === 'string' 
     ? { startDate: options, endDate: arguments[1], limit: arguments[2] }
     : options;
@@ -105,13 +80,11 @@ export async function fetchMovimentacao(options = {}) {
     throw new Error(data?.error || 'API returned unsuccessful response');
   }
 
-  // Handle API response structure from guild-movimentacao endpoint
   let records = Array.isArray(data.data) ? data.data : [];
   
-  // Normalize records to fix field name inconsistencies
   records = records.map(record => ({
     id: record.id,
-    brawlhalla_id: record.brawlhalla_id || record.brawlhallaid, // Fix typo
+    brawlhalla_id: record.brawlhalla_id || record.brawlhallaid, // arrumar typo
     nome: record.nome || record.player_name,
     rank: record.rank || record.new_rank,
     action: record.action,
@@ -125,11 +98,7 @@ export async function fetchMovimentacao(options = {}) {
   };
 }
 
-/**
- * Calculate total embed size in characters
- * @param {EmbedBuilder} embed
- * @returns {number}
- */
+
 function calculateEmbedSize(embed) {
   let size = 0;
   if (embed.data.title) size += embed.data.title.length;
@@ -143,17 +112,11 @@ function calculateEmbedSize(embed) {
   return size;
 }
 
-/**
- * Build Discord embeds from movimentacao data
- * @param {array} records - Movement records
- * @param {string} startDate
- * @param {string} endDate
- * @returns {{ embeds: EmbedBuilder[], needsFile: boolean, json: object }}
- */
+
 export function buildMovimentacaoEmbeds(records, startDate, endDate) {
   const embeds = [];
   
-  // Custom emoji IDs - Using working emojis from the server
+  // removivel?
   const EMOJIS = {
     entrou: '<:check:1475806856722120838>',
     saiu: '<:xis:1475807109554896966>',
@@ -179,10 +142,10 @@ export function buildMovimentacaoEmbeds(records, startDate, endDate) {
     };
   }
 
-  // Filter out error records (check for valid structure with required fields)
+  
   const validRecords = Array.isArray(records)
     ? records.filter((r) => {
-        // Must have required fields and not be an error object
+
         return r && r.nome && r.action && !r.code && !r.message && r.action !== 'error';
       })
     : [];
@@ -201,7 +164,6 @@ export function buildMovimentacaoEmbeds(records, startDate, endDate) {
     };
   }
 
-  // Group records by action type
   const groupedByAction = {};
   validRecords.forEach((record) => {
     const action = record.action || 'unknown';
@@ -217,7 +179,7 @@ export function buildMovimentacaoEmbeds(records, startDate, endDate) {
     unknown: 0x95a5a6,
   };
 
-  // Build embeds for each action type, chunking if needed
+
   Object.entries(groupedByAction).forEach(([action, items]) => {
     const color = actionColors[action] || 0x95a5a6;
     const emoji = EMOJIS[action] || EMOJIS.ponto;
@@ -228,8 +190,8 @@ export function buildMovimentacaoEmbeds(records, startDate, endDate) {
       rebaixado: 'Rebaixamentos',
     }[action] || action;
 
-    // Split items into chunks to avoid embed size limits
-    const itemsPerEmbed = 50; // Conservative limit to stay under 6000 chars
+   
+    const itemsPerEmbed = 50; 
     const itemChunks = [];
     for (let i = 0; i < items.length; i += itemsPerEmbed) {
       itemChunks.push(items.slice(i, i + itemsPerEmbed));
@@ -250,21 +212,20 @@ export function buildMovimentacaoEmbeds(records, startDate, endDate) {
       const embed = new EmbedBuilder()
         .setColor(color)
         .setTitle(`${emoji} ${chunkLabel} — ${chunk.length} registros`)
-        .setDescription(description.slice(0, 4096)) // Discord embed limit
+        .setDescription(description.slice(0, 4096))
         .setFooter({ text: `Período: ${dateDisplay}` });
 
       embeds.push(embed);
     });
   });
 
-  // Check if total size exceeds Discord limits (safely under MAX_EMBED_SIZE)
+
   let totalSize = 0;
   let needsFile = false;
   embeds.forEach(embed => {
     totalSize += calculateEmbedSize(embed);
   });
 
-  // If total exceeds safe limit, mark for file output
   if (totalSize > 5500 || embeds.length > 10) {
     needsFile = true;
   }
@@ -286,10 +247,7 @@ export function buildMovimentacaoEmbeds(records, startDate, endDate) {
   };
 }
 
-/**
- * Get default date range (last 7 days)
- * @returns {{ startDate: string, endDate: string }}
- */
+
 export function getDefaultDateRange() {
   const endDate = new Date();
   const startDate = new Date(endDate);
@@ -301,11 +259,8 @@ export function getDefaultDateRange() {
   };
 }
 
-/**
- * Format date string for validation (YYYY-MM-DD)
- * @param {string} dateStr
- * @returns {boolean}
- */
+
+
 export function isValidDate(dateStr) {
   if (!dateStr) return false;
   const regex = /^\d{4}-\d{2}-\d{2}$/;
@@ -314,50 +269,27 @@ export function isValidDate(dateStr) {
   return date instanceof Date && !isNaN(date);
 }
 
-/**
- * Fetch movimentacao data for a specific date
- * @param {string} date - YYYY-MM-DD format
- * @returns {Promise<{ ok: boolean, data?: array, summary?: object }>}
- */
+
 export async function fetchMovimentacaoByDate(date) {
   return fetchMovimentacao({ date });
 }
 
-/**
- * Fetch movimentacao data for a date range
- * @param {string} startDate - YYYY-MM-DD format
- * @param {string} endDate - YYYY-MM-DD format
- * @returns {Promise<{ ok: boolean, data?: array, summary?: object }>}
- */
+
 export async function fetchMovimentacaoByDateRange(startDate, endDate) {
   return fetchMovimentacao({ startDate, endDate });
 }
 
-/**
- * Fetch movimentacao data filtered by action
- * @param {string} action - Action type (entrou, saiu, promovido, rebaixado)
- * @param {string} date - Optional specific date in YYYY-MM-DD format
- * @returns {Promise<{ ok: boolean, data?: array, summary?: object }>}
- */
+
 export async function fetchMovimentacaoByAction(action, date = null) {
   return fetchMovimentacao({ date, action });
 }
 
-/**
- * Search movimentacao data by player name
- * @param {string} playerName - Player name to search
- * @param {string} date - Optional specific date in YYYY-MM-DD format
- * @returns {Promise<{ ok: boolean, data?: array, summary?: object }>}
- */
+
 export async function fetchMovimentacaoBySearch(playerName, date = null) {
   return fetchMovimentacao({ date, search: playerName });
 }
 
-/**
- * Export movimentacao data for a file (txt format)
- * @param {object} json - JSON data returned from buildMovimentacaoEmbeds
- * @returns {string}
- */
+
 export function formatMovimentacaoAsText(json) {
   if (!json || !json.data) return '';
 
@@ -368,7 +300,7 @@ export function formatMovimentacaoAsText(json) {
   text += `GUILD MOVIMENTAÇÃO - ${period.start} a ${period.end}\n`;
   text += `═══════════════════════════════════════════\n\n`;
 
-  // Summary
+  // Sumario
   text += `RESUMO:\n`;
   text += `├─ Entradas: ${summary.entrou}\n`;
   text += `├─ Saídas: ${summary.saiu}\n`;
@@ -376,7 +308,7 @@ export function formatMovimentacaoAsText(json) {
   text += `├─ Rebaixamentos: ${summary.rebaixado}\n`;
   text += `└─ Total: ${summary.total}\n\n`;
 
-  // Detailed records by action
+
   const actionLabels = {
     entrou: 'ENTRADAS',
     saiu: 'SAÍDAS',

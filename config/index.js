@@ -1,7 +1,5 @@
-/* this file has all the config you need add or might need add so yea*/
-// all are self explanatory so holy shit think plase
 
-// adm user ids(later remove the last one)
+// deprecated
 export const ALLOWED_USER_IDS = ['1447168951963353209', '252249131202904074', '1475984881640280126', '469616482721071134'];
 
 export const discord = {

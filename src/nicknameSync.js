@@ -1,9 +1,4 @@
-/**
- * Brawlhalla nickname synchronization system
- * Syncs Discord nicknames with Brawlhalla clan members
- * Format: brawlhallaName/discordName
- * Example: "yaya_s2/disneyritozx"
- */
+
 
 import 'dotenv/config';
 import { promises as fs } from 'fs';
@@ -16,22 +11,13 @@ import { loadCustomNicknames, saveCustomNicknames, getCustomNickname, setCustomN
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLAN_CACHE_FILE = path.join(__dirname, '..', '.brawlhalla-clan-cache.json');
 
-/**
- * Fix UTF-8 encoding issues (mojibake) in strings
- * Handles Brazilian Portuguese characters and special symbols: ç ã á é í ó ú ô õ ™ ® ° etc
- * @param {string} str - String potentially with encoding issues
- * @returns {string} Fixed string with proper UTF-8 characters
- */
+
 function fixBrawlhallaName(str) {
   if (!str || typeof str !== 'string') return str;
 
   try {
-    // Elegant solution from corehalla: escape → decodeURIComponent
-    // This converts mojibake (UTF-8 bytes read as Latin-1) back to proper Unicode
-    // Works for:™ ® ° ç ã á é í ó ú ô õ and all Latin-1 supplement characters
     return decodeURIComponent(escape(str));
   } catch (e) {
-    // Fallback: return original string if conversion fails
     return str;
   }
 }
@@ -53,26 +39,18 @@ function sanitizeClanData(clanData) {
   };
 }
 
-/**
- * Sanitize and normalize text for consistent nickname formatting
- * @param {*} str - The string to normalize
- * @returns {string} Normalized string
- */
 function normalizeText(str) {
   if (!str) return '';
 
   return str
     .normalize('NFC')
-    .replace(/[\u115F\u1160\u3164]/g, '')     // Hangul fillers (todos)
-    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '') // zero width
+    .replace(/[\u115F\u1160\u3164]/g, '')     
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '') 
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-/**
- * Fetch clan data from Brawlhalla API and cache it
- * @returns {Promise<Object>} Full clan response with members array
- */
+
 export async function fetchBrawlhallaClanData() {
   if (!brawlhalla.apiKey) {
     throw new Error('BRAWLHALLA_API_KEY not set in .env');
@@ -91,10 +69,9 @@ export async function fetchBrawlhallaClanData() {
       throw new Error('Invalid clan data: no clan array in response');
     }
 
-    // Sanitize and fix character encoding for Brazilian Portuguese
+    
     data = sanitizeClanData(data);
 
-    // Cache the response
     await saveClanCache(data);
     return data;
   } catch (err) {
@@ -103,10 +80,6 @@ export async function fetchBrawlhallaClanData() {
   }
 }
 
-/**
- * Save clan data to cache file
- * @param {Object} clanData - The clan data from API
- */
 export async function saveClanCache(clanData) {
   try {
     await fs.writeFile(CLAN_CACHE_FILE, JSON.stringify(clanData, null, 2), 'utf8');
@@ -117,47 +90,33 @@ export async function saveClanCache(clanData) {
   }
 }
 
-/**
- * Load clan data from cache file
- * @returns {Promise<Object|null>} Cached clan data or null if not found
- */
+
 export async function loadClanCache() {
   try {
     const data = await fs.readFile(CLAN_CACHE_FILE, 'utf8');
     let clanData = JSON.parse(data);
-    // Sanitize names to fix any encoding issues when loading from cache
+   
     clanData = sanitizeClanData(clanData);
-    clanData._fromCache = true; // Mark as from cache
+    clanData._fromCache = true; 
     console.log(`[CLAN CACHE] Loaded clan data from cache`);
     return clanData;
   } catch (err) {
     if (err.code === 'ENOENT') {
-      return null; // File doesn't exist
+      return null;
     }
     console.error(`[CLAN CACHE ERROR] Failed to load:`, err.message);
     return null;
   }
 }
 
-/**
- * Build the new nickname in format: just brawlhallaName (Brawlhalla only)
- * Ensures it doesn't exceed Discord's 32-character limit
- * @param {string} brawlhallaName - The Brawlhalla name from API
- * @param {string} discordName - DEPRECATED: Discord name is no longer used
- * @returns {string|null} The formatted nickname or null if it's too long
- */
+
 export function buildNickname(brawlhallaName, discordName) {
-  // Only use Brawlhalla name (Discord name portion disabled)
+ 
   return brawlhallaName.length > 32 ? null : brawlhallaName;
 }
 
 
-/**
- * Parse a nickname to extract Brawlhalla and Discord portions
- * Format: brawlhallaName/discordName
- * @param {string} nickname - The nickname
- * @returns {Object} {brawlhallaName, discordName} or null if invalid format
- */
+
 export function parseNickname(nickname) {
   if (!nickname || typeof nickname !== 'string') return null;
   const parts = nickname.split('/');
@@ -165,25 +124,14 @@ export function parseNickname(nickname) {
   return { brawlhallaName: parts[0].trim(), discordName: parts[1].trim() };
 }
 
-/**
- * Get the Discord name portion for a member
- * Checks for custom nickname override first, then uses current Discord username
- * @param {Object} member - Discord GuildMember
- * @param {string} discord_id - Discord user ID
- * @returns {string} The Discord name to use
- */
+
 export function getDiscordNameForMember(member, discord_id) {
   const customName = getCustomNickname(discord_id);
   if (customName) return customName;
   return member.user.username;
 }
 
-/**
- * Sync all clan members' nicknames with Discord
- * @param {Client} client - Discord client
- * @param {string} guildId - Discord guild ID
- * @returns {Promise<Object>} Sync results: { synced, updated, unchanged, failed, errors }
- */
+
 export async function syncNicknames(client, guildId) {
   const results = {
     synced: 0,
@@ -195,14 +143,14 @@ export async function syncNicknames(client, guildId) {
   };
 
   try {
-    // Load custom nicknames
+   
     await loadCustomNicknames();
 
-    // Try to load clan data from cache first
+    
     console.log('[CLAN CACHE] Checking for cached clan data...');
     let clanResponse = await loadClanCache();
     
-    // If no cache, fetch from API
+    
     if (!clanResponse) {
       console.log('[CLAN API] No cache found, fetching from Brawlhalla API...');
       clanResponse = await fetchBrawlhallaClanData();
@@ -213,13 +161,13 @@ export async function syncNicknames(client, guildId) {
     const clanMembers = clanResponse.clan || [];
     console.log(`[CLAN DATA] Loaded ${clanMembers.length} clan members`);
 
-    // Get guild
+  
     const guild = await client.guilds.fetch(guildId);
     if (!guild) {
       throw new Error(`Guild ${guildId} not found`);
     }
 
-    // Get user mappings from database
+   
     const brawlhallaIds = clanMembers.map((m) => m.brawlhalla_id);
     const userMappings = await getUsersByBrawlhallaIds(brawlhallaIds);
 
@@ -228,18 +176,15 @@ export async function syncNicknames(client, guildId) {
     console.log(`Clan members: ${clanMembers.length}`);
     console.log(`Users matched in database: ${userMappings.size}\n`);
 
-    // Sync each clan member
+  
     let processedCount = 0;
     let skippedCount = 0;
     for (const clanMember of clanMembers) {
       let { brawlhalla_id, name } = clanMember;
       const brawlhallaName = normalizeText(name);
       
-      // Normalize brawlhalla_id to string to handle type mismatches between API and DB
+      
       const brawlhallaIdStr = String(brawlhalla_id);
-
-      // Check if this clan member exists in our database
-      // Try both numeric and string keys to handle type mismatches
       let userMapping = userMappings.get(brawlhalla_id);
       if (!userMapping) {
         userMapping = userMappings.get(brawlhallaIdStr);
@@ -255,7 +200,7 @@ export async function syncNicknames(client, guildId) {
       const discord_id = userMapping.discord_id;
 
       try {
-        // Fetch member from guild
+
         let member;
         try {
           member = await guild.members.fetch(discord_id);
@@ -283,10 +228,10 @@ export async function syncNicknames(client, guildId) {
           continue;
         }
 
-        // Get Discord name (custom or username)
+
         const discordName = getDiscordNameForMember(member, discord_id);
 
-        // Build new nickname: brawlhallaName/discordName
+
         const newNickname = buildNickname(brawlhallaName, discordName);
         if (!newNickname) {
           console.warn(`[SKIP] "${brawlhallaName}/${discordName}" exceeds 32 chars`);
@@ -301,7 +246,7 @@ export async function syncNicknames(client, guildId) {
           continue;
         }
 
-        // Check if we need to update
+
         const currentNickname = normalizeText(member.nickname || '');
         const finalNickname   = normalizeText(newNickname);
 
@@ -309,7 +254,7 @@ export async function syncNicknames(client, guildId) {
           console.log(`[OK] ${member.user.tag} (${discord_id}): nickname already "${newNickname}"`);
           results.unchanged++;
         } else {
-          // Update nickname
+
           try {
             await member.setNickname(newNickname);
             console.log(`[UPDATE] ${member.user.tag} (${discord_id}): "${currentNickname || member.user.username}" → "${newNickname}"`);
@@ -366,19 +311,13 @@ export async function syncNicknames(client, guildId) {
   return results;
 }
 
-/**
- * Update a member's Discord nickname portion while keeping Brawlhalla name
- * Format: brawlhallaName/newDiscordName
- * @param {Object} member - Discord GuildMember
- * @param {string} newDiscordName - New Discord name to use
- * @returns {Promise<boolean>} True if successful
- */
+
 export async function updateMemberNicknameDiscordPortion(member, newDiscordName) {
   try {
     const currentNickname = member.nickname;
     let brawlhallaName = member.user.username; // fallback
 
-    // If they already have a nickname, extract the Brawlhalla portion
+  
     if (currentNickname) {
       const parsed = parseNickname(currentNickname);
       if (parsed) {
@@ -386,7 +325,7 @@ export async function updateMemberNicknameDiscordPortion(member, newDiscordName)
       }
     }
 
-    // Build new nickname: brawlhallaName/newDiscordName
+
     const newNickname = buildNickname(brawlhallaName, newDiscordName);
     if (!newNickname) {
       throw new Error(`New nickname would exceed 32 characters: ${brawlhallaName}/${newDiscordName}`);
@@ -395,7 +334,7 @@ export async function updateMemberNicknameDiscordPortion(member, newDiscordName)
     await member.setNickname(newNickname);
     console.log(`[NICKNAME UPDATE] ${member.user.tag}: "${currentNickname || member.user.username}" → "${newNickname}"`);
 
-    // Save custom nickname override
+
     setCustomNickname(member.id, newDiscordName);
     await saveCustomNicknames();
 

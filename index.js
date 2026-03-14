@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, Events } from 'discord.js';
 import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser } from './src/db.js';
 import { createClient, runSync, runEloSync } from './src/discord.js';
 import { runAndPostGuildActivity } from './src/guildActivity.js';
@@ -58,7 +58,6 @@ async function main() {
     'unmute': 'unmute',
     'ban': 'ban',
   };
-// emoji constant idek if that is actually useful besides junk code but it help later on ig
   const EMOJIS = {
     arrowLeft: '<:arrowleft:1475806697162539059>',
     arrowRight: '<:arrowright:1475806826833383456>',
@@ -80,7 +79,7 @@ async function main() {
     hourglass: '⏳',
   };
 
-  client.once('ready', () => {
+  client.once(Events.ClientReady, () => {
     console.log(`Logged in as ${client.user.tag}`);
     startCronJobs(client, {
       fetchBrawlhallaClanData,
@@ -89,7 +88,7 @@ async function main() {
       syncNicknames,
       getUsers,
       getUsersWithElo
-    }); // Iniciar os crons
+    }); // Iniciar crons
   });
 
   async function isAdmin(userId) {
@@ -133,10 +132,10 @@ async function main() {
 
     if (!command) return; // impede "." e comandos inexistentes
 
-    // Commands that don't require admin access
+    // Comandos públicos
     const publicCommands = ['active', 'regras', 'help', 'missoes', 'stats', 'clan'];
     
-    // Admin check for admin-only commands
+    // Verificação de administrador
     if (!publicCommands.includes(command) && !(await isAdmin(message.author.id))) {
       return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar estes comandos.')] });
     }
@@ -220,7 +219,7 @@ async function main() {
         const row = new ActionRowBuilder().addComponents(selectMenu);
         const helpMsg = await message.reply({ embeds: [page1], components: [row] });
 
-        // Create a collector for the select menu
+        // Coletor para os botões de seleção
         const collector = helpMsg.createMessageComponentCollector({ time: 60000 });
 
         collector.on('collect', async (interaction) => {
@@ -244,9 +243,7 @@ async function main() {
         });
       }
 
-      // The rest of the existing command handlers (sync, sync-guild-roles, sync-elo-roles, guild-activity,
-      // movimentacao, sync-nicknames, refresh-clan-cache) are implemented below — reuse the existing
-      // functions imported at top (getUsers, runSync, runEloSync, runAndPostGuildActivity, etc.).
+
 
       // .guild-activity
       if (command === 'guild-activity') {
@@ -280,7 +277,7 @@ async function main() {
           let startDate, endDate, queryType = 'range';
           
           if (args.length >= 3) {
-            // Two dates provided: date range
+            // Intervalo de datas
             startDate = args[1];
             endDate = args[2];
             if (!isValidDate(startDate) || !isValidDate(endDate)) {
@@ -288,7 +285,7 @@ async function main() {
             }
             queryType = 'range';
           } else if (args.length === 2) {
-            // One date provided: single day
+            // Data única
             startDate = args[1];
             if (!isValidDate(startDate)) {
               return loading.edit({ embeds: [createErrorEmbed('Data Inválida', 'Formato: YYYY-MM-DD')] });
@@ -296,7 +293,7 @@ async function main() {
             endDate = startDate; // Same day
             queryType = 'day';
           } else {
-            // No dates provided: default to last 7 days
+            // Padrão: últimos 7 dias
             const range = getDefaultDateRange();
             startDate = range.startDate;
             endDate = range.endDate;
@@ -307,7 +304,7 @@ async function main() {
           const result = buildMovimentacaoEmbeds(data.data || [], startDate, endDate);
           
           if (result.needsFile) {
-            // Send data as text file if embeds would be too large
+            // Enviar como arquivo se for muito grande
             const textContent = formatMovimentacaoAsText(result.json);
             const attachment = new AttachmentBuilder(Buffer.from(textContent), {
               name: `movimentacao_${startDate}_${endDate}.txt`,
@@ -331,7 +328,7 @@ async function main() {
               files: [attachment],
             });
           } else {
-            // Send data as embeds
+            // Enviar como embeds
             const EMBEDS_PER_MESSAGE = 10;
             for (let i = 0; i < result.embeds.length; i += EMBEDS_PER_MESSAGE) {
               const chunk = result.embeds.slice(i, i + EMBEDS_PER_MESSAGE);
@@ -343,7 +340,7 @@ async function main() {
         }
       }
 
-      // .sync (both guild and elo)
+      // .sync
       if (command === 'sync') {
         const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando...`).setDescription('Executando sincronização completa...')] });
         try {
@@ -403,8 +400,11 @@ async function main() {
         }
       }
 
-      // .active <discord_id>
+      // .active
       if (command === 'active') {
+        if (!message.guild) {
+          return message.reply({ embeds: [createErrorEmbed('Comando Inválido', 'Este comando só pode ser usado no servidor.')] });
+        }
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
@@ -548,7 +548,7 @@ async function main() {
         await message.reply({ embeds: [rulesEmbed] });
       }
 
-      // .inac-all (Give "ina" role to all inactive members)
+      // .inac-all
       if (command === 'inac-all') {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
@@ -579,6 +579,15 @@ async function main() {
                 await member.roles.add(inactiveRoleId);
               }
 
+              // Notificação por DM
+              await member.send({
+                embeds: [new EmbedBuilder()
+                  .setColor(0xed4245)
+                  .setTitle('⚠️ Aviso de Inatividade')
+                  .setDescription(`Você está inativo. Para mostrar que está ativo, use o comando \`.active <justificativa>\` no servidor.`)
+                  .setTimestamp()]
+              }).catch(() => console.log(`Could not send DM to ${player.discord_id}`));
+
               applied++;
             } catch {
               failed++;
@@ -608,40 +617,72 @@ async function main() {
             return message.reply({ embeds: [createErrorEmbed('Sem Inativos', 'Nenhum usuário marcado como inativo no momento')] });
           }
 
-          const embeds = [];
-          let currentEmbed = new EmbedBuilder()
-            .setColor(0xfaa61a)
-            .setTitle(`📋 Usuários Inativos (${inactivePlayers.length})`);
+          const itemsPerPage = 10;
+          const pages = [];
+          
+          for (let i = 0; i < inactivePlayers.length; i += itemsPerPage) {
+            const chunk = inactivePlayers.slice(i, i + itemsPerPage);
+            const embed = new EmbedBuilder()
+              .setColor(0xfaa61a)
+              .setTitle(`📋 Usuários Inativos (${inactivePlayers.length})`)
+              .setFooter({ text: `Página ${pages.length + 1} de ${Math.ceil(inactivePlayers.length / itemsPerPage)}` });
 
-          for (let i = 0; i < inactivePlayers.length; i++) {
-            const player = inactivePlayers[i];
-            const user = await client.users.fetch(player.discord_id).catch(() => null);
-            const createdAt = new Date(player.created_at);
-            const daysInactive = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
-            const timeStr = daysInactive === 0 ? 'Hoje' : `${daysInactive}d atrás`;
-            
-            const fieldValue = `${user?.tag || 'Usuário Desconhecido'} (ID: ${player.discord_id})\nMarcado: ${timeStr}`;
-            
-            if (currentEmbed.data.fields?.length >= 10) {
-              embeds.push(currentEmbed);
-              currentEmbed = new EmbedBuilder()
-                .setColor(0xfaa61a)
-                .setTitle(`📋 Usuários Inativos - Página ${embeds.length + 1}`);
+            for (let j = 0; j < chunk.length; j++) {
+              const player = chunk[j];
+              const user = await client.users.fetch(player.discord_id).catch(() => null);
+              const createdAt = new Date(player.created_at);
+              const daysInactive = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
+              const timeStr = daysInactive === 0 ? 'Hoje' : `${daysInactive}d atrás`;
+              
+              embed.addFields({ 
+                name: `${i + j + 1}. ${user?.tag || 'Desconhecido'}`, 
+                value: `ID: ${player.discord_id}\nMarcado: ${timeStr}`, 
+                inline: false 
+              });
             }
-            
-            currentEmbed.addFields({ name: `${i + 1}. ${user?.tag || 'Desconhecido'}`, value: `ID: ${player.discord_id}\nMarcado: ${timeStr}`, inline: false });
+            pages.push(embed);
           }
+
+          let currentPage = 0;
           
-          embeds.push(currentEmbed);
-          
-          const EMBEDS_PER_MESSAGE = 1;
-          for (let i = 0; i < embeds.length; i += EMBEDS_PER_MESSAGE) {
-            const chunk = embeds.slice(i, i + EMBEDS_PER_MESSAGE);
-            if (i === 0) {
-              await message.reply({ embeds: chunk });
-            } else {
-              await message.channel.send({ embeds: chunk });
-            }
+          const getRow = (page) => {
+            const row = new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId('prev')
+                .setLabel('Anterior')
+                .setStyle(1) // Primary
+                .setDisabled(page === 0),
+              new ButtonBuilder()
+                .setCustomId('next')
+                .setLabel('Próximo')
+                .setStyle(1) // Primary
+                .setDisabled(page === pages.length - 1)
+            );
+            return row;
+          };
+
+          const listMsg = await message.reply({ 
+            embeds: [pages[currentPage]], 
+            components: pages.length > 1 ? [getRow(currentPage)] : [] 
+          });
+
+          if (pages.length > 1) {
+            const collector = listMsg.createMessageComponentCollector({ time: 60000 });
+            
+            collector.on('collect', async (i) => {
+              if (i.user.id !== message.author.id) {
+                return i.reply({ content: 'Você não pode usar estes botões.', ephemeral: true });
+              }
+              
+              if (i.customId === 'prev') currentPage--;
+              if (i.customId === 'next') currentPage++;
+              
+              await i.update({ embeds: [pages[currentPage]], components: [getRow(currentPage)] });
+            });
+
+            collector.on('end', () => {
+              listMsg.edit({ components: [] }).catch(() => {});
+            });
           }
         } catch (err) {
           await message.reply({ embeds: [createErrorEmbed('Erro ao Listar Inativos', err.message)] });
@@ -792,7 +833,7 @@ async function main() {
         }
       }
 
-      // ---- .unwarn ----
+      // .unwarn
       if (command === 'unwarn') {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
@@ -817,7 +858,7 @@ async function main() {
         }
       }
 
-      // ---- .warns ----
+      // .warns
       if (command === 'warns') {
         try {
           const page = parseInt(args[0]) || 1;
@@ -871,7 +912,7 @@ async function main() {
         }
       }
 
-      // ---- .mute ----
+      // .mute
       if (command === 'mute') {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
@@ -905,7 +946,7 @@ async function main() {
         }
       }
 
-      // ---- .unmute ----
+      // .unmute
       if (command === 'unmute') {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
@@ -925,7 +966,7 @@ async function main() {
         }
       }
 
-      // ---- .ban ----
+      // .ban
       if (command === 'ban') {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
@@ -943,7 +984,7 @@ async function main() {
         }
       }
 
-      // ---- .stats ----
+      // .stats
       if (command === 'stats') {
         try {
           let targetUserId = message.author.id;
@@ -1007,7 +1048,7 @@ async function main() {
         }
       }
 
-      // ---- .clan ----
+      // .clan
       if (command === 'clan') {
         try {
           let clanId = process.env.BRAWLHALLA_CLAN_ID || '396943';
@@ -1015,7 +1056,7 @@ async function main() {
             clanId = args[0];
           }
 
-          // Instant Result Strategy: Check cache first (including stale)
+          // Checar cache primeiro (inclusive expirado)
           const cachedData = getCached(`clan:${clanId}`, true);
           if (cachedData) {
             return await message.reply({ embeds: [createClanEmbed(cachedData)] });
@@ -1088,18 +1129,33 @@ async function main() {
             .map(p => p.discord_id),
         }
       });
-      console.log(`[Inactive Reminder] Sent message with ${inactivePlayers.length} inactive players`);
+
+      // Enviar no DM também
+      for (const player of inactivePlayers) {
+        if (!player.discord_id) continue;
+        try {
+          const user = await client.users.fetch(player.discord_id).catch(() => null);
+          if (user) {
+            await user.send({ embeds: [embed] }).catch(() => {
+              console.log(`[Inactive Reminder] Could not send DM to ${player.discord_id}`);
+            });
+          }
+        } catch (err) {
+          console.log(`[Inactive Reminder] Failed to DM ${player.discord_id}: ${err.message}`);
+        }
+      }
+
+      console.log(`[Inactive Reminder] Sent message and DMs with ${inactivePlayers.length} inactive players`);
     } catch (err) {
       console.error('[Inactive Reminder Error]', err);
     }
   }
 
-  // Setup periodic task (runs every 3 hours by default, or interval as configured)
+  // Configuração do lembrete periódico
   if (inactivePlayersConfig.channelId) {
     const interval = parseInt(inactivePlayersConfig.messageInterval) || 10800000; // 3 hours default
     console.log(`[Scheduled] Inactive players reminder will run every ${interval}ms (${(interval / 1000 / 60 / 60 / 24).toFixed(1)} days)`);
     setInterval(sendInactivePlayersReminder, interval);
-    // Run once after 5 seconds to test connectivity on startup
     setTimeout(sendInactivePlayersReminder, 5000);
   }
 

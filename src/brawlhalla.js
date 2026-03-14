@@ -1,24 +1,23 @@
 import { EmbedBuilder } from 'discord.js';
 import { getUserByDiscordId } from './db.js';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs';
 import { resolve } from 'path';
 
-// ─── Cache config ─────────────────────────────────────────────────────────────
+// Config cache
 const CACHE_DIR = resolve(process.cwd(), 'cache');
 const SHARED_FILE = resolve(CACHE_DIR, 'shared.json');
 const CACHE_TTL = 20 * 60 * 1000; // 20 min
 
 if (!existsSync(CACHE_DIR)) {
   try {
-    const fs = require('fs');
-    fs.mkdirSync(CACHE_DIR, { recursive: true });
+    mkdirSync(CACHE_DIR, { recursive: true });
     console.log(`[Brawlhalla] Created cache directory: ${CACHE_DIR}`);
   } catch (err) {
     console.warn('[Brawlhalla] Failed to create cache directory:', err.message);
   }
 }
 
-// ─── Rate limiter: 180 requests per 15 minutes ────────────────────────────────
+// limitador de req
 const RATE_LIMIT = 180;
 const RATE_WINDOW = 15 * 60 * 1000;
 const requestLog = [];
@@ -49,7 +48,6 @@ async function apiFetch(url) {
   return res.json();
 }
 
-// ─── Cache helpers ────────────────────────────────────────────────────────────
 function getSharedData() {
   try {
     if (existsSync(SHARED_FILE)) {
@@ -99,12 +97,12 @@ function setCached(key, data) {
 
 
 
-// ─── Legends mapping cache (single fetch for the entire session) ───────────────
+// cache de legends
 let legendsDataCache = null;
 
 async function fetchLegends() {
   if (legendsDataCache) return legendsDataCache;
-  const cached = getCached('__legends__', true); // Ignore TTL for legends
+  const cached = getCached('__legends__', true);
   if (cached) {
     legendsDataCache = {};
     for (const [key, val] of Object.entries(cached)) {
@@ -343,7 +341,7 @@ function normalizeUnicode(str) {
   }
 }
 
-// ─── Public API ───────────────────────────────────────────────────────────────
+// API
 
 export async function fetchPlayerStats(brawlhallaId) {
   const key = `player:${brawlhallaId}`;
@@ -353,11 +351,9 @@ export async function fetchPlayerStats(brawlhallaId) {
     return hit;
   }
 
-  // Ensure legends mapping is loaded (1 API call, cached separately)
   if (!legendsDataCache) await fetchLegends();
 
   try {
-    // Fetch stats + ranked in parallel (2 API calls)
     const [statsData, rankedData] = await Promise.all([
       apiFetch(`https://api.brawlhalla.com/player/${brawlhallaId}/stats?api_key=${process.env.BRAWLHALLA_API_KEY}`),
       apiFetch(`https://api.brawlhalla.com/player/${brawlhallaId}/ranked?api_key=${process.env.BRAWLHALLA_API_KEY}`)
@@ -430,7 +426,7 @@ export async function getUserBrawlhallaId(discordId) {
   }
 }
 
-// ─── Embed builders ───────────────────────────────────────────────────────────
+// builders de embed
 
 export function createStatsEmbed(playerData) {
   const stats = playerData || {};
@@ -453,7 +449,7 @@ export function createStatsEmbed(playerData) {
 
   const totalPlaytime = legends.reduce((s, l) => s + parseInt(l.matchtime || 0), 0);
 
-  // Weapon playtime logic
+  // logica para playtime de weapon
   const weaponTimes = {};
   legends.forEach(l => {
     const mapping = legendsDataCache?.[l.legend_name_key];
@@ -558,7 +554,7 @@ export function createRankedEmbed(playerData) {
 
   const rankIcon = getRankIcon(ranked.tier);
 
-  // Highest Elo Legend
+  // maior elo legend
   const bestLegend = legendsRanked.length
     ? legendsRanked.reduce((a, b) => ((b.rating || 0) > (a.rating || 0) ? b : a))
     : null;
@@ -571,12 +567,12 @@ export function createRankedEmbed(playerData) {
     bestLegendIcon = LEGEND_EMOJIS[key] || '❓';
   }
 
-  // Highest Elo 2v2 Team
+  // maior elo com um duo
   const bestTeam = teams2v2.length
     ? teams2v2.reduce((a, b) => ((b.rating || 0) > (a.rating || 0) ? b : a))
     : null;
 
-  // Highest Rotating Ranked (if any)
+  // maior 3v3
   const bestRotating = rotating.length
     ? rotating.reduce((a, b) => ((b.rating || 0) > (a.rating || 0) ? b : a))
     : null;
@@ -683,17 +679,13 @@ export function createClanEmbed(clanData) {
 }
 
 export function clearCache() {
-  // Clear the whole directory and memory cache
+  // limpa o cache
   try {
-    const fs = require('fs');
-    if (existsSync(CACHE_DIR)) {
-      const files = fs.readdirSync(CACHE_DIR);
-      for (const file of files) fs.unlinkSync(resolve(CACHE_DIR, file));
-    }
+    const files = readdirSync(CACHE_DIR);
+    for (const file of files) unlinkSync(resolve(CACHE_DIR, file));
   } catch { }
   legendsDataCache = null;
 }
 
-// ─── Initialization ───────────────────────────────────────────────────────────
-// Eagerly populate legend mapping — runs once per process lifetime.
+// inicialização
 fetchLegends().catch(err => console.warn('[Brawlhalla] Pre-warm legends failed:', err.message));
