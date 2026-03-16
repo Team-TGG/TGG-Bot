@@ -230,19 +230,11 @@ export async function runSync(client, users) {
         .update({ need_update: false })
         .eq('discord_id', user.discord_id);
 
-      synced.push({
-        discord_id: user.discord_id,
-        role: user.role,
-        tag: member.user.tag
-      });
+      synced.push({ discord_id: user.discord_id, role: user.role, tag: member.user.tag });
 
     } catch (err) {
       console.error(`[ERROR] ${user.discord_id}:`, err.message);
-      failed.push({
-        discord_id: user.discord_id,
-        role: user.role,
-        error: err.message
-      });
+      failed.push({ discord_id: user.discord_id, role: user.role, error: err.message });
     }
   }
 
@@ -252,15 +244,7 @@ export async function runSync(client, users) {
   console.log(`Errors: ${failed.length}`);
   console.log('--- Sync done ---\n');
 
-  return {
-    synced: synced.length,
-    skipped: skippedNoId.length + skippedNotInGuild.length,
-    errors: failed.length,
-    syncedList: synced,
-    skippedNoId,
-    skippedNotInGuild,
-    failed,
-  };
+  return { synced: synced.length, skipped: skippedNoId.length + skippedNotInGuild.length, errors: failed.length, syncedList: synced, skippedNoId, skippedNotInGuild, failed, };
 }
 
 function getEloRoleForRating(elo) {
@@ -308,6 +292,8 @@ export async function syncMemberEloRoles(member, elo) {
 
 
 export async function runEloSync(client, usersWithElo) {
+  const supabase = getClient();
+
   const guildId = process.env.DISCORD_GUILD_ID;
   const guild = await client.guilds.fetch(guildId);
   if (!guild) throw new Error(`Guild not found: ${guildId}`);
@@ -319,16 +305,32 @@ export async function runEloSync(client, usersWithElo) {
   console.log('\n--- ELO Sync start ---');
   console.log(`Guild: ${guild.name}, users with ELO from DB: ${usersWithElo.length}\n`);
 
-  for (const { discord_id, elo } of usersWithElo) {
+  for (const { discord_id, elo, brawlhalla_id } of usersWithElo) {
     try {
       const member = await guild.members.fetch(discord_id).catch(() => null);
+
       if (!member) {
         console.warn(`[ELO NOT IN GUILD] ${discord_id} (elo: ${elo})`);
         skippedNotInGuild.push({ discord_id, elo });
         continue;
       }
+
       await syncMemberEloRoles(member, elo);
+
+      // Atualiza need_update para "false" após sincronizar
+      if (brawlhalla_id) {
+        const { error } = await supabase
+          .from('player_elo_history')
+          .update({ need_update: false })
+          .eq('brawlhalla_id', brawlhalla_id);
+
+        if (error) {
+          console.error(`[ELO UPDATE ERROR] ${brawlhalla_id}:`, error.message);
+        }
+      }
+
       synced.push({ discord_id, elo, tag: member.user.tag });
+
     } catch (err) {
       console.error(`[ELO ERROR] ${discord_id}:`, err.message);
       failed.push({ discord_id, elo, error: err.message });
