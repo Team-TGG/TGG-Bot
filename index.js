@@ -156,7 +156,8 @@ async function main() {
           .setTitle(`${EMOJIS.crossedSwords} Guilda`)
           .addFields(
             { name: `${EMOJIS.arrowRight} .missoes`, value: 'Mostrar as missões da semana atual', inline: false },
-            { name: `${EMOJIS.arrowRight} .stats`, value: 'Trazer seus status atualizados do jogo', inline: false }
+            { name: `${EMOJIS.arrowRight} .stats`, value: 'Trazer seus status atualizados do jogo', inline: false },
+            { name: `${EMOJIS.arrowRight} .clan`, value: 'Ver informações do clã Team TGG', inline: false },
           )
           .setFooter({ text: 'Selecione uma categoria no dropdown' })
           .setTimestamp();
@@ -188,7 +189,13 @@ async function main() {
           .setColor(0x5865f2)
           .setTitle(`${EMOJIS.success} Gerenciamento de Usuários`)
           .addFields(
-            { name: `${EMOJIS.arrowRight} .entrou <@user> <bhid> (admin)`, value: 'Adicionar novo usuário ou reativar existente no banco de dados', inline: false }
+            { name: `${EMOJIS.arrowRight} .entrou <@user> <bhid> (admin)`,    value: 'Adicionar novo usuário ou reativar existente no banco de dados', inline: false },
+            { name: `${EMOJIS.arrowRight} .warn <@user> [motivo] (admin)`,    value: 'Dar um aviso para um membro (3 é o limite)', inline: false },
+            { name: `${EMOJIS.arrowRight} .unwarn <@user> [número] (admin)`,  value: 'Tirar um warn de um membro', inline: false },
+            { name: `${EMOJIS.arrowRight} .warns (admin)`,                    value: 'Mostrar a listagem de todos os warns', inline: false },
+            { name: `${EMOJIS.arrowRight} .mute <@user> <duração> (admin)`,   value: 'Silenciar um usuário por certo tempo', inline: false },
+            { name: `${EMOJIS.arrowRight} .unmute <@user> (admin)`,           value: 'Dessilenciar um usuário', inline: false },
+            { name: `${EMOJIS.arrowRight} .ban <@user> [motivo] (admin)`,     value: 'Banir um usuário do servidor (motivo é opcional)', inline: false }
           )
           .setFooter({ text: 'Selecione uma categoria no dropdown' })
           .setTimestamp();
@@ -1069,7 +1076,7 @@ async function main() {
 
           const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
           const clanData = await fetchClanStats(clanId);
-          await sendCleanMessage(loadingMsg, createClanEmbed(clanData));
+          await loadingMsg.edit({ embeds: [createClanEmbed(clanData)] });
 
         } catch (err) {
           console.error('Error fetching clan stats:', err);

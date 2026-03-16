@@ -643,7 +643,7 @@ export function createRankedEmbed(playerData) {
 }
 
 export function createClanEmbed(clanData) {
-  const clanName = normalizeUnicode(ata.clan_name || 'Unknown Clan');
+  const clanName = normalizeUnicode(clanData.clan_name || 'Unknown Clan');
   const clanId = clanData.clan_id || 'N/A';
   const createDate = clanData.clan_create_date || 0;
   const lifetimeXp = clanData.clan_lifetime_xp || 0;
