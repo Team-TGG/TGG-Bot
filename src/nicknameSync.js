@@ -22,11 +22,7 @@ function fixBrawlhallaName(str) {
   }
 }
 
-/**
- * Sanitize clan data to fix encoding issues in member names
- * @param {Object} clanData - Raw clan data from API
- * @returns {Object} Clan data with fixed encoding
- */
+
 function sanitizeClanData(clanData) {
   if (!clanData || !clanData.clan) return clanData;
 
