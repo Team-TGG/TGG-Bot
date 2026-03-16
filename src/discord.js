@@ -1,6 +1,7 @@
-
-
 import { Client, GatewayIntentBits } from 'discord.js';
+import { getClient } from './db.js';
+
+const supabase = getClient();
 
 const ROLE_MAP = {
   recruit: '1437427750209327297',
@@ -207,34 +208,48 @@ export async function runSync(client, users) {
   console.log(`Guild: ${guild.name} (${guild.id}), users from DB: ${users.length}\n`);
 
   for (const user of users) {
-    if (user.discord_id == null || user.discord_id === '') {
+    if (!user.discord_id) {
       skippedNoId.push({ role: user.role });
       continue;
     }
 
     try {
       const member = await guild.members.fetch(user.discord_id).catch(() => null);
+
       if (!member) {
         console.warn(`[NOT IN GUILD] ${user.discord_id} (DB role: ${user.role})`);
         skippedNotInGuild.push({ discord_id: user.discord_id, role: user.role });
         continue;
       }
+
       await syncMemberRoles(member, user.role, user.active);
-      synced.push({ discord_id: user.discord_id, role: user.role, tag: member.user.tag });
+
+      // Marcar como sincronizado
+      await supabase
+        .from('users')
+        .update({ need_update: false })
+        .eq('discord_id', user.discord_id);
+
+      synced.push({
+        discord_id: user.discord_id,
+        role: user.role,
+        tag: member.user.tag
+      });
+
     } catch (err) {
       console.error(`[ERROR] ${user.discord_id}:`, err.message);
-      failed.push({ discord_id: user.discord_id, role: user.role, error: err.message });
+      failed.push({
+        discord_id: user.discord_id,
+        role: user.role,
+        error: err.message
+      });
     }
   }
 
   console.log('\n--- Summary ---');
-  console.log(`Synced (has correct role): ${synced.length}`);
-  synced.forEach((u) => console.log(`  • ${u.tag} (${u.discord_id}) → ${u.role}`));
-  console.log(`\nSkipped (no discord_id in DB): ${skippedNoId.length}`);
-  console.log(`Skipped (not in guild): ${skippedNotInGuild.length}`);
-  skippedNotInGuild.forEach((u) => console.log(`  • ${u.discord_id} (DB role: ${u.role})`));
-  console.log(`\nErrors: ${failed.length}`);
-  failed.forEach((u) => console.log(`  • ${u.discord_id}: ${u.error}`));
+  console.log(`Synced: ${synced.length}`);
+  console.log(`Skipped: ${skippedNoId.length + skippedNotInGuild.length}`);
+  console.log(`Errors: ${failed.length}`);
   console.log('--- Sync done ---\n');
 
   return {

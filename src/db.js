@@ -59,7 +59,8 @@ export async function getUsers() {
   const supabase = getClient();
   const { data, error } = await supabase
     .from('users')
-    .select('discord_id, role, active');
+    .select('discord_id, role, active')
+    .eq('need_update', true) // Pegar somente os usuários que precisam ser atualizados
   if (error) throw error;
   return data ?? [];
 }
@@ -83,7 +84,8 @@ export async function getUsersWithElo() {
 
   const { data: history, error: historyError } = await supabase
     .from('player_elo_history')
-    .select('brawlhalla_id, peak_1v1, peak_2v2, peak_3v3');
+    .select('brawlhalla_id, peak_1v1, peak_2v2, peak_3v3')
+    .eq('need_update', true); // Pegar somente os usuários que precisam ser atualizados
 
   if (historyError) throw historyError;
 
