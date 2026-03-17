@@ -346,3 +346,40 @@ export async function reactivateOrAddUser(discord_id, brawlhalla_id, username) {
   }
 }
 
+
+export async function addPersistentMute(discord_id, expires_at) {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('mutes')
+    .upsert({
+      user_id: String(discord_id),
+      expires_at: expires_at,
+    }, { onConflict: 'user_id' })
+    .select();
+
+  if (error) throw error;
+  return data?.[0] || null;
+}
+
+export async function removePersistentMute(discord_id) {
+  const supabase = getClient();
+  const { error } = await supabase
+    .from('mutes')
+    .delete()
+    .eq('user_id', String(discord_id));
+
+  if (error) throw error;
+}
+
+export async function getActiveMutes() {
+  const supabase = getClient();
+  const now = new Date().toISOString();
+  
+  const { data, error } = await supabase
+    .from('mutes')
+    .select('*')
+    .gt('expires_at', now);
+
+  if (error) throw error;
+  return data ?? [];
+}

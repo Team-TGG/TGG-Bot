@@ -217,3 +217,22 @@ export function formatTime(milliseconds) {
   if (minutes > 0) return `${minutes} minuto(s)`;
   return `${seconds} segundo(s)`;
 }
+
+// Máximo delay do setTimeout (2^31 - 1 ms, aprox 24.8 dias)
+const MAX_TIMEOUT = 2147483647;
+
+/**
+ * setTimeout robusto que suporta atrasos maiores que 24.8 dias.
+ * @param {Function} callback 
+ * @param {number} delay 
+ */
+export function safeSetTimeout(callback, delay) {
+  if (delay <= MAX_TIMEOUT) {
+    return setTimeout(callback, delay);
+  }
+
+  // Se o delay for maior que o máximo, agendamos o máximo e repetimos recursivamente
+  return setTimeout(() => {
+    safeSetTimeout(callback, delay - MAX_TIMEOUT);
+  }, MAX_TIMEOUT);
+}

@@ -10,7 +10,8 @@ import { discord as discordConfig, ALLOWED_USER_IDS, inactivePlayers as inactive
 import { getUserByDiscordId } from './src/db.js';
 import { startCronJobs } from './src/scheduler/cron.js';
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createClanEmbed, getUserBrawlhallaId, getCached } from './src/brawlhalla.js';
-import { addWarning, getUserWarnings, removeWarning, removeLastWarning, parseTime, formatTime as formatModTime } from './src/moderation.js';
+import { addWarning, getUserWarnings, removeWarning, removeLastWarning, parseTime, formatTime as formatModTime, safeSetTimeout } from './src/moderation.js';
+import { getClient, addPersistentMute, removePersistentMute, getActiveMutes } from './src/db.js';
 
 async function main() {
   if (!discordConfig.token || !discordConfig.guildId) {
@@ -980,13 +981,18 @@ async function main() {
           if (!muteRole) muteRole = await guild.roles.create({ name: 'Muted', color: 0x808080, reason: 'Cargo para silenciados' });
           await member.roles.add(muteRole);
           if (member.voice.channel) await member.voice.setMute(true, 'Moderação').catch(() => {});
+          
+          const expiresAt = new Date(Date.now() + durationMs).toISOString();
+          await addPersistentMute(targetId, expiresAt);
+
           await message.reply({ embeds: [createSuccessEmbed('Silenciado', `${member.user.tag} silenciado por ${formatModTime(durationMs)}.`)] });
 
-          setTimeout(async () => {
+          safeSetTimeout(async () => {
             const m = await guild.members.fetch(targetId).catch(() => null);
             if (m?.roles.cache.has(muteRole.id)) {
               await m.roles.remove(muteRole).catch(() => {});
               if (m.voice.serverMute) await m.voice.setMute(false, 'Auto-unmute').catch(() => {});
+              await removePersistentMute(targetId);
               await message.channel.send({ embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('✅ Desmutado').setDescription(`${m.user.tag} desmutado automaticamente.`)] }).catch(() => {});
             }
           }, durationMs);
@@ -1018,6 +1024,7 @@ async function main() {
           if (!muteRole || !member.roles.cache.has(muteRole.id)) return message.reply({ embeds: [createErrorEmbed('Não Silenciado', 'Este usuário não está silenciado.')] });
           await member.roles.remove(muteRole);
           if (member.voice.serverMute) await member.voice.setMute(false, 'Moderação').catch(() => {});
+          await removePersistentMute(targetId);
           await message.reply({ embeds: [createSuccessEmbed('Desmutado', `${member.user.tag} desmutado com sucesso.`)] });
         } catch (err) {
           await message.reply({ embeds: [createErrorEmbed('Erro ao Desmutar', err.message)] });
@@ -1238,6 +1245,46 @@ async function main() {
     setInterval(sendInactivePlayersReminder, interval);
     setTimeout(sendInactivePlayersReminder, 5000);
   }
+
+  // Inicializar mutes ativos
+  client.once(Events.ClientReady, async () => {
+    try {
+      const activeMutes = await getActiveMutes();
+      console.log(`[Boot] Restoring ${activeMutes.length} active mutes...`);
+      
+      const guild = client.guilds.cache.get(discordConfig.guildId);
+      if (!guild) return;
+
+      let muteRole = guild.roles.cache.find(r => r.name === 'Muted');
+
+      for (const mute of activeMutes) {
+        const remainingMs = new Date(mute.expires_at) - new Date();
+        if (remainingMs <= 0) {
+          await removePersistentMute(mute.user_id);
+          const member = await guild.members.fetch(mute.user_id).catch(() => null);
+          if (member && muteRole) {
+            await member.roles.remove(muteRole).catch(() => {});
+          }
+          continue;
+        }
+
+        safeSetTimeout(async () => {
+          const m = await guild.members.fetch(mute.user_id).catch(() => null);
+          if (m && muteRole && m.roles.cache.has(muteRole.id)) {
+            await m.roles.remove(muteRole).catch(() => {});
+            if (m.voice.serverMute) await m.voice.setMute(false, 'Auto-unmute').catch(() => {});
+            await removePersistentMute(mute.user_id);
+            const channel = guild.channels.cache.find(c => c.name === 'staff-logs' || c.isTextBased());
+            if (channel) {
+               await channel.send({ embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('✅ Desmutado').setDescription(`${m.user.tag} desmutado automaticamente (restaurado do banco).`)] }).catch(() => {});
+            }
+          }
+        }, remainingMs);
+      }
+    } catch (err) {
+      console.error('[Boot] Error restoring mutes:', err);
+    }
+  });
 
   await client.login(discordConfig.token);
 }
