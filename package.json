@@ -15,6 +15,7 @@
     "@supabase/supabase-js": "^2.39.0",
     "discord.js": "^14.14.1",
     "dotenv": "^16.3.1",
-    "node-cron": "^4.2.1"
+    "node-cron": "^4.2.1",
+    "win-ca": "^3.5.1"
   }
 }
