@@ -602,7 +602,7 @@ async function main() {
             },
             {
               name: `${EMOJIS.square} Contribua com a Guilda`,
-              value: `Ajude a guilda participando de missões, quests e atividades coletivas. Para mais informações, veja o canal <#${'1465513473583616011'}>`,
+              value: `Ajude a guilda participando de missões, quests e atividades coletivas. Para mais informações, veja o canal <#${'1480627066792579072'}>`,
               inline: false
             },
             {
