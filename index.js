@@ -1,14 +1,13 @@
 import 'dotenv/config';
-
-// Inject Windows system certificates (fixes UNABLE_TO_VERIFY_LEAF_CERTIFICATE)
 import 'win-ca';
 
-// Respect IGNORE_SSL_ERRORS from .env as fallback
+
+
 if (process.env.IGNORE_SSL_ERRORS === 'true') {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 }
 
-import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, Events } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
 import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes } from './src/db.js';
 import { createClient, runSync, runEloSync } from './src/discord.js';
 import { runAndPostGuildActivity } from './src/guildActivity.js';
@@ -129,6 +128,64 @@ async function main() {
       .setTimestamp();
   }
 
+  // Configura permissões do cargo Muted em todos os canais (incluindo fóruns) — em paralelo
+  async function setupMutePermissions(guild, muteRole) {
+    const denyPermissions = [
+      PermissionFlagsBits.SendMessages,
+      PermissionFlagsBits.SendMessagesInThreads,
+      PermissionFlagsBits.CreatePublicThreads,
+      PermissionFlagsBits.CreatePrivateThreads,
+      PermissionFlagsBits.AddReactions,
+      PermissionFlagsBits.Speak,
+    ];
+
+    const targetChannelTypes = [
+      ChannelType.GuildText,
+      ChannelType.GuildVoice,
+      ChannelType.GuildForum,
+      ChannelType.GuildStageVoice,
+      ChannelType.GuildCategory,
+      ChannelType.GuildMedia,
+    ];
+
+    const channels = guild.channels.cache.filter(c => targetChannelTypes.includes(c.type));
+
+    // Filtra apenas canais que precisam de atualização
+    const channelsToUpdate = [];
+    for (const [, channel] of channels) {
+      const existingOverwrite = channel.permissionOverwrites.cache.get(muteRole.id);
+      if (existingOverwrite) {
+        const denied = existingOverwrite.deny;
+        const allDenied = denyPermissions.every(p => denied.has(p));
+        if (allDenied) continue; // Já está configurado corretamente
+      }
+      channelsToUpdate.push(channel);
+    }
+
+    if (channelsToUpdate.length === 0) return;
+
+    // Atualiza todos os canais em paralelo
+    const muteOverrides = {
+      SendMessages: false,
+      SendMessagesInThreads: false,
+      CreatePublicThreads: false,
+      CreatePrivateThreads: false,
+      AddReactions: false,
+      Speak: false,
+    };
+
+    const results = await Promise.allSettled(
+      channelsToUpdate.map(channel =>
+        channel.permissionOverwrites.edit(muteRole, muteOverrides)
+      )
+    );
+
+    const failed = results.filter(r => r.status === 'rejected');
+    if (failed.length > 0) {
+      console.error(`[Mute] ${failed.length}/${channelsToUpdate.length} canais falharam ao configurar permissões.`);
+    }
+  }
+
   client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
     if (!message.content.startsWith(PREFIX)) return;
@@ -144,7 +201,7 @@ async function main() {
 
     // Comandos públicos
     const publicCommands = ['active', 'regras', 'help', 'missoes', 'stats', 'clan'];
-    
+
     // Verificação de administrador
     if (!publicCommands.includes(command) && !(await isAdmin(message.author.id))) {
       return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar estes comandos.')] });
@@ -152,9 +209,16 @@ async function main() {
 
     async function sendCleanMessage(originalMessage, options) {
       try {
-        return await originalMessage.channel.send(options);
+        // Tenta editar primeiro. Se falhar (ex: não editável), cai no catch.
+        return await originalMessage.edit(options);
       } catch (err) {
-        return await originalMessage.reply(options);
+        try {
+          const newMessage = await originalMessage.channel.send(options);
+          await originalMessage.delete().catch(() => { });
+          return newMessage;
+        } catch (innerErr) {
+          return await originalMessage.reply(options).catch(() => originalMessage.channel.send(options));
+        }
       }
     }
 
@@ -170,7 +234,7 @@ async function main() {
           )
           .setFooter({ text: 'Selecione uma categoria no dropdown' })
           .setTimestamp();
-          
+
         const page2 = new EmbedBuilder()
           .setColor(0x5865f2)
           .setTitle(`${EMOJIS.hourglass} Sincronização`)
@@ -181,7 +245,7 @@ async function main() {
           )
           .setFooter({ text: 'Selecione uma categoria no dropdown' })
           .setTimestamp();
-        
+
         const page3 = new EmbedBuilder()
           .setColor(0x5865f2)
           .setTitle(`${EMOJIS.clipboard} Informações`)
@@ -198,13 +262,13 @@ async function main() {
           .setColor(0x5865f2)
           .setTitle(`${EMOJIS.success} Gerenciamento de Usuários`)
           .addFields(
-            { name: `${EMOJIS.arrowRight} .entrou <@user> <bhid> (admin)`,    value: 'Adicionar novo usuário ou reativar existente no banco de dados', inline: false },
-            { name: `${EMOJIS.arrowRight} .warn <@user> [motivo] (admin)`,    value: 'Dar um aviso para um membro (3 é o limite)', inline: false },
-            { name: `${EMOJIS.arrowRight} .unwarn <@user> [número] (admin)`,  value: 'Tirar um warn de um membro', inline: false },
-            { name: `${EMOJIS.arrowRight} .warns (admin)`,                    value: 'Mostrar a listagem de todos os warns', inline: false },
-            { name: `${EMOJIS.arrowRight} .mute <@user> <duração> (admin)`,   value: 'Silenciar um usuário por certo tempo', inline: false },
-            { name: `${EMOJIS.arrowRight} .unmute <@user> (admin)`,           value: 'Dessilenciar um usuário', inline: false },
-            { name: `${EMOJIS.arrowRight} .ban <@user> [motivo] (admin)`,     value: 'Banir um usuário do servidor (motivo é opcional)', inline: false }
+            { name: `${EMOJIS.arrowRight} .entrou <@user> <bhid> (admin)`, value: 'Adicionar novo usuário ou reativar existente no banco de dados', inline: false },
+            { name: `${EMOJIS.arrowRight} .warn <@user> [motivo] (admin)`, value: 'Dar um aviso para um membro (3 é o limite)', inline: false },
+            { name: `${EMOJIS.arrowRight} .unwarn <@user> [número] (admin)`, value: 'Tirar um warn de um membro', inline: false },
+            { name: `${EMOJIS.arrowRight} .warns (admin)`, value: 'Mostrar a listagem de todos os warns', inline: false },
+            { name: `${EMOJIS.arrowRight} .mute <@user> <duração> [motivo] (admin)`, value: 'Silenciar um usuário por certo tempo', inline: false },
+            { name: `${EMOJIS.arrowRight} .unmute <@user> (admin)`, value: 'Dessilenciar um usuário', inline: false },
+            { name: `${EMOJIS.arrowRight} .ban <@user> [motivo] (admin)`, value: 'Banir um usuário do servidor (motivo é opcional)', inline: false }
           )
           .setFooter({ text: 'Selecione uma categoria no dropdown' })
           .setTimestamp();
@@ -278,11 +342,9 @@ async function main() {
               )
               .setTimestamp();
             await loading.edit({ embeds: [resultEmbed] });
-          } else {
-            await loading.edit({ embeds: [createErrorEmbed('Erro na Sincronização', result.error)] });
           }
         } catch (err) {
-          await message.reply({ embeds: [createErrorEmbed('Erro na Sincronização', err.message)] });
+          await sendCleanMessage(loading, { embeds: [createErrorEmbed('Erro na Sincronização', err.message)] }).catch(() => { });
         }
       }
 
@@ -291,7 +353,7 @@ async function main() {
         const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Buscando...`).setDescription('Carregando dados de movimentação...')] });
         try {
           let startDate, endDate, queryType = 'range';
-          
+
           if (args.length >= 3) {
             // Intervalo de datas
             startDate = args[1];
@@ -315,10 +377,10 @@ async function main() {
             endDate = range.endDate;
             queryType = 'range';
           }
-          
+
           const data = await fetchMovimentacao({ date: queryType === 'day' ? startDate : null, startDate: queryType === 'range' ? startDate : null, endDate: queryType === 'range' ? endDate : null });
           const result = buildMovimentacaoEmbeds(data.data || [], startDate, endDate);
-          
+
           if (result.needsFile) {
             // Enviar como arquivo se for muito grande
             const textContent = formatMovimentacaoAsText(result.json);
@@ -352,7 +414,7 @@ async function main() {
             }
           }
         } catch (err) {
-          await loading.edit({ embeds: [createErrorEmbed('Erro na API', err.message)] });
+          await sendCleanMessage(loading, { embeds: [createErrorEmbed('Erro na API', err.message)] }).catch(() => { });
         }
       }
 
@@ -409,10 +471,9 @@ async function main() {
         const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Atualizando...`).setDescription('Atualizando cache do clan Brawlhalla...')] });
         try {
           const clanData = await fetchBrawlhallaClanData();
-          await message.reply({ embeds: [new EmbedBuilder().setColor(0x57f287).setTitle(`${EMOJIS.check} Cache Atualizado`).setDescription(`${clanData.clan?.length || 0} membros`).addFields({ name: 'Clan', value: `${clanData.clan_name} (${clanData.clan_id})`, inline: true }).setTimestamp()] });
-          // await loading.delete();
+          await sendCleanMessage(loading, { embeds: [new EmbedBuilder().setColor(0x57f287).setTitle(`${EMOJIS.check} Cache Atualizado`).setDescription(`${clanData.clan?.length || 0} membros`).addFields({ name: 'Clan', value: `${clanData.clan_name} (${clanData.clan_id})`, inline: true }).setTimestamp()] });
         } catch (err) {
-          await loading.edit({ embeds: [createErrorEmbed('Erro ao Atualizar Cache', err.message)] });
+          await sendCleanMessage(loading, { embeds: [createErrorEmbed('Erro ao Atualizar Cache', err.message)] }).catch(() => { });
         }
       }
 
@@ -449,11 +510,11 @@ async function main() {
           if (await isAdmin(message.author.id) && (mentionMatch || idMatch)) {
             targetId = mentionMatch ? mentionMatch[1] : args[0];
 
-            const afterMention = mentionMatch 
+            const afterMention = mentionMatch
               ? message.content.split('>').slice(1).join('>').trim()
               : args.slice(1).join(' ').trim();
             note = afterMention.length > 0 ? afterMention : 'ativado por administrador';
-          } 
+          }
           // Usuário normal usando .active <motivo>
           else {
             targetId = message.author.id;
@@ -493,7 +554,7 @@ async function main() {
 
           await message.reply({ embeds: [embed] });
 
-        // Tratamento de erros
+          // Tratamento de erros
         } catch (err) {
 
           // Já está ativo
@@ -631,14 +692,14 @@ async function main() {
       if (command === 'inac-list') {
         try {
           const inactivePlayers = await getInactivePlayers();
-          
+
           if (inactivePlayers.length === 0) {
             return message.reply({ embeds: [createErrorEmbed('Sem Inativos', 'Nenhum usuário marcado como inativo no momento')] });
           }
 
           const itemsPerPage = 10;
           const pages = [];
-          
+
           for (let i = 0; i < inactivePlayers.length; i += itemsPerPage) {
             const chunk = inactivePlayers.slice(i, i + itemsPerPage);
             const embed = new EmbedBuilder()
@@ -652,18 +713,18 @@ async function main() {
               const createdAt = new Date(player.created_at);
               const daysInactive = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
               const timeStr = daysInactive === 0 ? 'Hoje' : `${daysInactive}d atrás`;
-              
-              embed.addFields({ 
-                name: `${i + j + 1}. ${user?.tag || 'Desconhecido'}`, 
-                value: `ID: ${player.discord_id}\nMarcado: ${timeStr}`, 
-                inline: false 
+
+              embed.addFields({
+                name: `${i + j + 1}. ${user?.tag || 'Desconhecido'}`,
+                value: `ID: ${player.discord_id}\nMarcado: ${timeStr}`,
+                inline: false
               });
             }
             pages.push(embed);
           }
 
           let currentPage = 0;
-          
+
           const getRow = (page) => {
             const row = new ActionRowBuilder().addComponents(
               new ButtonBuilder()
@@ -680,27 +741,27 @@ async function main() {
             return row;
           };
 
-          const listMsg = await message.reply({ 
-            embeds: [pages[currentPage]], 
-            components: pages.length > 1 ? [getRow(currentPage)] : [] 
+          const listMsg = await message.reply({
+            embeds: [pages[currentPage]],
+            components: pages.length > 1 ? [getRow(currentPage)] : []
           });
 
           if (pages.length > 1) {
             const collector = listMsg.createMessageComponentCollector({ time: 60000 });
-            
+
             collector.on('collect', async (i) => {
               if (i.user.id !== message.author.id) {
                 return i.reply({ content: 'Você não pode usar estes botões.', ephemeral: true });
               }
-              
+
               if (i.customId === 'prev') currentPage--;
               if (i.customId === 'next') currentPage++;
-              
+
               await i.update({ embeds: [pages[currentPage]], components: [getRow(currentPage)] });
             });
 
             collector.on('end', () => {
-              listMsg.edit({ components: [] }).catch(() => {});
+              listMsg.edit({ components: [] }).catch(() => { });
             });
           }
         } catch (err) {
@@ -731,7 +792,7 @@ async function main() {
               return `🎯 **${m.mission}**
                 Objetivo: ${m.target} pontos
                 _DICA: ${m.tip}_`;
-              })
+            })
             .join('\n\n');
 
           const embed = new EmbedBuilder()
@@ -760,7 +821,7 @@ async function main() {
             embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
           });
         }
-        
+
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
@@ -776,7 +837,7 @@ async function main() {
 
           const targetId = mentionMatch ? mentionMatch[1] : args[0];
           const brawlhallaId = mentionMatch ? args[1] : args[1]; // Correct args index depending on input
-          
+
           // Re-evaluate args if it was an ID
           const finalBhid = mentionMatch ? args[1] : args[1];
 
@@ -829,7 +890,7 @@ async function main() {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
-          
+
           let targetId;
           const mentionMatch = message.content.match(/<@!?(\d+)>/);
           if (mentionMatch) {
@@ -847,10 +908,10 @@ async function main() {
             return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Você não pode dar um aviso a um administrador.')] });
           }
 
-          const reason = message.content.includes('>') 
-            ? message.content.split('>').slice(1).join('>').trim() 
+          const reason = message.content.includes('>')
+            ? message.content.split('>').slice(1).join('>').trim()
             : args.slice(1).join(' ').trim() || 'Sem motivo especificado';
-            
+
           const member = await guild.members.fetch(targetId).catch(() => null);
           if (!member) return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')] });
 
@@ -858,12 +919,13 @@ async function main() {
           await message.reply({ embeds: [createSuccessEmbed('Aviso Adicionado', `${member.user.tag} recebeu um aviso.\n**Motivo:** ${reason}\n**Total de avisos:** ${warningCount}/3`)] });
 
           if (warningCount === 2) {
-            const muteRole = guild.roles.cache.find(r => r.name === 'Muted');
-            if (muteRole) {
-              await member.roles.add(muteRole);
-              setTimeout(() => member.roles.remove(muteRole).catch(() => {}), 15 * 60 * 1000);
-              await message.channel.send({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle('⚠️ Mute Automático').setDescription(`${member.user.tag} foi silenciado por 15 minutos (2 avisos).`)] });
-            }
+            let muteRole = guild.roles.cache.find(r => r.name === 'Muted');
+            if (!muteRole) muteRole = await guild.roles.create({ name: 'Muted', color: 0x808080, reason: 'Cargo para silenciados' });
+            await member.roles.add(muteRole);
+            setTimeout(() => member.roles.remove(muteRole).catch(() => { }), 15 * 60 * 1000);
+            await message.channel.send({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle('⚠️ Mute Automático').setDescription(`${member.user.tag} foi silenciado por 15 minutos (2 avisos).`)] });
+            // Atualiza permissões em background (não bloqueia resposta)
+            setupMutePermissions(guild, muteRole).catch(err => console.error('[Mute] Erro ao configurar permissões:', err));
           } else if (warningCount >= 3) {
             await member.ban({ reason: '3 avisos acumulados' });
             await message.channel.send({ embeds: [new EmbedBuilder().setColor(0xed4245).setTitle('🔨 Ban Automático').setDescription(`${member.user.tag} foi banido por 3 avisos acumulados.`)] });
@@ -878,7 +940,7 @@ async function main() {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
-          
+
           let targetId;
           const mentionMatch = message.content.match(/<@!?(\d+)>/);
           if (mentionMatch) {
@@ -889,7 +951,7 @@ async function main() {
           }
 
           if (!targetId) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.unwarn <@user/ID>`')] });
-          
+
           const member = await guild.members.fetch(targetId).catch(() => null);
           if (!member) return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')] });
 
@@ -932,27 +994,27 @@ async function main() {
           }
 
           const navRow = new ActionRowBuilder();
-          if (page > 1) navRow.addComponents(new ButtonBuilder().setCustomId(`warns_${page-1}`).setLabel('⬅️').setStyle(2));
+          if (page > 1) navRow.addComponents(new ButtonBuilder().setCustomId(`warns_${page - 1}`).setLabel('⬅️').setStyle(2));
           navRow.addComponents(new ButtonBuilder().setLabel(`${page}/${totalPages}`).setStyle(2).setDisabled(true).setCustomId('page_label'));
-          if (page < totalPages) navRow.addComponents(new ButtonBuilder().setCustomId(`warns_${page+1}`).setLabel('➡️').setStyle(2));
+          if (page < totalPages) navRow.addComponents(new ButtonBuilder().setCustomId(`warns_${page + 1}`).setLabel('➡️').setStyle(2));
 
           const reply = await message.reply({ embeds: [embed], components: navRow.components.length > 1 ? [navRow] : [] });
           const col = reply.createMessageComponentCollector({ filter: i => i.user.id === message.author.id, time: 60000 });
           col.on('collect', async i => {
             const np = parseInt(i.customId.split('_')[1]);
-            const nd = sorted.slice((np-1)*pageSize, np*pageSize);
+            const nd = sorted.slice((np - 1) * pageSize, np * pageSize);
             const ne = new EmbedBuilder().setColor(0xfaa61a).setTitle(`⚠️ Lista de Avisos (${np}/${totalPages})`).setDescription(`${sorted.length} usuários com avisos`).setTimestamp();
             for (const ud of nd) {
               const user = await client.users.fetch(ud.user_id).catch(() => null);
               ne.addFields({ name: `${ud.warnings.length} avisos — ${user?.tag || ud.user_id}`, value: `Último: ${new Date(ud.latest).toLocaleDateString('pt-BR')}\n${ud.warnings.slice(0, 2).map(w => `• ${w.reason}`).join('\n')}`, inline: false });
             }
             const nr = new ActionRowBuilder();
-            if (np > 1) nr.addComponents(new ButtonBuilder().setCustomId(`warns_${np-1}`).setLabel('⬅️').setStyle(2));
+            if (np > 1) nr.addComponents(new ButtonBuilder().setCustomId(`warns_${np - 1}`).setLabel('⬅️').setStyle(2));
             nr.addComponents(new ButtonBuilder().setLabel(`${np}/${totalPages}`).setStyle(2).setDisabled(true).setCustomId('page_label'));
-            if (np < totalPages) nr.addComponents(new ButtonBuilder().setCustomId(`warns_${np+1}`).setLabel('➡️').setStyle(2));
+            if (np < totalPages) nr.addComponents(new ButtonBuilder().setCustomId(`warns_${np + 1}`).setLabel('➡️').setStyle(2));
             await i.update({ embeds: [ne], components: nr.components.length > 1 ? [nr] : [] });
           });
-          col.on('end', () => reply.edit({ components: [] }).catch(() => {}));
+          col.on('end', () => reply.edit({ components: [] }).catch(() => { }));
         } catch (err) {
           await message.reply({ embeds: [createErrorEmbed('Erro ao Listar Avisos', err.message)] });
         }
@@ -963,7 +1025,7 @@ async function main() {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
-          
+
           let targetId;
           const mentionMatch = message.content.match(/<@!?(\d+)>/);
           if (mentionMatch) {
@@ -973,8 +1035,8 @@ async function main() {
             if (idMatch) targetId = args[0];
           }
 
-          if (!targetId) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.mute <@user/ID> <duração>` — ex: 1m, 1h, 1d')] });
-          
+          if (!targetId) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.mute <@user/ID> <duração> [motivo]` — ex: `.mute @user 1h sendo tóxico`')] });
+
           if (await isAdmin(targetId)) {
             return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Você não pode silenciar um administrador.')] });
           }
@@ -983,26 +1045,34 @@ async function main() {
           if (!durationMatch) return message.reply({ embeds: [createErrorEmbed('Duração Inválida', 'Formatos: 1s, 1m, 1h, 1d, 1M, 1y')] });
           const durationMs = parseTime(durationMatch[1]);
           if (!durationMs) return message.reply({ embeds: [createErrorEmbed('Duração Inválida', 'Formato não reconhecido.')] });
+
+          // Extrai motivo (tudo depois da duração)
+          const durationIndex = message.content.indexOf(durationMatch[1]);
+          const reason = message.content.slice(durationIndex + durationMatch[1].length).trim() || 'Sem motivo especificado';
+
           const member = await guild.members.fetch(targetId).catch(() => null);
           if (!member) return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')] });
 
           let muteRole = guild.roles.cache.find(r => r.name === 'Muted');
           if (!muteRole) muteRole = await guild.roles.create({ name: 'Muted', color: 0x808080, reason: 'Cargo para silenciados' });
           await member.roles.add(muteRole);
-          if (member.voice.channel) await member.voice.setMute(true, 'Moderação').catch(() => {});
-          
+          if (member.voice.channel) await member.voice.setMute(true, 'Moderação').catch(() => { });
+
           const expiresAt = new Date(Date.now() + durationMs).toISOString();
           await addPersistentMute(targetId, expiresAt);
 
-          await message.reply({ embeds: [createSuccessEmbed('Silenciado', `${member.user.tag} silenciado por ${formatModTime(durationMs)}.`)] });
+          await message.reply({ embeds: [createSuccessEmbed('Silenciado', `${member.user.tag} silenciado por ${formatModTime(durationMs)}.\n**Motivo:** ${reason}`)] });
+
+          // Atualiza permissões em background (não bloqueia resposta)
+          setupMutePermissions(guild, muteRole).catch(err => console.error('[Mute] Erro ao configurar permissões:', err));
 
           safeSetTimeout(async () => {
             const m = await guild.members.fetch(targetId).catch(() => null);
             if (m?.roles.cache.has(muteRole.id)) {
-              await m.roles.remove(muteRole).catch(() => {});
-              if (m.voice.serverMute) await m.voice.setMute(false, 'Auto-unmute').catch(() => {});
+              await m.roles.remove(muteRole).catch(() => { });
+              if (m.voice.serverMute) await m.voice.setMute(false, 'Auto-unmute').catch(() => { });
               await removePersistentMute(targetId);
-              await message.channel.send({ embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('✅ Desmutado').setDescription(`${m.user.tag} desmutado automaticamente.`)] }).catch(() => {});
+              await message.channel.send({ embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('✅ Desmutado').setDescription(`${m.user.tag} desmutado automaticamente.`)] }).catch(() => { });
             }
           }, durationMs);
         } catch (err) {
@@ -1015,7 +1085,7 @@ async function main() {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
-          
+
           let targetId;
           const mentionMatch = message.content.match(/<@!?(\d+)>/);
           if (mentionMatch) {
@@ -1026,13 +1096,13 @@ async function main() {
           }
 
           if (!targetId) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.unmute <@user/ID>`')] });
-          
+
           const member = await guild.members.fetch(targetId).catch(() => null);
           if (!member) return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')] });
           const muteRole = guild.roles.cache.find(r => r.name === 'Muted');
           if (!muteRole || !member.roles.cache.has(muteRole.id)) return message.reply({ embeds: [createErrorEmbed('Não Silenciado', 'Este usuário não está silenciado.')] });
           await member.roles.remove(muteRole);
-          if (member.voice.serverMute) await member.voice.setMute(false, 'Moderação').catch(() => {});
+          if (member.voice.serverMute) await member.voice.setMute(false, 'Moderação').catch(() => { });
           await removePersistentMute(targetId);
           await message.reply({ embeds: [createSuccessEmbed('Desmutado', `${member.user.tag} desmutado com sucesso.`)] });
         } catch (err) {
@@ -1045,7 +1115,7 @@ async function main() {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
-          
+
           let targetId;
           const mentionMatch = message.content.match(/<@!?(\d+)>/);
           if (mentionMatch) {
@@ -1056,13 +1126,13 @@ async function main() {
           }
 
           if (!targetId) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.ban <@user/ID> [motivo]`')] });
-          
+
           if (await isAdmin(targetId)) {
             return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Você não pode banir um administrador.')] });
           }
 
-          const reason = message.content.includes('>') 
-            ? message.content.split('>').slice(1).join('>').trim() 
+          const reason = message.content.includes('>')
+            ? message.content.split('>').slice(1).join('>').trim()
             : args.slice(1).join(' ').trim() || 'Sem motivo especificado';
 
           const member = await guild.members.fetch(targetId).catch(() => null);
@@ -1099,7 +1169,7 @@ async function main() {
 
           const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
           const playerData = await fetchPlayerStats(brawlhallaId);
-          
+
           const mainEmbed = createStatsEmbed(playerData);
           const rankedEmbed = createRankedEmbed(playerData);
 
@@ -1115,13 +1185,13 @@ async function main() {
           collector.on('collect', async (i) => {
             try {
               if (i.user.id !== message.author.id) {
-                return i.reply({ content: 'Você não pode usar estes botões.', ephemeral: true }).catch(() => {});
+                return i.reply({ content: 'Você não pode usar estes botões.', ephemeral: true }).catch(() => { });
               }
 
               if (i.customId === 'stats_main') {
-                await i.update({ embeds: [mainEmbed], components: [row] }).catch(() => {});
+                await i.update({ embeds: [mainEmbed], components: [row] }).catch(() => { });
               } else if (i.customId === 'stats_ranked') {
-                await i.update({ embeds: [rankedEmbed], components: [row] }).catch(() => {});
+                await i.update({ embeds: [rankedEmbed], components: [row] }).catch(() => { });
               }
             } catch (err) {
               console.error('[Interaction] Error handled in collector:', err.message);
@@ -1134,7 +1204,12 @@ async function main() {
 
         } catch (err) {
           console.error('Error fetching stats:', err);
-          await message.reply({ embeds: [createErrorEmbed('Erro ao Buscar Estatísticas', err.message)] });
+          const errorEmbed = createErrorEmbed('Erro ao Buscar Estatísticas', err.message);
+          if (loadingMsg) {
+            await sendCleanMessage(loadingMsg, { embeds: [errorEmbed] }).catch(() => { });
+          } else {
+            await message.reply({ embeds: [errorEmbed] }).catch(() => { });
+          }
         }
       }
 
@@ -1159,17 +1234,22 @@ async function main() {
 
           const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
           const clanData = await fetchClanStats(clanId);
-          await loadingMsg.edit({ embeds: [createClanEmbed(clanData)] });
+          await sendCleanMessage(loadingMsg, { embeds: [createClanEmbed(clanData)] });
 
         } catch (err) {
           console.error('Error fetching clan stats:', err);
-          await message.reply({ embeds: [createErrorEmbed('Erro ao Buscar Estatísticas do Clã', err.message)] });
+          const errorEmbed = createErrorEmbed('Erro ao Buscar Estatísticas do Clã', err.message);
+          if (loadingMsg) {
+            await sendCleanMessage(loadingMsg, { embeds: [errorEmbed] }).catch(() => { });
+          } else {
+            await message.reply({ embeds: [errorEmbed] }).catch(() => { });
+          }
         }
       }
 
     } catch (err) {
       console.error('[Command Error]', err);
-      await message.reply({ embeds: [createErrorEmbed('Erro Interno', `Um erro inesperado ocorreu: ${err.message}`)] }).catch(() => {});
+      await message.reply({ embeds: [createErrorEmbed('Erro Interno', `Um erro inesperado ocorreu: ${err.message}`)] }).catch(() => { });
     }
   });
 
@@ -1189,7 +1269,7 @@ async function main() {
       }
 
       const inactivePlayers = await getInactivePlayers();
-      
+
       if (inactivePlayers.length === 0) {
         console.log('[Inactive Reminder] No inactive players');
         return;
@@ -1260,7 +1340,7 @@ async function main() {
     try {
       const activeMutes = await getActiveMutes();
       console.log(`[Boot] Restoring ${activeMutes.length} active mutes...`);
-      
+
       const guild = client.guilds.cache.get(discordConfig.guildId);
       if (!guild) return;
 
@@ -1272,7 +1352,7 @@ async function main() {
           await removePersistentMute(mute.user_id);
           const member = await guild.members.fetch(mute.user_id).catch(() => null);
           if (member && muteRole) {
-            await member.roles.remove(muteRole).catch(() => {});
+            await member.roles.remove(muteRole).catch(() => { });
           }
           continue;
         }
@@ -1280,12 +1360,12 @@ async function main() {
         safeSetTimeout(async () => {
           const m = await guild.members.fetch(mute.user_id).catch(() => null);
           if (m && muteRole && m.roles.cache.has(muteRole.id)) {
-            await m.roles.remove(muteRole).catch(() => {});
-            if (m.voice.serverMute) await m.voice.setMute(false, 'Auto-unmute').catch(() => {});
+            await m.roles.remove(muteRole).catch(() => { });
+            if (m.voice.serverMute) await m.voice.setMute(false, 'Auto-unmute').catch(() => { });
             await removePersistentMute(mute.user_id);
             const channel = guild.channels.cache.find(c => c.name === 'staff-logs' || c.isTextBased());
             if (channel) {
-               await channel.send({ embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('✅ Desmutado').setDescription(`${m.user.tag} desmutado automaticamente (restaurado do banco).`)] }).catch(() => {});
+              await channel.send({ embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('✅ Desmutado').setDescription(`${m.user.tag} desmutado automaticamente (restaurado do banco).`)] }).catch(() => { });
             }
           }
         }, remainingMs);
