@@ -143,6 +143,45 @@ async function reorderWarnings(userId) {
   }
 }
 
+// Remove o último aviso de um usuário
+export async function removeLastWarning(userId) {
+  const client = getClient();
+  
+  try {
+    // Busca o aviso mais recente
+    const { data: latestWarning, error: fetchError } = await client
+      .from('warnings')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (fetchError) {
+      if (fetchError.code === 'PGRST116') return false; // Sem avisos
+      throw fetchError;
+    }
+    
+    if (!latestWarning) return false;
+    
+    // Remove o aviso
+    const { error: deleteError } = await client
+      .from('warnings')
+      .delete()
+      .eq('id', latestWarning.id);
+    
+    if (deleteError) throw deleteError;
+    
+    // Reordena os números dos avisos restantes
+    await reorderWarnings(userId);
+    
+    return latestWarning.warning_number;
+  } catch (error) {
+    console.error('Error removing last warning:', error);
+    throw error;
+  }
+}
+
 // converte string de tempo (1s, 1m, 1h, 1d, 1M, 1y)
 export function parseTime(timeString) {
   const match = timeString.match(/^(\d+)([smhdMy])$/);

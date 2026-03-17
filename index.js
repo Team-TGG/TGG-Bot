@@ -10,7 +10,7 @@ import { discord as discordConfig, ALLOWED_USER_IDS, inactivePlayers as inactive
 import { getUserByDiscordId } from './src/db.js';
 import { startCronJobs } from './src/scheduler/cron.js';
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createClanEmbed, getUserBrawlhallaId, getCached } from './src/brawlhalla.js';
-import { addWarning, getUserWarnings, removeWarning, parseTime, formatTime as formatModTime } from './src/moderation.js';
+import { addWarning, getUserWarnings, removeWarning, removeLastWarning, parseTime, formatTime as formatModTime } from './src/moderation.js';
 
 async function main() {
   if (!discordConfig.token || !discordConfig.guildId) {
@@ -142,7 +142,6 @@ async function main() {
 
     async function sendCleanMessage(originalMessage, options) {
       try {
-        await originalMessage.delete();
         return await originalMessage.channel.send(options);
       } catch (err) {
         return await originalMessage.reply(options);
@@ -246,7 +245,7 @@ async function main() {
         });
 
         collector.on('end', () => {
-          helpMsg.delete().catch(() => {});
+          // helpMsg.delete().catch(() => {});
         });
       }
 
@@ -401,7 +400,7 @@ async function main() {
         try {
           const clanData = await fetchBrawlhallaClanData();
           await message.reply({ embeds: [new EmbedBuilder().setColor(0x57f287).setTitle(`${EMOJIS.check} Cache Atualizado`).setDescription(`${clanData.clan?.length || 0} membros`).addFields({ name: 'Clan', value: `${clanData.clan_name} (${clanData.clan_id})`, inline: true }).setTimestamp()] });
-          await loading.delete();
+          // await loading.delete();
         } catch (err) {
           await loading.edit({ embeds: [createErrorEmbed('Erro ao Atualizar Cache', err.message)] });
         }
@@ -422,9 +421,10 @@ async function main() {
           let note;
 
           const mentionMatch = message.content.match(/<@!?(\d+)>/);
+          const idMatch = args[0]?.match(/^\d+$/);
 
           // Bloqueia comando se não for admin
-          if (mentionMatch && !(await isAdmin(message.author.id))) {
+          if ((mentionMatch || idMatch) && !(await isAdmin(message.author.id))) {
             return message.reply({
               embeds: [
                 createErrorEmbed(
@@ -436,10 +436,12 @@ async function main() {
           }
 
           // Comando marcando alguém liberado somente pra admin
-          if (await isAdmin(message.author.id) && mentionMatch) {
-            targetId = mentionMatch[1];
+          if (await isAdmin(message.author.id) && (mentionMatch || idMatch)) {
+            targetId = mentionMatch ? mentionMatch[1] : args[0];
 
-            const afterMention = message.content.split('>').slice(1).join('>').trim();
+            const afterMention = mentionMatch 
+              ? message.content.split('>').slice(1).join('>').trim()
+              : args.slice(1).join(' ').trim();
             note = afterMention.length > 0 ? afterMention : 'ativado por administrador';
           } 
           // Usuário normal usando .active <motivo>
@@ -754,16 +756,21 @@ async function main() {
           if (!guild) throw new Error('Guild não encontrada');
 
           const mentionMatch = message.content.match(/<@!?(\d+)>/);
-          if (!mentionMatch) {
+          const idMatch = args[0]?.match(/^\d+$/);
+
+          if (!mentionMatch && !idMatch) {
             return message.reply({
-              embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.entrou <@user> <brawlhalla_id>`')]
+              embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.entrou <@user/ID> <brawlhalla_id>`')]
             });
           }
 
-          const targetId = mentionMatch[1];
-          const brawlhallaId = args[1];
+          const targetId = mentionMatch ? mentionMatch[1] : args[0];
+          const brawlhallaId = mentionMatch ? args[1] : args[1]; // Correct args index depending on input
+          
+          // Re-evaluate args if it was an ID
+          const finalBhid = mentionMatch ? args[1] : args[1];
 
-          if (!brawlhallaId || !/^\d+$/.test(brawlhallaId)) {
+          if (!finalBhid || !/^\d+$/.test(finalBhid)) {
             return message.reply({
               embeds: [createErrorEmbed('Brawlhalla ID Inválido', 'O Brawlhalla ID deve conter apenas números.')]
             });
@@ -812,12 +819,28 @@ async function main() {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
+          
+          let targetId;
           const mentionMatch = message.content.match(/<@!?(\d+)>/);
-          if (!mentionMatch) {
-            return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.warn <@user> [motivo]`')] });
+          if (mentionMatch) {
+            targetId = mentionMatch[1];
+          } else {
+            const idMatch = args[0]?.match(/^\d+$/);
+            if (idMatch) targetId = args[0];
           }
-          const targetId = mentionMatch[1];
-          const reason = message.content.split('>').slice(1).join('>').trim() || 'Sem motivo especificado';
+
+          if (!targetId) {
+            return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.warn <@user/ID> [motivo]`')] });
+          }
+
+          if (await isAdmin(targetId)) {
+            return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Você não pode dar um aviso a um administrador.')] });
+          }
+
+          const reason = message.content.includes('>') 
+            ? message.content.split('>').slice(1).join('>').trim() 
+            : args.slice(1).join(' ').trim() || 'Sem motivo especificado';
+            
           const member = await guild.members.fetch(targetId).catch(() => null);
           if (!member) return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')] });
 
@@ -845,21 +868,27 @@ async function main() {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
+          
+          let targetId;
           const mentionMatch = message.content.match(/<@!?(\d+)>/);
-          if (!mentionMatch) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.unwarn <@user> [número]`')] });
-          const targetId = mentionMatch[1];
+          if (mentionMatch) {
+            targetId = mentionMatch[1];
+          } else {
+            const idMatch = args[0]?.match(/^\d+$/);
+            if (idMatch) targetId = args[0];
+          }
+
+          if (!targetId) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.unwarn <@user/ID>`')] });
+          
           const member = await guild.members.fetch(targetId).catch(() => null);
           if (!member) return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')] });
 
-          const warningNumber = args[1] ? parseInt(args[1]) : null;
-          if (!warningNumber) {
-            const warnings = await getUserWarnings(targetId);
-            if (warnings.length === 0) return message.reply({ embeds: [createErrorEmbed('Sem Avisos', 'Este usuário não possui avisos.')] });
-            const list = warnings.map(w => `**${w.warning_number}.** ${w.reason} — <@${w.moderator_id}>`).join('\n');
-            return message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`⚠️ Avisos de ${member.user.tag}`).setDescription(`${list}\n\nUse \`.unwarn <@user> [número]\` para remover.`).setTimestamp()] });
+          const removedWarnNumber = await removeLastWarning(targetId);
+          if (!removedWarnNumber) {
+            return message.reply({ embeds: [createErrorEmbed('Sem Avisos', 'Este usuário não possui avisos para remover.')] });
           }
-          await removeWarning(targetId, warningNumber);
-          await message.reply({ embeds: [createSuccessEmbed('Aviso Removido', `Aviso **${warningNumber}** de ${member.user.tag} removido.`)] });
+
+          await message.reply({ embeds: [createSuccessEmbed('Aviso Removido', `O último aviso (Aviso **${removedWarnNumber}**) de ${member.user.tag} foi removido.`)] });
         } catch (err) {
           await message.reply({ embeds: [createErrorEmbed('Erro ao Remover Aviso', err.message)] });
         }
@@ -924,9 +953,22 @@ async function main() {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
+          
+          let targetId;
           const mentionMatch = message.content.match(/<@!?(\d+)>/);
-          if (!mentionMatch) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.mute <@user> <duração>` — ex: 1m, 1h, 1d')] });
-          const targetId = mentionMatch[1];
+          if (mentionMatch) {
+            targetId = mentionMatch[1];
+          } else {
+            const idMatch = args[0]?.match(/^\d+$/);
+            if (idMatch) targetId = args[0];
+          }
+
+          if (!targetId) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.mute <@user/ID> <duração>` — ex: 1m, 1h, 1d')] });
+          
+          if (await isAdmin(targetId)) {
+            return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Você não pode silenciar um administrador.')] });
+          }
+
           const durationMatch = message.content.match(/\b(\d+[smhdMy])\b/);
           if (!durationMatch) return message.reply({ embeds: [createErrorEmbed('Duração Inválida', 'Formatos: 1s, 1m, 1h, 1d, 1M, 1y')] });
           const durationMs = parseTime(durationMatch[1]);
@@ -958,9 +1000,18 @@ async function main() {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
+          
+          let targetId;
           const mentionMatch = message.content.match(/<@!?(\d+)>/);
-          if (!mentionMatch) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.unmute <@user>`')] });
-          const targetId = mentionMatch[1];
+          if (mentionMatch) {
+            targetId = mentionMatch[1];
+          } else {
+            const idMatch = args[0]?.match(/^\d+$/);
+            if (idMatch) targetId = args[0];
+          }
+
+          if (!targetId) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.unmute <@user/ID>`')] });
+          
           const member = await guild.members.fetch(targetId).catch(() => null);
           if (!member) return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')] });
           const muteRole = guild.roles.cache.find(r => r.name === 'Muted');
@@ -978,10 +1029,26 @@ async function main() {
         try {
           const guild = client.guilds.cache.get(discordConfig.guildId);
           if (!guild) throw new Error('Guild não encontrada');
+          
+          let targetId;
           const mentionMatch = message.content.match(/<@!?(\d+)>/);
-          if (!mentionMatch) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.ban <@user> [motivo]`')] });
-          const targetId = mentionMatch[1];
-          const reason = message.content.split('>').slice(1).join('>').trim() || 'Sem motivo especificado';
+          if (mentionMatch) {
+            targetId = mentionMatch[1];
+          } else {
+            const idMatch = args[0]?.match(/^\d+$/);
+            if (idMatch) targetId = args[0];
+          }
+
+          if (!targetId) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.ban <@user/ID> [motivo]`')] });
+          
+          if (await isAdmin(targetId)) {
+            return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Você não pode banir um administrador.')] });
+          }
+
+          const reason = message.content.includes('>') 
+            ? message.content.split('>').slice(1).join('>').trim() 
+            : args.slice(1).join(' ').trim() || 'Sem motivo especificado';
+
           const member = await guild.members.fetch(targetId).catch(() => null);
           if (!member) return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')] });
           await member.ban({ reason });
@@ -1046,7 +1113,7 @@ async function main() {
           });
 
           collector.on('end', () => {
-            statsMsg.delete().catch(() => {});
+            // statsMsg.delete().catch(() => {});
           });
 
         } catch (err) {
