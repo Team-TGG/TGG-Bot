@@ -67,19 +67,33 @@ export async function getUsers() {
 
 
 
-// Alt -> Conta principal
-const BRAWLHALLA_ALIASES = {
-  '127174058' : '124178779', // Vitor (951624772792496198)
-  '122945577' : '69764588',  // Gotix (1093379724870430740)
-  '115180142' : '106754358', // Yaya (1447168951963353209)
-  '133266534' : '61968457',  // AmorimLeo18 (1220941650923098135)
-};
+let BRAWLHALLA_ALIASES = null;
+
+async function loadAliases() {
+  if (BRAWLHALLA_ALIASES !== null) return;
+
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('alt_ids')
+    .select('alt_id, main_id');
+
+  if (error) throw error;
+
+  BRAWLHALLA_ALIASES = {};
+
+  for (const row of data) {
+    BRAWLHALLA_ALIASES[String(row.alt_id)] = String(row.main_id);
+  }
+}
 
 function resolveBrawlhallaId(id) {
   return BRAWLHALLA_ALIASES[id] || id;
 }
 
 export async function getUsersWithElo() {
+  await loadAliases();
+
   const supabase = getClient();
 
   const { data: history, error: historyError } = await supabase
