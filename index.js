@@ -888,14 +888,13 @@ async function main() {
 
           if (error) throw error;
 
-          return message.reply({
-            embeds: [
-              createErrorEmbed(
-                'Missões',
-                `Missão ${numero} marcada como concluída! ✅`
-              )
-            ]
-          });
+          const embed = new EmbedBuilder()
+            .setColor(0x57f287)
+            .setTitle('✅ Missões')
+            .setDescription(`Missão ${numero} marcada como concluída!`)
+            .setTimestamp();
+
+          return message.reply({ embeds: [embed] });
 
         } catch (err) {
           return message.reply({
