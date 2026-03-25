@@ -40,7 +40,7 @@ function getLastWednesdayReference() {
 }
 
 
-function getMissionWeekStart() {
+export function getMissionWeekStart() {
   const today = new Date();
   const dayOfWeek = today.getDay();
   const diff = (dayOfWeek - 4 + 7) % 7;
@@ -304,7 +304,7 @@ export async function getWeeklyMissions() {
 
   const { data, error } = await supabase
     .from('weekly_missions')
-    .select('id, week_start, mission, tip, target')
+    .select('id, week_start, mission, tip, target, status')
     .eq('week_start', weekStart)
     .order('created_at', { ascending: true });
 

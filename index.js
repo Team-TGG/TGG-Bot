@@ -8,7 +8,7 @@ if (process.env.IGNORE_SSL_ERRORS === 'true') {
 }
 
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
-import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes } from './src/db.js';
+import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes, getMissionWeekStart } from './src/db.js';
 import { createClient, runSync, runEloSync } from './src/discord.js';
 import { runAndPostGuildActivity } from './src/guildActivity.js';
 import { fetchMovimentacao, buildMovimentacaoEmbeds, getDefaultDateRange, isValidDate, formatMovimentacaoAsText } from './src/movimentacao.js';
@@ -47,6 +47,7 @@ async function main() {
     'refresh-cache': 'refresh-clan-cache',
     'refresh-clan-cache': 'refresh-clan-cache',
     'help': 'help',
+    'ajuda': 'help',
     'active': 'active',
     'inac-all': 'inac-all',
     'inac-list': 'inac-list',
@@ -54,6 +55,13 @@ async function main() {
     'rules': 'regras',
     'missoes': 'missoes',
     'missions': 'missoes',
+    'concluida': 'concluida',
+    'concluido': 'concluida',
+    'comcluido': 'concluida', // Becca
+    'cadastrarMissao': 'cadastrarMissao',
+    'cadastrarMissão': 'cadastrarMissao',
+    'cadastrarmissão': 'cadastrarMissao',
+    'cadastrarmissao': 'cadastrarMissao',
     'entrou': 'entrou',
     'stats': 'stats',
     'estatisticas': 'stats',
@@ -86,6 +94,7 @@ async function main() {
     success: '<:check:1475806856722120838>',
     crossedSwords: '⚔️',
     hourglass: '⏳',
+    scroll: '📜',
   };
 
   client.once(Events.ClientReady, () => {
@@ -285,6 +294,16 @@ async function main() {
           .setFooter({ text: 'Selecione uma categoria no dropdown' })
           .setTimestamp();
 
+        const page6 = new EmbedBuilder()
+          .setColor(0x5865f2)
+          .setTitle(`${EMOJIS.scroll} Missões`)
+          .addFields(
+            { name: `${EMOJIS.arrowRight} .concluida <número> (admin)`, value: 'Marcar a missão do ".missoes" como concluída', inline: false },
+            { name: `${EMOJIS.arrowRight} .cadastrarMissao "nome" "dica" <objetivo> (admin)`, value: 'Cadastrar uma missão semanal', inline: false },
+          )
+          .setFooter({ text: 'Selecione uma categoria no dropdown' })
+          .setTimestamp();
+
         const selectMenu = new StringSelectMenuBuilder()
           .setCustomId('help_menu')
           .setPlaceholder('Escolha uma categoria...')
@@ -293,7 +312,8 @@ async function main() {
             { label: 'Sincronização', value: 'sync', emoji: EMOJIS.hourglass, description: 'Comandos de sincronização' },
             { label: 'Informações', value: 'info', emoji: EMOJIS.clipboard, description: 'Comandos de informação' },
             { label: 'Gerenciamento', value: 'users', emoji: EMOJIS.success, description: 'Gerenciamento de usuários' },
-            { label: 'Inativos', value: 'inac', emoji: EMOJIS.xis, description: 'Comandos de inatividade' }
+            { label: 'Inativos', value: 'inac', emoji: EMOJIS.xis, description: 'Comandos de inatividade' },
+            { label: 'Missões', value: 'missions', emoji: EMOJIS.scroll, description: 'Comandos para missões' }
           );
 
         const row = new ActionRowBuilder().addComponents(selectMenu);
@@ -314,6 +334,7 @@ async function main() {
             if (selected === 'info') embedToShow = page3;
             if (selected === 'users') embedToShow = page4;
             if (selected === 'inac') embedToShow = page5;
+            if (selected === 'missions') embedToShow = page6;
             await interaction.update({ embeds: [embedToShow], components: [row] });
           }
         });
@@ -788,10 +809,27 @@ async function main() {
           const weekDate = new Date(missions[0].week_start + 'T00:00:00').toLocaleDateString('pt-BR');
 
           const description = missions
-            .map((m) => {
-              return `🎯 **${m.mission}**
-                Objetivo: ${m.target} pontos
-                _DICA: ${m.tip}_`;
+            .map((m, index) => {
+
+              const isDone = m.status === 'done';
+
+              const statusLabel = isDone ? '✅ [**CONCLUÍDA**]' : '📌';
+
+              const missionText = isDone
+                ? `~~🎯 **${index + 1}. ${m.mission}**~~`
+                : `🎯 **${index + 1}. ${m.mission}**`;
+
+              const objetivo = isDone
+                ? `~~Objetivo: ${m.target} pontos~~`
+                : `Objetivo: ${m.target} pontos`;
+
+              const tip = isDone
+                ? `~~_DICA: ${m.tip}_~~`
+                : `_DICA: ${m.tip}_`;
+
+              return `${statusLabel} ${missionText}
+          ${objetivo}
+          ${tip}`;
             })
             .join('\n\n');
 
@@ -809,6 +847,130 @@ async function main() {
           await message.reply({
             embeds: [
               createErrorEmbed('Erro ao buscar missões', err.message)
+            ]
+          });
+        }
+      }
+
+      // .concluida <número>
+      if (command === 'concluida') {
+        try {
+          const numero = parseInt(args[0]);
+
+          if (!numero || numero < 1 || numero > 4) {
+            return message.reply({
+              embeds: [createErrorEmbed('Missões', 'Informe um número de 1 a 4.')]
+            });
+          }
+
+          const missions = await getWeeklyMissions();
+
+          if (!missions || missions.length === 0) {
+            return message.reply({
+              embeds: [createErrorEmbed('Missões', 'Nenhuma missão encontrada')]
+            });
+          }
+
+          const mission = missions[numero - 1];
+
+          if (!mission) {
+            return message.reply({
+              embeds: [createErrorEmbed('Missões', 'Missão inválida')]
+            });
+          }
+
+          const supabase = getClient();
+
+          const { error } = await supabase
+            .from('weekly_missions')
+            .update({ status: 'done' })
+            .eq('id', mission.id);
+
+          if (error) throw error;
+
+          return message.reply({
+            embeds: [
+              createErrorEmbed(
+                'Missões',
+                `Missão ${numero} marcada como concluída! ✅`
+              )
+            ]
+          });
+
+        } catch (err) {
+          return message.reply({
+            embeds: [
+              createErrorEmbed('Erro', err.message)
+            ]
+          });
+        }
+      }
+
+      // .cadastrarMissao
+      if (command === 'cadastrarMissao') {
+        try {
+          const input = message.content;
+
+          const match = input.match(/"([^"]+)"\s+"([^"]+)"\s+(\d+)/);
+
+          if (!match) {
+            return message.reply({
+              embeds: [
+                createErrorEmbed(
+                  'Missões',
+                  'Formato inválido.\nUse: .cadastrarMissao "Nome" "Dica" <objetivo>\nUse aspas.\nObjetivo = valor final.'
+                )
+              ]
+            });
+          }
+
+          const mission = match[1];
+          const tip = match[2];
+          const target = parseInt(match[3]);
+
+          const supabase = getClient();
+
+          const weekStart = await getMissionWeekStart();
+          const missions = await getWeeklyMissions();
+
+          if (missions.length >= 4) {
+            return message.reply({
+              embeds: [
+                createErrorEmbed(
+                  'Missões',
+                  'Já existem 4 missões cadastradas para esta semana.'
+                )
+              ]
+            });
+          }
+
+          const { error } = await supabase
+            .from('weekly_missions')
+            .insert([
+              {
+                week_start: weekStart,
+                mission: mission,
+                tip: tip,
+                target: target,
+                status: null
+              }
+            ]);
+
+          if (error) throw error;
+
+          return message.reply({
+            embeds: [
+              createErrorEmbed(
+                'Missões',
+                `Missão cadastrada com sucesso! ✅\n\n🎯 ${mission}`
+              )
+            ]
+          });
+
+        } catch (err) {
+          return message.reply({
+            embeds: [
+              createErrorEmbed('Erro', err.message)
             ]
           });
         }
