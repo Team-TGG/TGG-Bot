@@ -659,7 +659,7 @@ export function createClanEmbed(clanData) {
         value:
           `**ID:** ${clanId}\n` +
           `**Created:** ${createDate ? new Date(createDate * 1000).toLocaleDateString('pt-BR') : 'N/A'}\n` +
-          `**Members:** ${members.length}/100\n` +
+          `**Members:** ${members.length}/200\n` +
           `**Lifetime XP:** ${formatNumber(lifetimeXp)}`,
         inline: false
       },

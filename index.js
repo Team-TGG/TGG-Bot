@@ -957,14 +957,13 @@ async function main() {
 
           if (error) throw error;
 
-          return message.reply({
-            embeds: [
-              createErrorEmbed(
-                'Missões',
-                `Missão cadastrada com sucesso! ✅\n\n🎯 ${mission}`
-              )
-            ]
-          });
+          const embed = new EmbedBuilder()
+            .setColor(0x57F287)
+            .setTitle('✅ Missões')
+            .setDescription(`Missão cadastrada com sucesso!\n\n🎯 ${mission}`)
+            .setTimestamp();
+
+          return message.reply({ embeds: [embed] });
 
         } catch (err) {
           return message.reply({
