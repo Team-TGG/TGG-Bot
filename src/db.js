@@ -65,6 +65,20 @@ export async function getUsers() {
   return data ?? [];
 }
 
+export async function getActiveUser(discordId) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('discord_id', discordId)
+    .eq('active', true)
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 
 
 let BRAWLHALLA_ALIASES = null;
