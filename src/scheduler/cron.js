@@ -12,7 +12,7 @@ export function startCronJobs(client, services) {
     getUsersWithElo
   } = services;
 
-  // Rodar a cada hora os comandos de cache, sync e sync-nick
+  // Executa a cada hora os comandos de cache, sync e sync-nick
   cron.schedule('0 * * * *', async () => {
 
     console.log('[CRON] Starting job...');

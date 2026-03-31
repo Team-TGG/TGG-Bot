@@ -3,7 +3,7 @@ import { getUserByDiscordId } from './db.js';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs';
 import { resolve } from 'path';
 
-// Config cache
+// Configuração do cache
 const CACHE_DIR = resolve(process.cwd(), 'cache');
 const SHARED_FILE = resolve(CACHE_DIR, 'shared.json');
 const CACHE_TTL = 20 * 60 * 1000; // 20 min
