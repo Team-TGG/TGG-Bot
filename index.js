@@ -20,8 +20,8 @@ import { getUserByDiscordId } from './src/db.js';
 import { startCronJobs } from './src/scheduler/cron.js';
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createClanEmbed, getUserBrawlhallaId, getCached } from './src/brawlhalla.js';
 import { addWarning, getUserWarnings, removeWarning, removeLastWarning, parseTime, formatTime as formatModTime, safeSetTimeout } from './src/moderation.js';
-import { handleWarn, handleUnwarn, handleMute, handleUnmute, handleBan, handleInacAll, handleInacList } from './src/admin.js';
-import { handleHelp, handleStats, handleClan, handleActive, handleRegras, handleMissoes, handleSync, handleSyncElo, handleGuildActivity } from './src/public.js';
+import { handleSync, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleMute, handleUnmute, handleBan, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou } from './src/admin.js';
+import { handleHelp, handleStats, handleClan, handleActive, handleRegras, handleMissoes } from './src/public.js';
 import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy } from './src/tggCoinsCommands.js';
 
 async function main() {
@@ -259,58 +259,81 @@ async function main() {
         return await handleHelp(message);
       }
 
+      if (command === 'regras') {
+        return await handleRegras(message);
+      }
+
+      if (command === 'stats') {
+        return await handleStats(message, args);
+      }
+
+      if (command === 'clan') {
+        return await handleClan(message, args);
+      }
+
+      if (command === 'missoes') {
+        return await handleMissoes(message);
+      }
+
+      if (command === 'active') {
+        return await handleActive(message, args, client);
+      }
+
       // Comandos de Administração
+      if (command === 'sync') {
+        return await handleSync(message, client);
+      }
+
+      if (command === 'sync-nick') {
+        return await handleWarn(message, client);
+      }
+
+      if (command === 'refresh-cache') {
+        return await handleRefreshCache(message);
+      }
+
       if (command === 'warn') {
         return await handleWarn(message, args, client);
       }
-      
+
       if (command === 'unwarn') {
         return await handleUnwarn(message, args, client);
       }
-      
+
+      if (command === 'warns') {
+        return await handleWarns(message, args, client);
+      }
+
       if (command === 'mute') {
         return await handleMute(message, args, client);
       }
-      
+
       if (command === 'unmute') {
         return await handleUnmute(message, args, client);
       }
-      
+
       if (command === 'ban') {
         return await handleBan(message, args, client);
       }
-      
+
       if (command === 'inac-all') {
         return await handleInacAll(message, client);
       }
-      
+
       if (command === 'inac-list') {
         return await handleInacList(message, client);
       }
 
-      // Comandos Públicos
-      if (command === 'stats') {
-        return await handleStats(message, args);
+      if (command === 'concluida') {
+        return await handleConcluida(message);
+      }
+
+      if (command === 'cadastrarMissao') {
+        return await handleCadastrarMissao(message);
       }
       
-      if (command === 'clan') {
-        return await handleClan(message, args);
-      }
-      
-      if (command === 'active') {
-        return await handleActive(message, args);
-      }
-      
-      if (command === 'regras') {
-        return await handleRegras(message);
-      }
-      
-      if (command === 'missoes') {
-        return await handleMissoes(message);
-      }
-      
-      if (command === 'sync') {
-        return await handleSync(message, client);
+      if (command === 'entrou') {
+        return await handleEntrou(message, client);
       }
 
       // Comandos TGG Coins
@@ -336,100 +359,6 @@ async function main() {
       
       if (command === 'buy') {
         return await handleBuy(message, args);
-      }
-
-
-      // .guild-activity
-      if (command === 'guild-activity') {
-        const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando...`).setDescription('Buscando atividade da guild...')] });
-        try {
-          const result = await runAndPostGuildActivity(client);
-          if (result.ok) {
-            const summary = result.summary || {};
-            const resultEmbed = new EmbedBuilder()
-              .setColor(0x57f287)
-              .setTitle(`${EMOJIS.check} Atividade Sincronizada`)
-              .addFields(
-                { name: `${EMOJIS.cima} Entradas`, value: `${summary.entrou ?? 0}`, inline: true },
-                { name: `${EMOJIS.baixo} Sa\u00eddas`, value: `${summary.saiu ?? 0}`, inline: true },
-                { name: `${EMOJIS.arrowRight} Saldo`, value: `${summary.saldo_liquido ?? 0}`, inline: true }
-              )
-              .setTimestamp();
-            await loading.edit({ embeds: [resultEmbed] });
-          }
-        } catch (err) {
-          await sendCleanMessage(loading, { embeds: [createErrorEmbed('Erro na Sincronização', err.message)] }).catch(() => { });
-        }
-      }
-
-      // .movimentacao
-      if (command === 'movimentacao' || command === 'mov') {
-        const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Buscando...`).setDescription('Carregando dados de movimentação...')] });
-        try {
-          let startDate, endDate, queryType = 'range';
-
-          if (args.length >= 3) {
-            // Intervalo de datas
-            startDate = args[1];
-            endDate = args[2];
-            if (!isValidDate(startDate) || !isValidDate(endDate)) {
-              return loading.edit({ embeds: [createErrorEmbed('Data Inválida', 'Formato: YYYY-MM-DD')] });
-            }
-            queryType = 'range';
-          } else if (args.length === 2) {
-            // Data única
-            startDate = args[1];
-            if (!isValidDate(startDate)) {
-              return loading.edit({ embeds: [createErrorEmbed('Data Inválida', 'Formato: YYYY-MM-DD')] });
-            }
-            endDate = startDate; // Same day
-            queryType = 'day';
-          } else {
-            // Padrão: últimos 7 dias
-            const range = getDefaultDateRange();
-            startDate = range.startDate;
-            endDate = range.endDate;
-            queryType = 'range';
-          }
-
-          const data = await fetchMovimentacao({ date: queryType === 'day' ? startDate : null, startDate: queryType === 'range' ? startDate : null, endDate: queryType === 'range' ? endDate : null });
-          const result = buildMovimentacaoEmbeds(data.data || [], startDate, endDate);
-
-          if (result.needsFile) {
-            // Enviar como arquivo se for muito grande
-            const textContent = formatMovimentacaoAsText(result.json);
-            const attachment = new AttachmentBuilder(Buffer.from(textContent), {
-              name: `movimentacao_${startDate}_${endDate}.txt`,
-            });
-            const dateDisplay = startDate === endDate ? startDate : `${startDate} a ${endDate}`;
-            await loading.edit({
-              embeds: [
-                new EmbedBuilder()
-                  .setColor(0xfaa61a)
-                  .setTitle(`${EMOJIS.ponto} Guild Movimentação (Arquivo)`)
-                  .setDescription(`Dados de ${dateDisplay}\n\nOs dados foram salvos em arquivo de texto pois ultrapassaram o limite de tamanho.`)
-                  .addFields([
-                    { name: 'Entradas', value: String(result.json.summary.entrou), inline: true },
-                    { name: 'Saídas', value: String(result.json.summary.saiu), inline: true },
-                    { name: 'Total', value: String(result.json.summary.total), inline: true },
-                    { name: 'Promoções', value: String(result.json.summary.promovido), inline: true },
-                    { name: 'Rebaixamentos', value: String(result.json.summary.rebaixado), inline: true },
-                  ])
-                  .setFooter({ text: `Período: ${dateDisplay}` }),
-              ],
-              files: [attachment],
-            });
-          } else {
-            // Enviar como embeds
-            const EMBEDS_PER_MESSAGE = 10;
-            for (let i = 0; i < result.embeds.length; i += EMBEDS_PER_MESSAGE) {
-              const chunk = result.embeds.slice(i, i + EMBEDS_PER_MESSAGE);
-              if (i === 0) await loading.edit({ embeds: chunk }); else await message.reply({ embeds: chunk });
-            }
-          }
-        } catch (err) {
-          await sendCleanMessage(loading, { embeds: [createErrorEmbed('Erro na API', err.message)] }).catch(() => { });
-        }
       }
 
       // .sync
@@ -488,68 +417,6 @@ async function main() {
           await sendCleanMessage(loading, { embeds: [new EmbedBuilder().setColor(0x57f287).setTitle(`${EMOJIS.check} Cache Atualizado`).setDescription(`${clanData.clan?.length || 0} membros`).addFields({ name: 'Clan', value: `${clanData.clan_name} (${clanData.clan_id})`, inline: true }).setTimestamp()] });
         } catch (err) {
           await sendCleanMessage(loading, { embeds: [createErrorEmbed('Erro ao Atualizar Cache', err.message)] }).catch(() => { });
-        }
-      }
-
-      // .missoes
-      if (command === 'missoes') {
-        try {
-          const missions = await getWeeklyMissions();
-
-          if (!missions || missions.length === 0) {
-            return message.reply({
-              embeds: [
-                createErrorEmbed(
-                  'Missões',
-                  'Nenhuma missão encontrada para esta semana.'
-                )
-              ]
-            });
-          }
-
-          const weekDate = new Date(missions[0].week_start + 'T00:00:00').toLocaleDateString('pt-BR');
-
-          const description = missions
-            .map((m, index) => {
-
-              const isDone = m.status === 'done';
-
-              const statusLabel = isDone ? '✅ [**CONCLUÍDA**]' : '📌';
-
-              const missionText = isDone
-                ? `~~🎯 **${index + 1}. ${m.mission}**~~`
-                : `🎯 **${index + 1}. ${m.mission}**`;
-
-              const objetivo = isDone
-                ? `~~Objetivo: ${m.target} pontos~~`
-                : `Objetivo: ${m.target} pontos`;
-
-              const tip = isDone
-                ? `~~_DICA: ${m.tip}_~~`
-                : `_DICA: ${m.tip}_`;
-
-              return `${statusLabel} ${missionText}
-          ${objetivo}
-          ${tip}`;
-            })
-            .join('\n\n');
-
-          const embed = new EmbedBuilder()
-            .setColor(0x5865f2)
-            .setTitle(`📜 Missões Semanais (${weekDate})`)
-            .setDescription(
-              `━━━━━━━━━━━━━━━━━━━━━━━━\n${description}\n━━━━━━━━━━━━━━━━━━━━━━━━\n\nSe tiver dúvidas, contate alguém da staff.`
-            )
-            .setTimestamp();
-
-          await message.reply({ embeds: [embed] });
-
-        } catch (err) {
-          await message.reply({
-            embeds: [
-              createErrorEmbed('Erro ao buscar missões', err.message)
-            ]
-          });
         }
       }
 
@@ -1002,109 +869,6 @@ async function main() {
           await message.reply({ embeds: [createSuccessEmbed('Banido', `${member.user.tag} foi banido.\n**Motivo:** ${reason}`)] });
         } catch (err) {
           await message.reply({ embeds: [createErrorEmbed('Erro ao Banir', err.message)] });
-        }
-      }
-
-      // .stats
-      if (command === 'stats') {
-        try {
-          let targetUserId = message.author.id;
-          if (args.length > 0) {
-            const mentionMatch = args[0].match(/^<@!?(\d+)>$/);
-            if (mentionMatch) {
-              targetUserId = mentionMatch[1];
-            } else if (/^\d+$/.test(args[0])) {
-              targetUserId = args[0];
-            }
-          }
-
-          const brawlhallaId = await getUserBrawlhallaId(targetUserId);
-          if (!brawlhallaId) {
-            return await message.reply({ embeds: [createErrorEmbed('Brawlhalla ID Não Encontrado', 'Este usuário não tem um Brawlhalla ID registrado.')] });
-          }
-
-          const loadingEmbed = new EmbedBuilder()
-            .setColor(0xfaa61a)
-            .setTitle(`${EMOJIS.loading} Carregando estatísticas...`)
-            .setDescription('Buscando dados do Brawlhalla...');
-
-          const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
-          const playerData = await fetchPlayerStats(brawlhallaId);
-
-          const mainEmbed = createStatsEmbed(playerData);
-          const rankedEmbed = createRankedEmbed(playerData);
-
-          const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('stats_main').setLabel('Geral').setStyle(1),
-            new ButtonBuilder().setCustomId('stats_ranked').setLabel('Ranked').setStyle(1)
-          );
-
-          const statsMsg = await sendCleanMessage(loadingMsg, { embeds: [mainEmbed], components: [row] });
-
-          const collector = statsMsg.createMessageComponentCollector({ time: 300000 });
-
-          collector.on('collect', async (i) => {
-            try {
-              if (i.user.id !== message.author.id) {
-                return i.reply({ content: 'Você não pode usar estes botões.', ephemeral: true }).catch(() => { });
-              }
-
-              if (i.customId === 'stats_main') {
-                await i.update({ embeds: [mainEmbed], components: [row] }).catch(() => { });
-              } else if (i.customId === 'stats_ranked') {
-                await i.update({ embeds: [rankedEmbed], components: [row] }).catch(() => { });
-              }
-            } catch (err) {
-              console.error('[Interaction] Error handled in collector:', err.message);
-            }
-          });
-
-          collector.on('end', () => {
-            // statsMsg.delete().catch(() => {});
-          });
-
-        } catch (err) {
-          console.error('Error fetching stats:', err);
-          const errorEmbed = createErrorEmbed('Erro ao Buscar Estatísticas', err.message);
-          if (loadingMsg) {
-            await sendCleanMessage(loadingMsg, { embeds: [errorEmbed] }).catch(() => { });
-          } else {
-            await message.reply({ embeds: [errorEmbed] }).catch(() => { });
-          }
-        }
-      }
-
-      // .clan
-      if (command === 'clan') {
-        try {
-          let clanId = process.env.BRAWLHALLA_CLAN_ID || '396943';
-          if (args.length > 0 && /^\d+$/.test(args[0])) {
-            clanId = args[0];
-          }
-
-          // Checar cache primeiro (inclusive expirado)
-          const cachedData = getCached(`clan:${clanId}`, true);
-          if (cachedData) {
-            return await message.reply({ embeds: [createClanEmbed(cachedData)] });
-          }
-
-          const loadingEmbed = new EmbedBuilder()
-            .setColor(0xfaa61a)
-            .setTitle(`${EMOJIS.loading} Carregando informações do clã...`)
-            .setDescription('Buscando dados do Brawlhalla...');
-
-          const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
-          const clanData = await fetchClanStats(clanId);
-          await sendCleanMessage(loadingMsg, { embeds: [createClanEmbed(clanData)] });
-
-        } catch (err) {
-          console.error('Error fetching clan stats:', err);
-          const errorEmbed = createErrorEmbed('Erro ao Buscar Estatísticas do Clã', err.message);
-          if (loadingMsg) {
-            await sendCleanMessage(loadingMsg, { embeds: [errorEmbed] }).catch(() => { });
-          } else {
-            await message.reply({ embeds: [errorEmbed] }).catch(() => { });
-          }
         }
       }
 
@@ -1608,7 +1372,7 @@ async function main() {
   });
 
   // task com periodo
-  async function sendInactivePlayersReminder() {
+  /*async function sendInactivePlayersReminder() {
     try {
       const channelId = inactivePlayersConfig.channelId;
       if (!channelId) {
@@ -1687,7 +1451,7 @@ async function main() {
     console.log(`[Scheduled] Inactive players reminder will run every ${interval}ms (${(interval / 1000 / 60 / 60 / 24).toFixed(1)} days)`);
     setInterval(sendInactivePlayersReminder, interval);
     setTimeout(sendInactivePlayersReminder, 5000);
-  }
+  }*/
 
   // Inicializar mutes ativos
   client.once(Events.ClientReady, async () => {

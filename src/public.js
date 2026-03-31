@@ -1,10 +1,30 @@
 // public.js - Comandos públicos
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder } from 'discord.js';
-import { getWeeklyMissions, getInactivePlayers, removeInactivePlayer, reactivateOrAddUser, getUsers } from './db.js';
+import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes, getMissionWeekStart, getActiveUser } from './db.js';
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createClanEmbed, getUserBrawlhallaId, getCached } from './brawlhalla.js';
-import { discord as discordConfig } from '../config/index.js';
-import { createClient, runSync, runEloSync } from './discord.js';
-import { runAndPostGuildActivity } from './guildActivity.js';
+import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
+
+const EMOJIS = {
+  arrowLeft: '<:arrowleft:1475806697162539059>',
+  arrowRight: '<:arrowright:1475806826833383456>',
+  check: '<:check:1475806856722120838>',
+  checkbox: '<:checkbox:1475806904482660476>',
+  loading: '<a:loading:1475806256366358633>',
+  square: '<:square:1475807057830744074>',
+  symboldash: '<:symboldash:1475807293323870238>',
+  greaterthan: '<:greaterthan:1475807008010534942>',
+  xis2: '<:xis2:1475807173291278369>',
+  xis: '<:xis:1475807109554896966>',
+  clipboard: '<:clipboard:1475806180621287527>',
+  lessthan: '<:lessthan:1475806956437635082>',
+  baixo: '<:baixo:1475807866714718239>',
+  cima: '<:cima:1475807892782317578>',
+  clock: '<:clock:1475829939122212874>',
+  success: '<:check:1475806856722120838>',
+  crossedSwords: '⚔️',
+  hourglass: '⏳',
+  scroll: '📜',
+};
 
 function createErrorEmbed(title, description) {
   return new EmbedBuilder()
@@ -32,120 +52,166 @@ async function sendCleanMessage(msg, content) {
   }
 }
 
+async function isAdmin(userId) {
+  try {
+    const user = await getUserByDiscordId(userId);
+
+    if (!user) return false;
+    return user.role?.toLowerCase() === 'admin' && user.active;
+  } catch (err) {
+    return false;
+  }
+}
+
 // ---- .help ----
 export async function handleHelp(message) {
-  const EMOJIS = {
-    arrowLeft: '<:arrowleft:1475806697162539059>',
-    arrowRight: '<:arrowright:1475806826833383456>',
-    check: '<:check:1475806856722120838>',
-    crossedSwords: '<:crossedswords:1475806953153466489>',
-    refresh: '<:refresh:1475807000683384893>',
-    book: '<:book:1475807033541279825>',
-    gear: '<:gear:1475807066089549945>',
-    sleep: '<:sleep:1475807101294637126>',
-    hammer: '<:hammer:1475807133887971378>',
-    graduation: '<:graduation:1475807164604661781>',
-    coin: '<:coin:1475807196169695282>',
-    loading: '⏳',
-  };
-
   const page1 = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle(`${EMOJIS.crossedSwords} Guilda`)
     .addFields(
-      { name: `${EMOJIS.arrowRight} .sync`, value: 'Sincronizar todos os dados da guild', inline: false },
-      { name: `${EMOJIS.arrowRight} .sync-elo`, value: 'Sincronizar apenas os elos', inline: false },
-      { name: `${EMOJIS.arrowRight} .guild-activity`, value: 'Mostrar atividade da guild', inline: false },
-      { name: `${EMOJIS.arrowRight} .mov [data_inicio] [data_fim]`, value: 'Mostrar movimentação de membros', inline: false }
+      { name: `${EMOJIS.arrowRight} .missoes`, value: 'Mostrar as missões da semana atual', inline: false },
+      { name: `${EMOJIS.arrowRight} .stats`, value: 'Trazer seus status atualizados do jogo', inline: false },
+      { name: `${EMOJIS.arrowRight} .clan`, value: 'Ver informações do clã Team TGG', inline: false },
     )
-    .setFooter({ text: 'Selecione uma categoria no menu abaixo' })
+    .setFooter({ text: 'Selecione uma categoria no dropdown' })
     .setTimestamp();
 
   const page2 = new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle(`${EMOJIS.refresh} Informações`)
+    .setTitle(`${EMOJIS.hourglass} Sincronização`)
     .addFields(
-      { name: `${EMOJIS.arrowRight} .stats [@user]`, value: 'Ver estatísticas do Brawlhalla', inline: false },
-      { name: `${EMOJIS.arrowRight} .clan [clan_id]`, value: 'Ver informações do clã', inline: false },
-      { name: `${EMOJIS.arrowRight} .missoes`, value: 'Ver missões semanais', inline: false },
-      { name: `${EMOJIS.arrowRight} .regras`, value: 'Ver regras da guild', inline: false }
+      { name: `${EMOJIS.arrowRight} .sync (admin)`, value: 'Sincronização completa (ranks + ELO)', inline: false },
+      { name: `${EMOJIS.arrowRight} .sync-nick (admin)`, value: 'Sincronizar apelidos Brawlhalla', inline: false },
+      { name: `${EMOJIS.arrowRight} .refresh-cache (admin)`, value: 'Atualizar cache do clan', inline: false }
     )
-    .setFooter({ text: 'Selecione uma categoria no menu abaixo' })
+    .setFooter({ text: 'Selecione uma categoria no dropdown' })
     .setTimestamp();
 
   const page3 = new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle(`${EMOJIS.coin} TGG-Coins`)
+    .setTitle(`${EMOJIS.clipboard} Informações`)
     .addFields(
-      { name: `${EMOJIS.arrowRight} .daily`, value: 'Receber recompensa diária', inline: false },
-      { name: `${EMOJIS.arrowRight} .balance`, value: 'Ver seu saldo de TGG-Coins', inline: false },
-      { name: `${EMOJIS.arrowRight} .historico`, value: 'Ver histórico de transações', inline: false },
-      { name: `${EMOJIS.arrowRight} .leaderboard`, value: 'Ver ranking de TGG-Coins', inline: false },
-      { name: `${EMOJIS.arrowRight} .shop`, value: 'Ver loja de itens', inline: false },
-      { name: `${EMOJIS.arrowRight} .buy [id]`, value: 'Comprar item da loja', inline: false }
+      { name: `${EMOJIS.arrowRight} .regras`, value: 'Mostrar regras da guild', inline: false },
+      { name: `${EMOJIS.arrowRight} .help`, value: 'Mostrar esta mensagem', inline: false }
     )
-    .setFooter({ text: 'Selecione uma categoria no menu abaixo' })
+    .setFooter({ text: 'Selecione uma categoria no dropdown' })
     .setTimestamp();
 
   const page4 = new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle(`${EMOJIS.hammer} Administração`)
+    .setTitle(`${EMOJIS.success} Gerenciamento de Usuários`)
     .addFields(
-      { name: `${EMOJIS.arrowRight} .warn <@user/ID> [motivo]`, value: 'Dar aviso a um usuário (3 = ban)', inline: false },
-      { name: `${EMOJIS.arrowRight} .unwarn <@user/ID> [número]`, value: 'Remover aviso de um usuário', inline: false },
-      { name: `${EMOJIS.arrowRight} .mute <@user/ID> <tempo> [motivo]`, value: 'Silenciar usuário (m/h/d)', inline: false },
-      { name: `${EMOJIS.arrowRight} .unmute <@user/ID>`, value: 'Remover silêncio do usuário', inline: false },
-      { name: `${EMOJIS.arrowRight} .ban <@user/ID> [motivo]`, value: 'Banir usuário (com confirmação)', inline: false },
-      { name: `${EMOJIS.arrowRight} .kick <@user/ID> [motivo]`, value: 'Expulsar usuário', inline: false },
-      { name: `${EMOJIS.arrowRight} .inac-all`, value: 'Aplicar cargo inativo a todos', inline: false },
-      { name: `${EMOJIS.arrowRight} .inac-list`, value: 'Listar jogadores inativos', inline: false }
+      { name: `${EMOJIS.arrowRight} .entrou <@user> <bhid> (admin)`, value: 'Adicionar novo usuário ou reativar existente no banco de dados', inline: false },
+      { name: `${EMOJIS.arrowRight} .warn <@user> [motivo] (admin)`, value: 'Dar um aviso para um membro (3 é o limite)', inline: false },
+      { name: `${EMOJIS.arrowRight} .unwarn <@user> [número] (admin)`, value: 'Tirar um warn de um membro', inline: false },
+      { name: `${EMOJIS.arrowRight} .warns (admin)`, value: 'Mostrar a listagem de todos os warns', inline: false },
+      { name: `${EMOJIS.arrowRight} .mute <@user> <duração> [motivo] (admin)`, value: 'Silenciar um usuário por certo tempo', inline: false },
+      { name: `${EMOJIS.arrowRight} .unmute <@user> (admin)`, value: 'Dessilenciar um usuário', inline: false },
+      { name: `${EMOJIS.arrowRight} .ban <@user> [motivo] (admin)`, value: 'Banir um usuário do servidor (motivo é opcional)', inline: false }
     )
-    .setFooter({ text: 'Selecione uma categoria no menu abaixo' })
+    .setFooter({ text: 'Selecione uma categoria no dropdown' })
+    .setTimestamp();
+
+  const page5 = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle(`${EMOJIS.xis} Inativos`)
+    .addFields(
+      { name: `${EMOJIS.arrowRight} .inac-all (admin)`, value: 'Dar o cargo "ina" a todos os players inativos', inline: false },
+      { name: `${EMOJIS.arrowRight} .active <justificativa>`, value: 'Se remover da lista de inativos', inline: false },
+      { name: `${EMOJIS.arrowRight} .active [@user] <justificativa> (admin)`, value: 'Remover jogador da lista de inativos', inline: false },
+      { name: `${EMOJIS.arrowRight} .inac-list (admin)`, value: 'Listar todos os jogadores inativos desta semana', inline: false },
+    )
+    .setFooter({ text: 'Selecione uma categoria no dropdown' })
+    .setTimestamp();
+
+  const page6 = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle(`${EMOJIS.scroll} Missões`)
+    .addFields(
+      { name: `${EMOJIS.arrowRight} .concluida <número> (admin)`, value: 'Marcar a missão do ".missoes" como concluída', inline: false },
+      { name: `${EMOJIS.arrowRight} .cadastrarMissao "nome" "dica" <objetivo> (admin)`, value: 'Cadastrar uma missão semanal', inline: false },
+    )
+    .setFooter({ text: 'Selecione uma categoria no dropdown' })
     .setTimestamp();
 
   const selectMenu = new StringSelectMenuBuilder()
     .setCustomId('help_menu')
     .setPlaceholder('Escolha uma categoria...')
     .addOptions(
-      { label: '⚔️ Guilda', value: 'guild', description: 'Comandos da guilda' },
-      { label: '📊 Informações', value: 'info', description: 'Estatísticas e informações' },
-      { label: '🪙 TGG-Coins', value: 'coins', description: 'Sistema de moedas' },
-      { label: '🛡️ Administração', value: 'admin', description: 'Comandos de moderação' }
+      { label: 'Guilda', value: 'guild', emoji: EMOJIS.crossedSwords, description: 'Comandos da guilda' },
+      { label: 'Sincronização', value: 'sync', emoji: EMOJIS.hourglass, description: 'Comandos de sincronização' },
+      { label: 'Informações', value: 'info', emoji: EMOJIS.clipboard, description: 'Comandos de informação' },
+      { label: 'Gerenciamento', value: 'users', emoji: EMOJIS.success, description: 'Gerenciamento de usuários' },
+      { label: 'Inativos', value: 'inac', emoji: EMOJIS.xis, description: 'Comandos de inatividade' },
+      { label: 'Missões', value: 'missions', emoji: EMOJIS.scroll, description: 'Comandos para missões' }
     );
 
-  const backButton = new ButtonBuilder()
-    .setCustomId('help_back')
-    .setLabel('Voltar')
-    .setStyle(1);
-
   const row = new ActionRowBuilder().addComponents(selectMenu);
-  const rowWithBack = new ActionRowBuilder().addComponents(backButton);
-
   const helpMsg = await message.reply({ embeds: [page1], components: [row] });
 
-  const collector = helpMsg.createMessageComponentCollector({ time: 120000 });
+  // Coletor para os botões de seleção
+  const collector = helpMsg.createMessageComponentCollector({ time: 60000 });
 
   collector.on('collect', async (interaction) => {
     if (interaction.user.id !== message.author.id) {
-      return interaction.reply({ content: 'Você não pode usar este menu.', ephemeral: true });
+      return interaction.reply({ content: 'Você não pode usar este menu', ephemeral: true });
     }
 
     if (interaction.customId === 'help_menu') {
       const selected = interaction.values[0];
       let embedToShow = page1;
-      if (selected === 'guild') embedToShow = page1;
-      if (selected === 'info') embedToShow = page2;
-      if (selected === 'coins') embedToShow = page3;
-      if (selected === 'admin') embedToShow = page4;
-      await interaction.update({ embeds: [embedToShow], components: [row, rowWithBack] });
-    } else if (interaction.customId === 'help_back') {
-      await interaction.update({ embeds: [page1], components: [row] });
+      if (selected === 'sync') embedToShow = page2;
+      if (selected === 'info') embedToShow = page3;
+      if (selected === 'users') embedToShow = page4;
+      if (selected === 'inac') embedToShow = page5;
+      if (selected === 'missions') embedToShow = page6;
+      await interaction.update({ embeds: [embedToShow], components: [row] });
     }
   });
 
   collector.on('end', () => {
-    helpMsg.delete().catch(() => {});
+    // helpMsg.delete().catch(() => {});
   });
+}
+
+// ---- .regras ----
+export async function handleRegras(message) {
+  const rulesEmbed = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle('📋 Regras da Guild')
+    .setDescription('Bem-vindo à TGG! Aqui estão nossas regras simples para uma comunidade saudável.')
+    .addFields(
+      {
+        name: `${EMOJIS.square} Sem Toxicidade`,
+        value: 'Proibido nomes ofensivos, assédio ou desrespeito.',
+        inline: false
+      },
+      {
+        name: `${EMOJIS.square} Contribua com a Guilda`,
+        value: `Ajude a guilda participando de missões, quests e atividades coletivas. Para mais informações, veja o canal <#${'1480627066792579072'}>`,
+        inline: false
+      },
+      {
+        name: `${EMOJIS.arrowRight} Como Contribuir:`,
+        value: `${EMOJIS.check} Jogar 2v2 amistoso ou ranked com membros da guild\n${EMOJIS.check} Ajudar com missões da guilda`,
+        inline: false
+      },
+      {
+        name: `${EMOJIS.arrowRight} Vire membro e desbloqueie treinamentos gratuitos com jogadores experientes da guilda!`,
+        value: `${EMOJIS.check} Consiga 40.000 de contribuição total
+                ${EMOJIS.check} Seja MVP Semanal (14 melhores contribuidores da semana)`,
+        inline: false
+      },
+      {
+        name: `${EMOJIS.greaterthan} Seja Bem-Vindo!`,
+        value: 'Divirta-se, conheça os membros e aproveite a comunidade. Vamos crescer juntos!',
+        inline: false
+      }
+    )
+    .setFooter({ text: 'Dúvidas? Fale com um membro da staff!' })
+    .setTimestamp();
+
+  await message.reply({ embeds: [rulesEmbed] });
 }
 
 // ---- .stats ----
@@ -166,8 +232,6 @@ export async function handleStats(message, args) {
       return await message.reply({ embeds: [createErrorEmbed('Brawlhalla ID Não Encontrado', 'Este usuário não tem um Brawlhalla ID registrado.')] });
     }
 
-    const EMOJIS = { loading: '⏳' };
-    
     const loadingEmbed = new EmbedBuilder()
       .setColor(0xfaa61a)
       .setTitle(`${EMOJIS.loading} Carregando estatísticas...`)
@@ -205,39 +269,40 @@ export async function handleStats(message, args) {
     });
 
     collector.on('end', () => {
-      // Botão expira
+      // statsMsg.delete().catch(() => {});
     });
 
   } catch (err) {
     console.error('Error fetching stats:', err);
     const errorEmbed = createErrorEmbed('Erro ao Buscar Estatísticas', err.message);
-    await message.reply({ embeds: [errorEmbed] }).catch(() => { });
+    if (loadingMsg) {
+      await sendCleanMessage(loadingMsg, { embeds: [errorEmbed] }).catch(() => { });
+    } else {
+      await message.reply({ embeds: [errorEmbed] }).catch(() => { });
+    }
   }
 }
 
 // ---- .clan ----
 export async function handleClan(message, args) {
-  let loadingMsg;
   try {
     let clanId = process.env.BRAWLHALLA_CLAN_ID || '396943';
     if (args.length > 0 && /^\d+$/.test(args[0])) {
       clanId = args[0];
     }
 
-    // Verifica cache primeiro
+    // Checar cache primeiro (inclusive expirado)
     const cachedData = getCached(`clan:${clanId}`, true);
     if (cachedData) {
       return await message.reply({ embeds: [createClanEmbed(cachedData)] });
     }
 
-    const EMOJIS = { loading: '⏳' };
-    
     const loadingEmbed = new EmbedBuilder()
       .setColor(0xfaa61a)
       .setTitle(`${EMOJIS.loading} Carregando informações do clã...`)
       .setDescription('Buscando dados do Brawlhalla...');
 
-    loadingMsg = await message.reply({ embeds: [loadingEmbed] });
+    const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
     const clanData = await fetchClanStats(clanId);
     await sendCleanMessage(loadingMsg, { embeds: [createClanEmbed(clanData)] });
 
@@ -252,147 +317,175 @@ export async function handleClan(message, args) {
   }
 }
 
-// ---- .active ----
-export async function handleActive(message, args) {
-  try {
-    if (!message.guild) {
-      return message.reply({ embeds: [createErrorEmbed('Comando Inválido', 'Este comando só pode ser usado no servidor.')] });
-    }
-
-    // Verifica se usuário está tentando ativar outra pessoa (apenas admin)
-    const mentionMatch = args[0]?.match(/^<@!?(\d+)>$/);
-    const idMatch = args[0]?.match(/^\d+$/);
-    let targetId = message.author.id;
-    let isAdminAction = false;
-
-    if (mentionMatch || idMatch) {
-      targetId = mentionMatch ? mentionMatch[1] : args[0];
-      if (targetId !== message.author.id) {
-        // Verifica se é admin
-        const { ALLOWED_USER_IDS } = await import('../config/index.js');
-        if (!ALLOWED_USER_IDS.includes(message.author.id)) {
-          return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem ativar outros usuários.')] });
-        }
-        isAdminAction = true;
-      }
-    }
-
-    // Obtém justificativa dos argumentos restantes
-    const justification = args.slice(isAdminAction ? 1 : 0).join(' ') || 'Sem justificativa';
-
-    // Remove da lista de inativos
-    await removeInactivePlayer(targetId);
-    
-    // Garante que usuário existe no banco de dados
-    await reactivateOrAddUser(targetId, '0', 'Member');
-
-    // Remove cargo de inativo se existir
-    const member = await message.guild.members.fetch(targetId).catch(() => null);
-    if (member) {
-      const inactiveRole = message.guild.roles.cache.find(r => r.name === 'Inativo');
-      if (inactiveRole) {
-        await member.roles.remove(inactiveRole).catch(() => {});
-      }
-    }
-
-    await message.reply({
-      embeds: [createSuccessEmbed('Ativado', `<@${targetId}> foi removido da lista de inativos.\n**Justificativa:** ${justification}`)]
-    });
-  } catch (err) {
-    await message.reply({ embeds: [createErrorEmbed('Erro', err.message)] });
-  }
-}
-
-// ---- .regras ----
-export async function handleRegras(message) {
-  const rulesEmbed = new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setTitle('📋 Regras da Guild')
-    .setDescription(
-      '**1.** Respeite todos os membros\n' +
-      '**2.** Proibido spam ou flood\n' +
-      '**3.** Mantenha as conversas nos canais apropriados\n' +
-      '**4.** Proibido conteúdo NSFW\n' +
-      '**5.** Siga as diretrizes do Discord'
-    )
-    .setFooter({ text: 'Última atualização: 2024' })
-    .setTimestamp();
-
-  await message.reply({ embeds: [rulesEmbed] });
-}
-
 // ---- .missoes ----
 export async function handleMissoes(message) {
   try {
     const missions = await getWeeklyMissions();
 
     if (!missions || missions.length === 0) {
-      return message.reply({ embeds: [createErrorEmbed('Sem Missões', 'Não há missões ativas no momento.')] });
+      return message.reply({
+        embeds: [
+          createErrorEmbed(
+            'Missões',
+            'Nenhuma missão encontrada para esta semana.'
+          )
+        ]
+      });
     }
 
-    const missionsEmbed = new EmbedBuilder()
+    const weekDate = new Date(missions[0].week_start + 'T00:00:00').toLocaleDateString('pt-BR');
+
+    const description = missions
+      .map((m, index) => {
+
+        const isDone = m.status === 'done';
+
+        const statusLabel = isDone ? '✅ [**CONCLUÍDA**]' : '📌';
+
+        const missionText = isDone
+          ? `~~🎯 **${index + 1}. ${m.mission}**~~`
+          : `🎯 **${index + 1}. ${m.mission}**`;
+
+        const objetivo = isDone
+          ? `~~Objetivo: ${m.target} pontos~~`
+          : `Objetivo: ${m.target} pontos`;
+
+        const tip = isDone
+          ? `~~_DICA: ${m.tip}_~~`
+          : `_DICA: ${m.tip}_`;
+
+        return `${statusLabel} ${missionText}
+    ${objetivo}
+    ${tip}`;
+      })
+      .join('\n\n');
+
+    const embed = new EmbedBuilder()
       .setColor(0x5865f2)
-      .setTitle('🎯 Missões Semanais')
-      .setDescription(missions.map((m, i) => 
-        `**${i + 1}.** ${m.description} - ${m.points} pontos`
-      ).join('\n'))
-      .setFooter({ text: 'Missões resetam toda segunda-feira' })
+      .setTitle(`📜 Missões Semanais (${weekDate})`)
+      .setDescription(
+        `━━━━━━━━━━━━━━━━━━━━━━━━\n${description}\n━━━━━━━━━━━━━━━━━━━━━━━━\n\nSe tiver dúvidas, contate alguém da staff.`
+      )
       .setTimestamp();
 
-    await message.reply({ embeds: [missionsEmbed] });
-  } catch (err) {
-    await message.reply({ embeds: [createErrorEmbed('Erro', err.message)] });
-  }
-}
+    await message.reply({ embeds: [embed] });
 
-// ---- .sync ----
-export async function handleSync(message, client) {
-  const EMOJIS = { loading: '⏳' };
-  
-  const loading = await message.reply({ 
-    embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando...`).setDescription('Executando sincronização completa...')] 
-  });
-  
-  try {
-    const users = await getUsers();
-    await runSync(users, client);
-    await sendCleanMessage(loading, { 
-      embeds: [createSuccessEmbed('Sincronizado', `Sincronização completa! ${users.length} usuários processados.`)] 
-    });
   } catch (err) {
-    await sendCleanMessage(loading, { 
-      embeds: [createErrorEmbed('Erro na Sincronização', err.message)] 
+    await message.reply({
+      embeds: [
+        createErrorEmbed('Erro ao buscar missões', err.message)
+      ]
     });
   }
 }
 
-// ---- .sync-elo ----
-export async function handleSyncElo(message, client) {
-  const EMOJIS = { loading: '⏳' };
-  
-  const loading = await message.reply({ 
-    embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando Elos...`).setDescription('Atualizando cargos de elo...')] 
-  });
-  
-  try {
-    const users = await getUsers();
-    await runEloSync(users, client);
-    await sendCleanMessage(loading, { 
-      embeds: [createSuccessEmbed('Elos Sincronizados', `Cargos de elo atualizados para ${users.length} usuários.`)] 
-    });
-  } catch (err) {
-    await sendCleanMessage(loading, { 
-      embeds: [createErrorEmbed('Erro na Sincronização', err.message)] 
-    });
+// ---- .active ----
+export async function handleActive(message, args, client) {
+  if (!message.guild) {
+    return message.reply({ embeds: [createErrorEmbed('Comando Inválido', 'Este comando só pode ser usado no servidor.')] });
   }
-}
-
-// ---- .guild-activity ----
-export async function handleGuildActivity(message) {
   try {
-    await runAndPostGuildActivity();
-    await message.reply({ embeds: [createSuccessEmbed('Atividade', 'Atividade da guild sincronizada!')] });
+    const guild = client.guilds.cache.get(discordConfig.guildId);
+    if (!guild) throw new Error('Guild não encontrada');
+
+    const inactiveRoleId = inactivePlayersConfig.inactiveRoleId;
+
+    let targetId;
+    let note;
+
+    const mentionMatch = message.content.match(/<@!?(\d+)>/);
+    const idMatch = args[0]?.match(/^\d+$/);
+
+    // Bloqueia comando se não for admin
+    if ((mentionMatch || idMatch) && !(await isAdmin(message.author.id))) {
+      return message.reply({
+        embeds: [
+          createErrorEmbed(
+            'Acesso Negado',
+            'Apenas administradores podem ativar outros usuários.'
+          )
+        ]
+      });
+    }
+
+    // Comando marcando alguém liberado somente pra admin
+    if (await isAdmin(message.author.id) && (mentionMatch || idMatch)) {
+      targetId = mentionMatch ? mentionMatch[1] : args[0];
+
+      const afterMention = mentionMatch
+        ? message.content.split('>').slice(1).join('>').trim()
+        : args.slice(1).join(' ').trim();
+      note = afterMention.length > 0 ? afterMention : 'ativado por administrador';
+    }
+    // Usuário normal usando .active <motivo>
+    else {
+      targetId = message.author.id;
+      note = args.join(' ').trim();
+
+      if (!note || note.length < 15) {
+        return message.reply({
+          embeds: [
+            createErrorEmbed(
+              'Justificativa obrigatória',
+              'Informe uma justificativa com **pelo menos 15 caracteres**.'
+            )
+          ]
+        });
+      }
+    }
+
+    const member = await guild.members.fetch(targetId).catch(() => null);
+    if (!member) {
+      return message.reply({
+        embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')]
+      });
+    }
+
+    // Remove cargo de inativo
+    if (member.roles.cache.has(inactiveRoleId)) {
+      await member.roles.remove(inactiveRoleId);
+    }
+
+    // Atualiza banco passando a justificativa
+    await removeInactivePlayer(targetId, note);
+
+    const embed = createSuccessEmbed(
+      'Ativado',
+      `${member.user.tag} foi marcado como ativo.\nMotivo: ${note}`
+    );
+
+    await message.reply({ embeds: [embed] });
+
+    // Tratamento de erros
   } catch (err) {
-    await message.reply({ embeds: [createErrorEmbed('Erro', err.message)] });
+
+    // Já está ativo
+    if (err.message.includes('já está ativo')) {
+      return message.reply({
+        embeds: [
+          createErrorEmbed(
+            'Já está ativo',
+            'Este usuário já está marcado como ativo nesta semana.'
+          )
+        ]
+      });
+    }
+
+    // Não está marcado como inativo
+    if (err.message.includes('não está marcado como inativo')) {
+      return message.reply({
+        embeds: [
+          createErrorEmbed(
+            'Não está inativo',
+            'Este usuário não está marcado como inativo nesta semana.'
+          )
+        ]
+      });
+    }
+
+    // Fallback dos erros
+    await message.reply({
+      embeds: [createErrorEmbed('Erro ao Ativar Usuário', err.message)]
+    });
   }
 }

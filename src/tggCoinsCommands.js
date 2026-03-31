@@ -83,45 +83,40 @@ export async function handleDaily(message) {
     });
 
   } catch (err) {
-    console.error('Error in daily:', err);
     return loading.edit({
-      embeds: [
-        createErrorEmbed('Erro ao resgatar daily', err.message)
-      ]
+      embeds: [createErrorEmbed('Erro no daily', err.message)]
     });
   }
 }
 
 // ---- .balance ----
-export async function handleBalance(message, args) {
+export async function handleBalance(message) {
   try {
     const discordId = message.author.id;
 
-    // Obtém saldo de outra pessoa
-    let targetId = discordId;
-    if (args.length > 0) {
-      const mentionMatch = args[0].match(/^<@!?(\d+)>$/);
-      if (mentionMatch) {
-        targetId = mentionMatch[1];
-      } else if (/^\d+$/.test(args[0])) {
-        targetId = args[0];
-      }
+    const user = await getUserByDiscordId(discordId);
+    if (!user || !user.active) {
+      return message.reply({
+        embeds: [createErrorEmbed('Acesso Negado', 'Você não está na guilda.')]
+      });
     }
 
-    const balance = await getBalance(targetId);
-    const targetUser = targetId === discordId ? 'Você' : `<@${targetId}>`;
+    const balance = await getBalance(discordId);
 
-    await message.reply({
+    return message.reply({
       embeds: [
         new EmbedBuilder()
           .setColor(0x5865f2)
-          .setTitle(`${EMOJIS.coin} Saldo de TGG-Coins`)
-          .setDescription(`${targetUser} possui **${balance}** TGG-Coins`)
+          .setTitle(`💰 Seu saldo`)
+          .setDescription(`Você possui **${balance} TGG-Coins**`)
           .setTimestamp()
       ]
     });
+
   } catch (err) {
-    await message.reply({ embeds: [createErrorEmbed('Erro', err.message)] });
+    return message.reply({
+      embeds: [createErrorEmbed('Erro', err.message)]
+    });
   }
 }
 
@@ -130,8 +125,15 @@ export async function handleHistorico(message) {
   try {
     const discordId = message.author.id;
 
+    const user = await getUserByDiscordId(discordId);
+    if (!user || !user.active) {
+      return message.reply({
+        embeds: [createErrorEmbed('Acesso Negado', 'Você não está na guilda.')]
+      });
+    }
+
     let page = 1;
-    const limit = 5;
+    const limit = 10;
 
     async function generateEmbed(page) {
       const { data, total } = await getTransactions(discordId, page, limit);
@@ -141,18 +143,21 @@ export async function handleHistorico(message) {
       if (data.length === 0) {
         return new EmbedBuilder()
           .setColor(0xed4245)
-          .setTitle('Sem transações');
+          .setTitle('📜 Histórico vazio')
+          .setDescription('Você não possui transações.');
       }
 
-      const description = data.map((tx) => {
-        const emoji = tx.amount >= 0 ? '🟢' : '🔴';
-        const date = new Date(tx.created_at).toLocaleDateString('pt-BR');
-        return `${emoji} **${tx.amount > 0 ? '+' : ''}${tx.amount}** - ${tx.type} (${date})\n${tx.description}`;
+      const description = data.map(t => {
+        const date = new Date(t.created_at).toLocaleString('pt-BR');
+
+        const sinal = t.amount >= 0 ? '+' : '-';
+
+        return `**${sinal}${Math.abs(t.amount)}** | ${t.type}\n${date}`;
       }).join('\n\n');
 
       return new EmbedBuilder()
         .setColor(0x5865f2)
-        .setTitle(`${EMOJIS.coin} Histórico de Transações`)
+        .setTitle('📜 Seu histórico')
         .setDescription(description)
         .setFooter({ text: `Página ${page}/${totalPages}` })
         .setTimestamp();
@@ -180,7 +185,9 @@ export async function handleHistorico(message) {
       components: [row(page, totalPages)]
     });
 
-    const collector = msg.createMessageComponentCollector({ time: 60000 });
+    const collector = msg.createMessageComponentCollector({
+      time: 60000
+    });
 
     collector.on('collect', async (interaction) => {
       if (interaction.user.id !== message.author.id) {
@@ -277,7 +284,9 @@ export async function handleLeaderboard(message) {
       components: [row(page, totalPages)]
     });
 
-    const collector = msg.createMessageComponentCollector({ time: 60000 });
+    const collector = msg.createMessageComponentCollector({
+      time: 60000
+    });
 
     collector.on('collect', async (interaction) => {
       if (interaction.user.id !== message.author.id) {
@@ -326,23 +335,29 @@ export async function handleShop(message, args) {
     const totalItems = await getShopCount();
     const totalPages = Math.ceil(totalItems / limit) || 1;
 
-    // Vai para a última página existente
+    // Joga pra última página existente
     if (page > totalPages) page = totalPages;
 
     async function generateEmbed(page) {
       const { data } = await getShopItems(page, limit);
 
       const embed = new EmbedBuilder()
-        .setColor(0xfaa61a)
-        .setTitle(`${EMOJIS.coin} Loja de Itens`)
-        .setDescription('Use `.buy [posição]` para comprar um item')
-        .setFooter({ text: `Página ${page}/${totalPages}` });
+        .setColor(0x5865f2)
+        .setTitle('🛒 Loja')
+        .setFooter({ text: `Página ${page}/${totalPages}` })
+        .setTimestamp();
 
       data.forEach((item, index) => {
-        const globalIndex = (page - 1) * limit + index + 1;
+        const position = (page - 1) * limit + index + 1;
+
+        let extra = '';
+
+        if (item.is_unique) extra += ' 🔒 Único';
+        if (item.stock !== null) extra += ` • Estoque: ${item.stock}`;
+
         embed.addFields({
-          name: `${globalIndex}. ${item.name} - ${item.price} ${EMOJIS.coin}`,
-          value: `${item.description}\nEstoque: ${item.stock || '∞'}`,
+          name: `#${position} • ${item.name}`,
+          value: `${item.description || 'Sem descrição'}\n💰 **${item.price} TGG-Coins**${extra}`,
           inline: false
         });
       });
@@ -350,30 +365,43 @@ export async function handleShop(message, args) {
       return embed;
     }
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('shop_prev')
-        .setLabel('⬅️ Anterior')
-        .setStyle(2)
-        .setDisabled(page <= 1),
+    const row = (page) => {
+      if (totalPages <= 1) return [];
 
-      new ButtonBuilder()
-        .setCustomId('shop_next')
-        .setLabel('Próxima ➡️')
-        .setStyle(2)
-        .setDisabled(page >= totalPages)
-    );
+      return [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('shop_prev')
+            .setLabel('⬅️')
+            .setStyle(1)
+            .setDisabled(page <= 1),
+
+          new ButtonBuilder()
+            .setCustomId('shop_next')
+            .setLabel('➡️')
+            .setStyle(1)
+            .setDisabled(page >= totalPages)
+        )
+      ];
+    };
 
     const msg = await message.reply({
       embeds: [await generateEmbed(page)],
-      components: [row]
+      components: row(page)
     });
 
-    const collector = msg.createMessageComponentCollector({ time: 120000 });
+    if (totalPages <= 1) return;
+
+    const collector = msg.createMessageComponentCollector({
+      time: 60000
+    });
 
     collector.on('collect', async (interaction) => {
       if (interaction.user.id !== message.author.id) {
-        return interaction.reply({ content: 'Você não pode usar isso.', ephemeral: true });
+        return interaction.reply({
+          content: 'Você não pode usar isso.',
+          ephemeral: true
+        });
       }
 
       if (interaction.customId === 'shop_prev') page--;
@@ -381,26 +409,13 @@ export async function handleShop(message, args) {
 
       await interaction.update({
         embeds: [await generateEmbed(page)],
-        components: [
-          new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId('shop_prev')
-              .setLabel('⬅️ Anterior')
-              .setStyle(2)
-              .setDisabled(page <= 1),
-            new ButtonBuilder()
-              .setCustomId('shop_next')
-              .setLabel('Próxima ➡️')
-              .setStyle(2)
-              .setDisabled(page >= totalPages)
-          )
-        ]
+        components: row(page)
       });
     });
 
   } catch (err) {
     return message.reply({
-      embeds: [createErrorEmbed('Erro na Loja', err.message)]
+      embeds: [createErrorEmbed('Erro na loja', err.message)]
     });
   }
 }
@@ -408,15 +423,8 @@ export async function handleShop(message, args) {
 // ---- .buy ----
 export async function handleBuy(message, args) {
   try {
-    if (args.length === 0) {
-      return message.reply({
-        embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.buy [posição]`')]
-      });
-    }
-
     const discordId = message.author.id;
 
-    // Verifica se usuário está na guild
     const user = await getUserByDiscordId(discordId);
     if (!user || !user.active) {
       return message.reply({
@@ -425,67 +433,83 @@ export async function handleBuy(message, args) {
     }
 
     const position = parseInt(args[0]);
+
     if (isNaN(position) || position < 1) {
       return message.reply({
-        embeds: [createErrorEmbed('Posição Inválida', 'Use `.buy [posição]`')]
+        embeds: [createErrorEmbed('Uso inválido', 'Use: `.buy <número do item>`')]
       });
     }
 
-    // Busca o item pela posição
+    // Pega o número do item
     const item = await getShopItemByPosition(position);
+
     if (!item) {
       return message.reply({
-        embeds: [createErrorEmbed('Item Não Encontrado', 'Este item não existe na loja.')]
+        embeds: [createErrorEmbed('Item não encontrado', 'Esse item não existe.')]
       });
     }
 
-    // Verifica estoque
-    if (item.stock !== null && item.stock <= 0) {
-      return message.reply({
-        embeds: [createErrorEmbed('Estoque Esgotado', 'Este item está esgotado.')]
-      });
-    }
-
-    // Verifica saldo
-    const balance = await getBalance(discordId);
-    if (balance < item.price) {
-      return message.reply({
-        embeds: [createErrorEmbed('Saldo Insuficiente', `Você precisa de ${item.price} TGG-Coins. Seu saldo: ${balance}`)]
-      });
-    }
-
-    // Verifica se já comprou (se for único)
-    if (item.unique) {
+    // Se for um item único
+    if (item.is_unique) {
       const alreadyHas = await hasPurchased(discordId, item.id);
       if (alreadyHas) {
         return message.reply({
-          embeds: [createErrorEmbed('Item Único', 'Você já possui este item.')]
+          embeds: [createErrorEmbed('Item único', 'Você já comprou este item.')]
         });
       }
     }
 
-    // Realiza a compra
-    await addTransaction(discordId, -item.price, 'PURCHASE', `Compra: ${item.name}`);
-    await updateBalance(discordId, -item.price);
-    await createPurchase(discordId, item.id);
-
-    // Diminui estoque se houver
-    if (item.stock !== null) {
-      await decreaseStock(item.id);
+    // Se não tiver estoque
+    if (item.stock !== null && item.stock <= 0) {
+      return message.reply({
+        embeds: [createErrorEmbed('Sem estoque', 'Este item acabou.')]
+      });
     }
 
-    await message.reply({
+    // Ver o saldo do usuário
+    const balance = await getBalance(discordId);
+
+    // Se não tiver saldo suficiente, trava
+    if (balance < item.price) {
+      return message.reply({
+        embeds: [createErrorEmbed('Saldo insuficiente', `Você precisa de ${item.price} TGG-Coins.`)]
+      });
+    }
+
+    // Adiciona a transação
+    await addTransaction(discordId, -item.price, 'SHOP_PURCHASE', 'Compra');
+
+    // Atualizar o saldo
+    const newBalance = await updateBalance(discordId, -item.price);
+
+    // Registrar a compra
+    await createPurchase(discordId, item);
+
+    // Diminuir estoque (Se tiver estoque)
+    await decreaseStock(item.id, item.stock);
+
+    // Para itens que são cargos, aplicar cargo
+    if (item.type === 'ROLE' && item.role_id) {
+      try {
+        const member = await message.guild.members.fetch(discordId);
+        await member.roles.add(item.role_id);
+      } catch (err) {
+        console.error('Erro ao adicionar cargo:', err);
+      }
+    }
+
+    return message.reply({
       embeds: [
         createSuccessEmbed(
-          'Compra Realizada!',
-          `Você comprou **${item.name}** por ${item.price} TGG-Coins\n${item.description}`
+          'Compra realizada!',
+          `Você comprou **${item.name}** por ${item.price} TGG-Coins.\nSaldo atual: **${newBalance}**`
         )
       ]
     });
 
   } catch (err) {
     return message.reply({
-      embeds: [createErrorEmbed('Erro na Compra', err.message)]
+      embeds: [createErrorEmbed('Erro na compra', err.message)]
     });
   }
 }
