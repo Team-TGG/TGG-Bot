@@ -123,7 +123,7 @@ export function buildMovimentacaoEmbeds(records, startDate, endDate) {
     promovido: '<:cima:1475807892782317578>',
     rebaixado: '<:baixo:1475807866714718239>',
     time: '<:clock:1475829939122212874>',
-    loading: '<a:loading:1475806256366358633>',
+    loading: '⏳',
     seta: '<:arrowright:1475806826833383456>',
     ponto: '<:symboldash:1475807293323870238>',
   };

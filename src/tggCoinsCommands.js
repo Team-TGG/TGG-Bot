@@ -18,8 +18,8 @@ function createSuccessEmbed(title, description) {
 }
 
 const EMOJIS = {
-  loading: '<a:loading:1475807230899867709>',
-  coin: '<:coin:1475807196169695282>'
+  loading: '⏳',
+  coin: '🪙'
 };
 
 // ---- .daily ----

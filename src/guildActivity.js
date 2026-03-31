@@ -53,16 +53,16 @@ export async function runGuildActivitySync() {
 export function buildEmbedsFromGuildActivity(data) {
   const embeds = [];
   
-  // arrumar os emojis(todos não funcionam)
+  // Emojis Unicode (funcionam em qualquer lugar)
   const EMOJIS = {
-    entrou: '<:icon_v:825250296987910144>',
-    saiu: '<:icon_x:872277999687442472>',
-    promovido: '<:icon_up:1471913779280351316>',
-    rebaixado: '<:icon_down:1471913822280355921>',
-    info: '<:icon_etc:1453118909166256360>',
-    time: '<:time2:1406766019589967924>',
-    seta: '<a:seta:851206127471034378>',
-    ponto: '<:g_ponto_white_RR:1305837905624698880>',
+    entrou: '✅',
+    saiu: '❌',
+    promovido: '⬆️',
+    rebaixado: '⬇️',
+    info: 'ℹ️',
+    time: '🕐',
+    seta: '➡️',
+    ponto: '•',
   };
 
 

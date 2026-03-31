@@ -46,7 +46,7 @@ export async function handleHelp(message) {
     hammer: '<:hammer:1475807133887971378>',
     graduation: '<:graduation:1475807164604661781>',
     coin: '<:coin:1475807196169695282>',
-    loading: '<a:loading:1475807230899867709>'
+    loading: '⏳',
   };
 
   const page1 = new EmbedBuilder()
@@ -87,13 +87,30 @@ export async function handleHelp(message) {
     .setFooter({ text: 'Selecione uma categoria no menu abaixo' })
     .setTimestamp();
 
+  const page4 = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle(`${EMOJIS.hammer} Administração`)
+    .addFields(
+      { name: `${EMOJIS.arrowRight} .warn <@user/ID> [motivo]`, value: 'Dar aviso a um usuário (3 = ban)', inline: false },
+      { name: `${EMOJIS.arrowRight} .unwarn <@user/ID> [número]`, value: 'Remover aviso de um usuário', inline: false },
+      { name: `${EMOJIS.arrowRight} .mute <@user/ID> <tempo> [motivo]`, value: 'Silenciar usuário (m/h/d)', inline: false },
+      { name: `${EMOJIS.arrowRight} .unmute <@user/ID>`, value: 'Remover silêncio do usuário', inline: false },
+      { name: `${EMOJIS.arrowRight} .ban <@user/ID> [motivo]`, value: 'Banir usuário (com confirmação)', inline: false },
+      { name: `${EMOJIS.arrowRight} .kick <@user/ID> [motivo]`, value: 'Expulsar usuário', inline: false },
+      { name: `${EMOJIS.arrowRight} .inac-all`, value: 'Aplicar cargo inativo a todos', inline: false },
+      { name: `${EMOJIS.arrowRight} .inac-list`, value: 'Listar jogadores inativos', inline: false }
+    )
+    .setFooter({ text: 'Selecione uma categoria no menu abaixo' })
+    .setTimestamp();
+
   const selectMenu = new StringSelectMenuBuilder()
     .setCustomId('help_menu')
     .setPlaceholder('Escolha uma categoria...')
     .addOptions(
-      { label: 'Guilda', value: 'guild', emoji: EMOJIS.crossedSwords, description: 'Comandos da guilda' },
-      { label: 'Informações', value: 'info', emoji: EMOJIS.refresh, description: 'Estatísticas e informações' },
-      { label: 'TGG-Coins', value: 'coins', emoji: EMOJIS.coin, description: 'Sistema de moedas' }
+      { label: '⚔️ Guilda', value: 'guild', description: 'Comandos da guilda' },
+      { label: '📊 Informações', value: 'info', description: 'Estatísticas e informações' },
+      { label: '🪙 TGG-Coins', value: 'coins', description: 'Sistema de moedas' },
+      { label: '🛡️ Administração', value: 'admin', description: 'Comandos de moderação' }
     );
 
   const backButton = new ButtonBuilder()
@@ -119,6 +136,7 @@ export async function handleHelp(message) {
       if (selected === 'guild') embedToShow = page1;
       if (selected === 'info') embedToShow = page2;
       if (selected === 'coins') embedToShow = page3;
+      if (selected === 'admin') embedToShow = page4;
       await interaction.update({ embeds: [embedToShow], components: [row, rowWithBack] });
     } else if (interaction.customId === 'help_back') {
       await interaction.update({ embeds: [page1], components: [row] });
@@ -148,7 +166,7 @@ export async function handleStats(message, args) {
       return await message.reply({ embeds: [createErrorEmbed('Brawlhalla ID Não Encontrado', 'Este usuário não tem um Brawlhalla ID registrado.')] });
     }
 
-    const EMOJIS = { loading: '<a:loading:1475807230899867709>' };
+    const EMOJIS = { loading: '⏳' };
     
     const loadingEmbed = new EmbedBuilder()
       .setColor(0xfaa61a)
@@ -212,7 +230,7 @@ export async function handleClan(message, args) {
       return await message.reply({ embeds: [createClanEmbed(cachedData)] });
     }
 
-    const EMOJIS = { loading: '<a:loading:1475807230899867709>' };
+    const EMOJIS = { loading: '⏳' };
     
     const loadingEmbed = new EmbedBuilder()
       .setColor(0xfaa61a)
@@ -329,7 +347,7 @@ export async function handleMissoes(message) {
 
 // ---- .sync ----
 export async function handleSync(message, client) {
-  const EMOJIS = { loading: '<a:loading:1475807230899867709>' };
+  const EMOJIS = { loading: '⏳' };
   
   const loading = await message.reply({ 
     embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando...`).setDescription('Executando sincronização completa...')] 
@@ -350,7 +368,7 @@ export async function handleSync(message, client) {
 
 // ---- .sync-elo ----
 export async function handleSyncElo(message, client) {
-  const EMOJIS = { loading: '<a:loading:1475807230899867709>' };
+  const EMOJIS = { loading: '⏳' };
   
   const loading = await message.reply({ 
     embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando Elos...`).setDescription('Atualizando cargos de elo...')] 
