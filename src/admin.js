@@ -6,69 +6,11 @@ import { getUsers, getUsersWithElo, getUserByDiscordId, addInactivePlayer, remov
 import { discord as discordConfig, ALLOWED_USER_IDS, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
 import { loadCustomNicknames } from './customNicknames.js';
 import { syncNicknames, updateMemberNicknameDiscordPortion, parseNickname, buildNickname, fetchBrawlhallaClanData, loadClanCache } from './nicknameSync.js';
-
-const EMOJIS = {
-  arrowLeft: '<:arrowleft:1475806697162539059>',
-  arrowRight: '<:arrowright:1475806826833383456>',
-  check: '<:check:1475806856722120838>',
-  checkbox: '<:checkbox:1475806904482660476>',
-  loading: '<a:loading:1475806256366358633>',
-  square: '<:square:1475807057830744074>',
-  symboldash: '<:symboldash:1475807293323870238>',
-  greaterthan: '<:greaterthan:1475807008010534942>',
-  xis2: '<:xis2:1475807173291278369>',
-  xis: '<:xis:1475807109554896966>',
-  clipboard: '<:clipboard:1475806180621287527>',
-  lessthan: '<:lessthan:1475806956437635082>',
-  baixo: '<:baixo:1475807866714718239>',
-  cima: '<:cima:1475807892782317578>',
-  clock: '<:clock:1475829939122212874>',
-  success: '<:check:1475806856722120838>',
-  crossedSwords: '⚔️',
-  hourglass: '⏳',
-  scroll: '📜',
-};
+import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
+import { isAdmin, adminOnly} from '../utils/permissions.js';
+import { EMOJIS } from '../config/emojis.js';
 
 // Funções auxiliares
-function createErrorEmbed(title, description) {
-  return new EmbedBuilder()
-    .setColor(0xed4245)
-    .setTitle(`❌ ${title}`)
-    .setDescription(description);
-}
-
-function createSuccessEmbed(title, description) {
-  return new EmbedBuilder()
-    .setColor(0x57f287)
-    .setTitle(`✅ ${title}`)
-    .setDescription(description);
-}
-
-async function sendCleanMessage(originalMessage, options) {
-  try {
-    // Tenta editar primeiro. Se falhar (ex: não editável), cai no catch.
-    return await originalMessage.edit(options);
-  } catch (err) {
-    try {
-      const newMessage = await originalMessage.channel.send(options);
-      await originalMessage.delete().catch(() => { });
-      return newMessage;
-    } catch (innerErr) {
-      return await originalMessage.reply(options).catch(() => originalMessage.channel.send(options));
-    }
-  }
-}
-
-async function isAdmin(userId) {
-  try {
-    const user = await getUserByDiscordId(userId);
-
-    if (!user) return false;
-    return user.role?.toLowerCase() === 'admin' && user.active;
-  } catch (err) {
-    return false;
-  }
-}
 
 // Configura permissões do cargo Muted em todos os canais (incluindo fóruns) — em paralelo
 async function setupMutePermissions(guild, muteRole) {
@@ -128,8 +70,8 @@ async function setupMutePermissions(guild, muteRole) {
   }
 }
 
-// ---- .sync ----
-export async function handleSync(message, client) {
+// .sync
+export const handleSync = adminOnly(async (message, args, client) => {
   const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando...`).setDescription('Executando sincronização completa...')] });
   try {
     const users = await getUsers();
@@ -148,10 +90,10 @@ export async function handleSync(message, client) {
   } catch (err) {
     await loading.edit({ embeds: [createErrorEmbed('Erro de Sincronização', err.message)] });
   }
-}
+});
 
-// ---- .sync-nick ----
-export async function handleSyncNick(message, client) {
+// .sync-nick
+export const handleSyncNick = adminOnly(async (message, args, client) => {
   const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando...`).setDescription('Sincronizando apelidos com clan Brawlhalla...')] });
   try {
     await loadCustomNicknames();
@@ -174,10 +116,10 @@ export async function handleSyncNick(message, client) {
   } catch (err) {
     await loading.edit({ embeds: [createErrorEmbed('Erro de Sincronização', err.message)] });
   }
-}
+});
 
-// ---- .refresh-cache ----
-export async function handleRefreshCache(message) {
+// .refresh-cache
+export const handleRefreshCache = adminOnly(async (message, args, client) => {
   const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Atualizando...`).setDescription('Atualizando cache do clan Brawlhalla...')] });
   try {
     const clanData = await fetchBrawlhallaClanData();
@@ -185,10 +127,10 @@ export async function handleRefreshCache(message) {
   } catch (err) {
     await sendCleanMessage(loading, { embeds: [createErrorEmbed('Erro ao Atualizar Cache', err.message)] }).catch(() => { });
   }
-}
+});
 
-// ---- .warn ----
-export async function handleWarn(message, args, client) {
+// .warn
+export const handleWarn = adminOnly(async (message, args, client) => {
   try {
     const guild = client.guilds.cache.get(discordConfig.guildId);
     if (!guild) throw new Error('Guild não encontrada');
@@ -235,10 +177,10 @@ export async function handleWarn(message, args, client) {
   } catch (err) {
     await message.reply({ embeds: [createErrorEmbed('Erro ao Adicionar Aviso', err.message)] });
   }
-}
+});
 
-// ---- .unwarn ----
-export async function handleUnwarn(message, args, client) {
+// .unwarn
+export const handleUnwarn = adminOnly(async (message, args, client) => {
   try {
     const guild = client.guilds.cache.get(discordConfig.guildId);
     if (!guild) throw new Error('Guild não encontrada');
@@ -267,10 +209,10 @@ export async function handleUnwarn(message, args, client) {
     await message.reply({ embeds: [createErrorEmbed('Erro ao Remover Aviso', err.message)] });
   }
 
-}
+});
 
-// ---- .warns ----
-export async function handleWarns(message, args, client) {
+// .warns
+export const handleWarns = adminOnly(async (message, args, client) => {
   try {
     const page = parseInt(args[0]) || 1;
     const pageSize = 10;
@@ -321,10 +263,10 @@ export async function handleWarns(message, args, client) {
   } catch (err) {
     await message.reply({ embeds: [createErrorEmbed('Erro ao Listar Avisos', err.message)] });
   }
-}
+});
 
-// ---- .mute ----
-export async function handleMute(message, args, client) {
+// .mute
+export const handleMute = adminOnly(async (message, args, client) => {
   try {
     const guild = client.guilds.cache.get(discordConfig.guildId);
     if (!guild) throw new Error('Guild não encontrada');
@@ -381,10 +323,10 @@ export async function handleMute(message, args, client) {
   } catch (err) {
     await message.reply({ embeds: [createErrorEmbed('Erro ao Silenciar', err.message)] });
   }
-}
+});
 
-// ---- .unmute ----
-export async function handleUnmute(message, args, client) {
+// .unmute
+export const handleUnmute = adminOnly(async (message, args, client) => {
   try {
     const guild = client.guilds.cache.get(discordConfig.guildId);
     if (!guild) throw new Error('Guild não encontrada');
@@ -411,10 +353,10 @@ export async function handleUnmute(message, args, client) {
   } catch (err) {
     await message.reply({ embeds: [createErrorEmbed('Erro ao Desmutar', err.message)] });
   }
-}
+});
 
-// ---- .ban ----
-export async function handleBan(message, args, client) {
+// .ban
+export const handleBan = adminOnly(async (message, args, client) => {
   try {
     const guild = client.guilds.cache.get(discordConfig.guildId);
     if (!guild) throw new Error('Guild não encontrada');
@@ -445,10 +387,10 @@ export async function handleBan(message, args, client) {
   } catch (err) {
     await message.reply({ embeds: [createErrorEmbed('Erro ao Banir', err.message)] });
   }
-}
+});
 
-// ---- .inac-all ----
-export async function handleInacAll(message, client) {
+// .inac-all
+export const handleInacAll = adminOnly(async (message, args, client) => {
   try {
     const guild = client.guilds.cache.get(discordConfig.guildId);
     if (!guild) throw new Error('Guild não encontrada');
@@ -505,10 +447,10 @@ export async function handleInacAll(message, client) {
       embeds: [createErrorEmbed('Erro ao Executar inac-all', err.message)]
     });
   }
-}
+});
 
-// ---- .inac-list ----
-export async function handleInacList(message, client) {
+// .inac-list
+export const handleInacList = adminOnly(async (message, args, client) => {
   try {
     const inactivePlayers = await getInactivePlayers();
 
@@ -586,10 +528,10 @@ export async function handleInacList(message, client) {
   } catch (err) {
     await message.reply({ embeds: [createErrorEmbed('Erro ao Listar Inativos', err.message)] });
   }
-}
+});
 
-// ---- .concluida ----
-export async function handleConcluida(message, args) {
+// .concluida
+export const handleConcluida = adminOnly(async (message, args, client) => {
   try {
     const numero = parseInt(args[0]);
 
@@ -639,10 +581,10 @@ export async function handleConcluida(message, args) {
       ]
     });
   }
-}
+});
 
-// ---- .cadastrarMissao ----
-export async function handleCadastrarMissao(message) {
+// .cadastrarMissao
+export const handleCadastrarMissao = adminOnly(async (message, args, client) => {
   try {
     const input = message.content;
 
@@ -708,10 +650,10 @@ export async function handleCadastrarMissao(message) {
       ]
     });
   }
-}
+});
 
-// ---- .entrou ----
-export async function handleEntrou(message, client, args) {
+// .entrou
+export const handleEntrou = adminOnly(async (message, args, client) => {
   if (!(await isAdmin(message.author.id))) {
     return message.reply({
       embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
@@ -779,4 +721,4 @@ export async function handleEntrou(message, client, args) {
       embeds: [createErrorEmbed('Erro ao Adicionar Usuário', err.message)]
     });
   }
-}
+});

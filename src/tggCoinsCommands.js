@@ -2,25 +2,8 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder } from 'discord.js';
 import { addTransaction, updateBalance, getLastDaily, getBalance, getTransactions, getLeaderboard, getShopItems, getShopCount, getShopItemByPosition, hasPurchased, createPurchase, decreaseStock } from './tggCoins.js';
 import { getUserByDiscordId } from './db.js';
-
-function createErrorEmbed(title, description) {
-  return new EmbedBuilder()
-    .setColor(0xed4245)
-    .setTitle(`❌ ${title}`)
-    .setDescription(description);
-}
-
-function createSuccessEmbed(title, description) {
-  return new EmbedBuilder()
-    .setColor(0x57f287)
-    .setTitle(`✅ ${title}`)
-    .setDescription(description);
-}
-
-const EMOJIS = {
-  loading: '⏳',
-  coin: '🪙'
-};
+import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
+import { EMOJIS } from '../config/emojis.js';
 
 // ---- .daily ----
 export async function handleDaily(message) {
@@ -77,7 +60,7 @@ export async function handleDaily(message) {
       embeds: [
         createSuccessEmbed(
           'TGG Coins recebidas!',
-          `+${reward} TGG-Coins 💰\nSaldo atual: **${newBalance}**`
+          `+${reward} TGG-Coins ${EMOJIS.TGGcoin}\nSaldo atual: **${newBalance}**`
         )
       ]
     });
@@ -107,7 +90,7 @@ export async function handleBalance(message) {
       embeds: [
         new EmbedBuilder()
           .setColor(0x5865f2)
-          .setTitle(`💰 Seu saldo`)
+          .setTitle(`${EMOJIS.TGGcoin} Seu saldo`)
           .setDescription(`Você possui **${balance} TGG-Coins**`)
           .setTimestamp()
       ]
@@ -357,7 +340,7 @@ export async function handleShop(message, args) {
 
         embed.addFields({
           name: `#${position} • ${item.name}`,
-          value: `${item.description || 'Sem descrição'}\n💰 **${item.price} TGG-Coins**${extra}`,
+          value: `${item.description || 'Sem descrição'}\n${EMOJIS.TGGcoin} **${item.price} TGG-Coins**${extra}`,
           inline: false
         });
       });

@@ -1,25 +1,20 @@
 import 'dotenv/config';
 import 'win-ca';
 
-
-
 if (process.env.IGNORE_SSL_ERRORS === 'true') {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 }
 
-import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
-import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes, getMissionWeekStart, getActiveUser } from './src/db.js';
-import { addTransaction, updateBalance, getLastDaily, getBalance, getTransactions, getLeaderboard, getShopItems, getShopCount, getShopItemByPosition, hasPurchased, createPurchase, decreaseStock } from './src/tggCoins.js';
+import { EmbedBuilder, Events } from 'discord.js';
 import { createClient, runSync, runEloSync } from './src/discord.js';
-import { runAndPostGuildActivity } from './src/guildActivity.js';
-import { fetchMovimentacao, buildMovimentacaoEmbeds, getDefaultDateRange, isValidDate, formatMovimentacaoAsText } from './src/movimentacao.js';
-import { syncNicknames, updateMemberNicknameDiscordPortion, parseNickname, buildNickname, fetchBrawlhallaClanData, loadClanCache } from './src/nicknameSync.js';
-import { loadCustomNicknames } from './src/customNicknames.js';
-import { discord as discordConfig, ALLOWED_USER_IDS, inactivePlayers as inactivePlayersConfig } from './config/index.js';
-import { getUserByDiscordId } from './src/db.js';
+import { syncNicknames, fetchBrawlhallaClanData } from './src/nicknameSync.js';
+import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from './config/index.js';
 import { startCronJobs } from './src/scheduler/cron.js';
-import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createClanEmbed, getUserBrawlhallaId, getCached } from './src/brawlhalla.js';
-import { addWarning, getUserWarnings, removeWarning, removeLastWarning, parseTime, formatTime as formatModTime, safeSetTimeout } from './src/moderation.js';
+import { getUsers, getUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes, getMissionWeekStart, getActiveUser } from './src/db.js';
+import { safeSetTimeout } from './src/moderation.js';
+import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from './utils/discordUtils.js';
+
+// Handlers
 import { handleSync, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleMute, handleUnmute, handleBan, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou } from './src/admin.js';
 import { handleHelp, handleStats, handleClan, handleActive, handleRegras, handleMissoes } from './src/public.js';
 import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy } from './src/tggCoinsCommands.js';
@@ -35,42 +30,25 @@ async function main() {
 
   // Command Alises
   const COMMAND_ALIASES = {
-    'sync': 'sync',
-    'sync-guild': 'sync',
-    'sync-guild-roles': 'sync',
-    'sync-roles': 'sync',
-    'sync-elo': 'sync',
-    'sync-elo-roles': 'sync',
-    'guild-activity': 'guild-activity',
-    'activity': 'guild-activity',
-    'mov': 'movimentacao',
-    'movimentacao': 'movimentacao',
-    'sync-nick': 'sync-nick',
-    'sync-nicknames': 'sync-nick',
-    'refresh-cache': 'refresh-cache',
-    'refresh-clan-cache': 'refresh-cache',
     'help': 'help',
     'ajuda': 'help',
-    'active': 'active',
-    'inac-all': 'inac-all',
-    'inac-list': 'inac-list',
     'regras': 'regras',
     'rules': 'regras',
-    'missoes': 'missoes',
-    'missões': 'missoes',
-    'missions': 'missoes',
-    'concluida': 'concluida',
-    'concluido': 'concluida',
-    'comcluido': 'concluida', // Becca
-    'cadastrarMissao': 'cadastrarMissao',
-    'cadastrarMissão': 'cadastrarMissao',
-    'cadastrarmissão': 'cadastrarMissao',
-    'cadastrarmissao': 'cadastrarMissao',
-    'entrou': 'entrou',
     'stats': 'stats',
     'estatisticas': 'stats',
     'clan': 'clan',
     'clã': 'clan',
+    'missoes': 'missoes',
+    'missões': 'missoes',
+    'missions': 'missoes',
+    'active': 'active',
+    'sync': 'sync',
+    'sync-guild': 'sync',
+    'sync-roles': 'sync',
+    'sync-elo': 'sync',
+    'sync-nick': 'sync-nick',
+    'sync-nicknames': 'sync-nick',
+    'refresh-cache': 'refresh-cache',
     'warn': 'warn',
     'unwarn': 'unwarn',
     'warns': 'warns',
@@ -78,50 +56,68 @@ async function main() {
     'mute': 'mute',
     'unmute': 'unmute',
     'ban': 'ban',
-
+    'inac-all': 'inac-all',
+    'inac-list': 'inac-list',
+    'concluida': 'concluida',
+    'concluída': 'concluida',
+    'concluido': 'concluida',
+    'concluído': 'concluida',
+    'comcluido': 'concluida', // Becca
+    'cadastrarmissao': 'cadastrarmissao',
+    'cadastrarmissão': 'cadastrarmissao',
+    'entrou': 'entrou',
     'daily': 'daily',
-    'diário': 'daily',
-    'diário': 'daily',
-    'diario': 'daily',
-    'diario': 'daily',
     'balance': 'balance',
     'bal': 'balance',
-    'pontos': 'balance',
+    'coins': 'balance',
     'historico': 'historico',
     'histórico': 'historico',
-    'transactions': 'historico',
     'leaderboard': 'leaderboard',
     'lb': 'leaderboard',
     'shop': 'shop',
     'loja': 'shop',
     'buy': 'buy',
-    'compra': 'buy',
     'comprar': 'buy',
   };
-  const EMOJIS = {
-    arrowLeft: '<:arrowleft:1475806697162539059>',
-    arrowRight: '<:arrowright:1475806826833383456>',
-    check: '<:check:1475806856722120838>',
-    checkbox: '<:checkbox:1475806904482660476>',
-    loading: '<a:loading:1475806256366358633>',
-    square: '<:square:1475807057830744074>',
-    symboldash: '<:symboldash:1475807293323870238>',
-    greaterthan: '<:greaterthan:1475807008010534942>',
-    xis2: '<:xis2:1475807173291278369>',
-    xis: '<:xis:1475807109554896966>',
-    clipboard: '<:clipboard:1475806180621287527>',
-    lessthan: '<:lessthan:1475806956437635082>',
-    baixo: '<:baixo:1475807866714718239>',
-    cima: '<:cima:1475807892782317578>',
-    clock: '<:clock:1475829939122212874>',
-    success: '<:check:1475806856722120838>',
-    crossedSwords: '⚔️',
-    hourglass: '⏳',
-    scroll: '📜',
+
+  // Lista de comandos
+  const commands = {
+    // Públicos
+    help: handleHelp,
+    regras: handleRegras,
+    stats: handleStats,
+    clan: handleClan,
+    missoes: handleMissoes,
+    active: handleActive,
+
+    // Admin
+    sync: handleSync,
+    'sync-nick': handleSyncNick,
+    'refresh-cache': handleRefreshCache,
+    warn: handleWarn,
+    unwarn: handleUnwarn,
+    warns: handleWarns,
+    mute: handleMute,
+    unmute: handleUnmute,
+    ban: handleBan,
+    'inac-all': handleInacAll,
+    'inac-list': handleInacList,
+    concluida: handleConcluida,
+    cadastrarmissao: handleCadastrarMissao,
+    entrou: handleEntrou,
+
+    // TGG-Coins
+    daily: handleDaily,
+    balance: handleBalance,
+    historico: handleHistorico,
+    leaderboard: handleLeaderboard,
+    shop: handleShop,
+    buy: handleBuy
   };
 
   client.once(Events.ClientReady, () => {
     console.log(`Logged in as ${client.user.tag}`);
+
     startCronJobs(client, {
       fetchBrawlhallaClanData,
       runSync,
@@ -131,33 +127,6 @@ async function main() {
       getUsersWithElo
     }); // Iniciar crons
   });
-
-  async function isAdmin(userId) {
-    try {
-      const user = await getUserByDiscordId(userId);
-
-      if (!user) return false;
-      return user.role?.toLowerCase() === 'admin' && user.active;
-    } catch (err) {
-      return false;
-    }
-  }
-
-  function createErrorEmbed(title, message) {
-    return new EmbedBuilder()
-      .setColor(0xed4245)
-      .setTitle(`${EMOJIS.xis} ${title}`)
-      .setDescription(message)
-      .setTimestamp();
-  }
-
-  function createSuccessEmbed(title, description) {
-    return new EmbedBuilder()
-      .setColor(0x57f287)
-      .setTitle(`${EMOJIS.success} ${title}`)
-      .setDescription(description)
-      .setTimestamp();
-  }
 
   client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
@@ -170,142 +139,20 @@ async function main() {
     const rawCommand = args.shift().toLowerCase();
     const command = COMMAND_ALIASES[rawCommand];
 
-    if (!command) return; // impede "." e comandos inexistentes
+    if (!command) return;
 
-    // Comandos públicos
-    const publicCommands = ['active', 'regras', 'help', 'missoes', 'stats', 'clan', 'daily', 'historico', 'balance', 'leaderboard', 'shop', 'buy'];
-
-    // Verificação de administrador
-    if (!publicCommands.includes(command) && !(await isAdmin(message.author.id))) {
-      return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar estes comandos.')] });
-    }
-
-    async function sendCleanMessage(originalMessage, options) {
-      try {
-        // Tenta editar primeiro. Se falhar (ex: não editável), cai no catch.
-        return await originalMessage.edit(options);
-      } catch (err) {
-        try {
-          const newMessage = await originalMessage.channel.send(options);
-          await originalMessage.delete().catch(() => { });
-          return newMessage;
-        } catch (innerErr) {
-          return await originalMessage.reply(options).catch(() => originalMessage.channel.send(options));
-        }
-      }
-    }
+    const cmd = commands[command];
+    if (!cmd) return;
 
     try {
-      // Comando help - Público
-      if (command === 'help') {
-        return await handleHelp(message);
-      }
-
-      if (command === 'regras') {
-        return await handleRegras(message);
-      }
-
-      if (command === 'stats') {
-        return await handleStats(message, args);
-      }
-
-      if (command === 'clan') {
-        return await handleClan(message, args);
-      }
-
-      if (command === 'missoes') {
-        return await handleMissoes(message);
-      }
-
-      if (command === 'active') {
-        return await handleActive(message, args, client);
-      }
-
-      // Comandos de Administração
-      if (command === 'sync') {
-        return await handleSync(message, client);
-      }
-
-      if (command === 'sync-nick') {
-        return await handleSyncNick(message, client);
-      }
-
-      if (command === 'refresh-cache') {
-        return await handleRefreshCache(message);
-      }
-
-      if (command === 'warn') {
-        return await handleWarn(message, args, client);
-      }
-
-      if (command === 'unwarn') {
-        return await handleUnwarn(message, args, client);
-      }
-
-      if (command === 'warns') {
-        return await handleWarns(message, args, client);
-      }
-
-      if (command === 'mute') {
-        return await handleMute(message, args, client);
-      }
-
-      if (command === 'unmute') {
-        return await handleUnmute(message, args, client);
-      }
-
-      if (command === 'ban') {
-        return await handleBan(message, args, client);
-      }
-
-      if (command === 'inac-all') {
-        return await handleInacAll(message, client);
-      }
-
-      if (command === 'inac-list') {
-        return await handleInacList(message, client);
-      }
-
-      if (command === 'concluida') {
-        return await handleConcluida(message, args);
-      }
-
-      if (command === 'cadastrarMissao') {
-        return await handleCadastrarMissao(message);
-      }
-      
-      if (command === 'entrou') {
-        return await handleEntrou(message, client, args);
-      }
-
-      // Comandos TGG Coins
-      if (command === 'daily') {
-        return await handleDaily(message);
-      }
-      
-      if (command === 'balance') {
-        return await handleBalance(message, args);
-      }
-      
-      if (command === 'historico') {
-        return await handleHistorico(message);
-      }
-      
-      if (command === 'leaderboard') {
-        return await handleLeaderboard(message);
-      }
-      
-      if (command === 'shop') {
-        return await handleShop(message, args);
-      }
-      
-      if (command === 'buy') {
-        return await handleBuy(message, args);
-      }
-
+      await cmd(message, args, client);
     } catch (err) {
       console.error('[Command Error]', err);
-      await message.reply({ embeds: [createErrorEmbed('Erro Interno', `Um erro inesperado ocorreu: ${err.message}`)] }).catch(() => { });
+      await message.reply({ 
+        embeds: 
+          [createErrorEmbed('Erro Interno', `Um erro inesperado ocorreu: ${err.message}`)] })
+        .catch(() => { }
+      );
     }
   });
 

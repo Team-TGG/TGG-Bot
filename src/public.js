@@ -3,68 +3,13 @@ import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuil
 import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes, getMissionWeekStart, getActiveUser } from './db.js';
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createClanEmbed, getUserBrawlhallaId, getCached } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
+import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
+import { isAdmin, adminOnly} from '../utils/permissions.js';
+import { EMOJIS } from '../config/emojis.js';
 
-const EMOJIS = {
-  arrowLeft: '<:arrowleft:1475806697162539059>',
-  arrowRight: '<:arrowright:1475806826833383456>',
-  check: '<:check:1475806856722120838>',
-  checkbox: '<:checkbox:1475806904482660476>',
-  loading: '<a:loading:1475806256366358633>',
-  square: '<:square:1475807057830744074>',
-  symboldash: '<:symboldash:1475807293323870238>',
-  greaterthan: '<:greaterthan:1475807008010534942>',
-  xis2: '<:xis2:1475807173291278369>',
-  xis: '<:xis:1475807109554896966>',
-  clipboard: '<:clipboard:1475806180621287527>',
-  lessthan: '<:lessthan:1475806956437635082>',
-  baixo: '<:baixo:1475807866714718239>',
-  cima: '<:cima:1475807892782317578>',
-  clock: '<:clock:1475829939122212874>',
-  success: '<:check:1475806856722120838>',
-  crossedSwords: '⚔️',
-  hourglass: '⏳',
-  scroll: '📜',
-};
 
-function createErrorEmbed(title, description) {
-  return new EmbedBuilder()
-    .setColor(0xed4245)
-    .setTitle(`❌ ${title}`)
-    .setDescription(description);
-}
-
-function createSuccessEmbed(title, description) {
-  return new EmbedBuilder()
-    .setColor(0x57f287)
-    .setTitle(`✅ ${title}`)
-    .setDescription(description);
-}
-
-async function sendCleanMessage(msg, content) {
-  try {
-    if (msg && msg.edit) {
-      return await msg.edit(content);
-    }
-    return await msg.channel.send(content);
-  } catch (e) {
-    console.error('Erro mandando mensagem:', e);
-    return null;
-  }
-}
-
-async function isAdmin(userId) {
-  try {
-    const user = await getUserByDiscordId(userId);
-
-    if (!user) return false;
-    return user.role?.toLowerCase() === 'admin' && user.active;
-  } catch (err) {
-    return false;
-  }
-}
-
-// ---- .help ----
-export async function handleHelp(message) {
+// .help
+export async function handleHelp(message, args, client) {
   const page1 = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle(`${EMOJIS.crossedSwords} Guilda`)
@@ -174,8 +119,8 @@ export async function handleHelp(message) {
   });
 }
 
-// ---- .regras ----
-export async function handleRegras(message) {
+// .regras
+export async function handleRegras(message, args, client) {
   const rulesEmbed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle('📋 Regras da Guild')
@@ -214,8 +159,8 @@ export async function handleRegras(message) {
   await message.reply({ embeds: [rulesEmbed] });
 }
 
-// ---- .stats ----
-export async function handleStats(message, args) {
+// .stats
+export async function handleStats(message, args, client) {
   try {
     let targetUserId = message.author.id;
     if (args.length > 0) {
@@ -283,8 +228,8 @@ export async function handleStats(message, args) {
   }
 }
 
-// ---- .clan ----
-export async function handleClan(message, args) {
+// .clan
+export async function handleClan(message, args, client) {
   try {
     let clanId = process.env.BRAWLHALLA_CLAN_ID || '396943';
     if (args.length > 0 && /^\d+$/.test(args[0])) {
@@ -317,8 +262,8 @@ export async function handleClan(message, args) {
   }
 }
 
-// ---- .missoes ----
-export async function handleMissoes(message) {
+// .missoes
+export async function handleMissoes(message, args, client) {
   try {
     const missions = await getWeeklyMissions();
 
@@ -379,7 +324,7 @@ export async function handleMissoes(message) {
   }
 }
 
-// ---- .active ----
+// .active
 export async function handleActive(message, args, client) {
   if (!message.guild) {
     return message.reply({ embeds: [createErrorEmbed('Comando Inválido', 'Este comando só pode ser usado no servidor.')] });
