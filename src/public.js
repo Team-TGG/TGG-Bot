@@ -25,9 +25,9 @@ export async function handleHelp(message, args, client) {
     .setColor(0x5865f2)
     .setTitle(`${EMOJIS.hourglass} Sincronização`)
     .addFields(
-      { name: `${EMOJIS.arrowRight} .sync (admin)`, value: 'Sincronização completa (ranks + ELO)', inline: false },
-      { name: `${EMOJIS.arrowRight} .sync-nick (admin)`, value: 'Sincronizar apelidos Brawlhalla', inline: false },
-      { name: `${EMOJIS.arrowRight} .refresh-cache (admin)`, value: 'Atualizar cache do clan', inline: false }
+      { name: `${EMOJIS.arrowRight} .sync`, value: 'Sincronização completa (ranks + ELO)', inline: false },
+      { name: `${EMOJIS.arrowRight} .sync-nick`, value: 'Sincronizar apelidos Brawlhalla', inline: false },
+      { name: `${EMOJIS.arrowRight} .refresh-cache`, value: 'Atualizar cache do clan', inline: false }
     )
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
     .setTimestamp();
@@ -46,13 +46,13 @@ export async function handleHelp(message, args, client) {
     .setColor(0x5865f2)
     .setTitle(`${EMOJIS.success} Gerenciamento de Usuários`)
     .addFields(
-      { name: `${EMOJIS.arrowRight} .entrou <@user> <bhid> (admin)`, value: 'Adicionar novo usuário ou reativar existente no banco de dados', inline: false },
-      { name: `${EMOJIS.arrowRight} .warn <@user> [motivo] (admin)`, value: 'Dar um aviso para um membro (3 é o limite)', inline: false },
-      { name: `${EMOJIS.arrowRight} .unwarn <@user> [número] (admin)`, value: 'Tirar um warn de um membro', inline: false },
-      { name: `${EMOJIS.arrowRight} .warns (admin)`, value: 'Mostrar a listagem de todos os warns', inline: false },
-      { name: `${EMOJIS.arrowRight} .mute <@user> <duração> [motivo] (admin)`, value: 'Silenciar um usuário por certo tempo', inline: false },
-      { name: `${EMOJIS.arrowRight} .unmute <@user> (admin)`, value: 'Dessilenciar um usuário', inline: false },
-      { name: `${EMOJIS.arrowRight} .ban <@user> [motivo] (admin)`, value: 'Banir um usuário do servidor (motivo é opcional)', inline: false }
+      { name: `${EMOJIS.arrowRight} .entrou <@user> <bhid>`, value: 'Adicionar novo usuário ou reativar existente no banco de dados', inline: false },
+      { name: `${EMOJIS.arrowRight} .warn <@user> [motivo]`, value: 'Dar um aviso para um membro (3 é o limite)', inline: false },
+      { name: `${EMOJIS.arrowRight} .unwarn <@user> [número]`, value: 'Tirar um warn de um membro', inline: false },
+      { name: `${EMOJIS.arrowRight} .warns`, value: 'Mostrar a listagem de todos os warns', inline: false },
+      { name: `${EMOJIS.arrowRight} .mute <@user> <duração> [motivo]`, value: 'Silenciar um usuário por certo tempo', inline: false },
+      { name: `${EMOJIS.arrowRight} .unmute <@user>`, value: 'Dessilenciar um usuário', inline: false },
+      { name: `${EMOJIS.arrowRight} .ban <@user> [motivo]`, value: 'Banir um usuário do servidor (motivo é opcional)', inline: false }
     )
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
     .setTimestamp();
@@ -61,10 +61,10 @@ export async function handleHelp(message, args, client) {
     .setColor(0x5865f2)
     .setTitle(`${EMOJIS.xis} Inativos`)
     .addFields(
-      { name: `${EMOJIS.arrowRight} .inac-all (admin)`, value: 'Dar o cargo "ina" a todos os players inativos', inline: false },
+      { name: `${EMOJIS.arrowRight} .inac-all`, value: 'Dar o cargo "ina" a todos os players inativos', inline: false },
       { name: `${EMOJIS.arrowRight} .active <justificativa>`, value: 'Se remover da lista de inativos', inline: false },
-      { name: `${EMOJIS.arrowRight} .active [@user] <justificativa> (admin)`, value: 'Remover jogador da lista de inativos', inline: false },
-      { name: `${EMOJIS.arrowRight} .inac-list (admin)`, value: 'Listar todos os jogadores inativos desta semana', inline: false },
+      { name: `${EMOJIS.arrowRight} .active [@user] <justificativa>`, value: 'Remover jogador da lista de inativos', inline: false },
+      { name: `${EMOJIS.arrowRight} .inac-list`, value: 'Listar todos os jogadores inativos desta semana', inline: false },
     )
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
     .setTimestamp();
@@ -73,23 +73,33 @@ export async function handleHelp(message, args, client) {
     .setColor(0x5865f2)
     .setTitle(`${EMOJIS.scroll} Missões`)
     .addFields(
-      { name: `${EMOJIS.arrowRight} .concluida <número> (admin)`, value: 'Marcar a missão do ".missoes" como concluída', inline: false },
-      { name: `${EMOJIS.arrowRight} .cadastrarMissao "nome" "dica" <objetivo> (admin)`, value: 'Cadastrar uma missão semanal', inline: false },
+      { name: `${EMOJIS.arrowRight} .concluida <número>`, value: 'Marcar a missão do ".missoes" como concluída', inline: false },
+      { name: `${EMOJIS.arrowRight} .cadastrarMissao "nome" "dica" <objetivo>`, value: 'Cadastrar uma missão semanal', inline: false },
     )
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
     .setTimestamp();
 
+  const isUserAdmin = await isAdmin(message.author.id);
+
+  const options = [
+    { label: 'Guilda', value: 'guild', emoji: EMOJIS.crossedSwords, description: 'Comandos da guilda' },
+    { label: 'Informações', value: 'info', emoji: EMOJIS.clipboard, description: 'Comandos de informação' }
+  ];
+
+  // 🔹 Só adiciona se for admin
+  if (isUserAdmin) {
+    options.push(
+      { label: 'Sincronização (admin).', value: 'sync', emoji: EMOJIS.hourglass, description: 'Comandos de sincronização' },
+      { label: 'Gerenciamento (admin).', value: 'users', emoji: EMOJIS.success, description: 'Gerenciamento de usuários' },
+      { label: 'Inativos (admin).', value: 'inac', emoji: EMOJIS.xis, description: 'Comandos de inatividade' },
+      { label: 'Missões (admin).', value: 'missions', emoji: EMOJIS.scroll, description: 'Comandos para missões' }
+    );
+  }
+
   const selectMenu = new StringSelectMenuBuilder()
     .setCustomId('help_menu')
     .setPlaceholder('Escolha uma categoria...')
-    .addOptions(
-      { label: 'Guilda', value: 'guild', emoji: EMOJIS.crossedSwords, description: 'Comandos da guilda' },
-      { label: 'Sincronização', value: 'sync', emoji: EMOJIS.hourglass, description: 'Comandos de sincronização' },
-      { label: 'Informações', value: 'info', emoji: EMOJIS.clipboard, description: 'Comandos de informação' },
-      { label: 'Gerenciamento', value: 'users', emoji: EMOJIS.success, description: 'Gerenciamento de usuários' },
-      { label: 'Inativos', value: 'inac', emoji: EMOJIS.xis, description: 'Comandos de inatividade' },
-      { label: 'Missões', value: 'missions', emoji: EMOJIS.scroll, description: 'Comandos para missões' }
-    );
+    .addOptions(options);
 
   const row = new ActionRowBuilder().addComponents(selectMenu);
   const helpMsg = await message.reply({ embeds: [page1], components: [row] });

@@ -1,5 +1,6 @@
 // admin.js - Comandos apenas para administradores
-import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
+
 import { createClient, runSync, runEloSync } from './discord.js';
 import { addWarning, getUserWarnings, removeWarning, removeLastWarning, parseTime, formatTime as formatModTime, safeSetTimeout } from './moderation.js';
 import { getUsers, getUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes, getMissionWeekStart, getActiveUser } from './db.js';
@@ -370,7 +371,9 @@ export const handleBan = adminOnly(async (message, args, client) => {
       if (idMatch) targetId = args[0];
     }
 
-    if (!targetId) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.ban <@user/ID> [motivo]`')] });
+    if (!targetId) {
+      return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.ban <@user/ID> [motivo]`')] });
+    }
 
     if (await isAdmin(targetId)) {
       return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Você não pode banir um administrador.')] });
@@ -381,9 +384,105 @@ export const handleBan = adminOnly(async (message, args, client) => {
       : args.slice(1).join(' ').trim() || 'Sem motivo especificado';
 
     const member = await guild.members.fetch(targetId).catch(() => null);
-    if (!member) return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')] });
-    await member.ban({ reason });
-    await message.reply({ embeds: [createSuccessEmbed('Banido', `${member.user.tag} foi banido.\n**Motivo:** ${reason}`)] });
+    if (!member) {
+      return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')] });
+    }
+
+    // Embed de confirmação
+    const confirmEmbed = {
+      title: '⚠️ Confirmação de Banimento',
+      description: `Você está prestes a banir o usuário abaixo:`,
+      color: 0xff0000,
+      fields: [
+        { name: 'Usuário', value: `${member.user.tag} (${member.id})` },
+        { name: 'Motivo', value: reason }
+      ],
+      footer: { text: `Ação solicitada por ${message.author.tag}` }
+    };
+
+    // Botões de confirmação e cancelamento
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`confirm_ban_${targetId}`)
+        .setLabel('Confirmar')
+        .setStyle(ButtonStyle.Danger),
+
+      new ButtonBuilder()
+        .setCustomId('cancel_ban')
+        .setLabel('Cancelar')
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    const confirmMsg = await message.reply({
+      embeds: [confirmEmbed],
+      components: [row]
+    });
+
+    const collector = confirmMsg.createMessageComponentCollector({
+      time: 15000
+    });
+
+    collector.on('collect', async (interaction) => {
+      if (interaction.user.id !== message.author.id) {
+        return interaction.reply({
+          content: 'Apenas quem executou o comando pode usar os botões.',
+          ephemeral: true
+        });
+      }
+
+      if (interaction.customId === `confirm_ban_${targetId}`) {
+        await member.ban({ reason });
+
+        const successEmbed = {
+          title: '✅ Usuário Banido',
+          color: 0x00ff00,
+          fields: [
+            { name: 'Usuário', value: `${member.user.tag}` },
+            { name: 'Motivo', value: reason }
+          ]
+        };
+
+        await interaction.update({
+          embeds: [successEmbed],
+          components: []
+        });
+
+        collector.stop();
+      }
+
+      // Se clicar em cancelar
+      if (interaction.customId === 'cancel_ban') {
+        const cancelEmbed = {
+          title: '❌ Ação Cancelada',
+          description: 'O banimento foi cancelado.',
+          color: 0x808080
+        };
+
+        await interaction.update({
+          embeds: [cancelEmbed],
+          components: []
+        });
+
+        collector.stop();
+      }
+    });
+
+    // Se o tempo expirar sem resposta
+    collector.on('end', async (_, reasonEnd) => {
+      if (reasonEnd === 'time') {
+        const timeoutEmbed = {
+          title: '⏳ Tempo Expirado',
+          description: 'Nenhuma ação foi tomada.',
+          color: 0xffff00
+        };
+
+        await confirmMsg.edit({
+          embeds: [timeoutEmbed],
+          components: []
+        });
+      }
+    });
+
   } catch (err) {
     await message.reply({ embeds: [createErrorEmbed('Erro ao Banir', err.message)] });
   }

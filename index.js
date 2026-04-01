@@ -10,9 +10,12 @@ import { createClient, runSync, runEloSync } from './src/discord.js';
 import { syncNicknames, fetchBrawlhallaClanData } from './src/nicknameSync.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from './config/index.js';
 import { startCronJobs } from './src/scheduler/cron.js';
-import { getUsers, getUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes, getMissionWeekStart, getActiveUser } from './src/db.js';
-import { safeSetTimeout } from './src/moderation.js';
+import { getUsers, getUsersWithElo } from './src/db.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from './utils/discordUtils.js';
+
+// Services
+import { startInactiveReminder } from './src/services/inactivePlayers.js';
+import { restoreMutes } from './src/services/muteManager.js';
 
 // Handlers
 import { handleSync, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleMute, handleUnmute, handleBan, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou } from './src/admin.js';
@@ -115,7 +118,7 @@ async function main() {
     buy: handleBuy
   };
 
-  client.once(Events.ClientReady, () => {
+  client.once(Events.ClientReady, async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
     startCronJobs(client, {
@@ -126,6 +129,10 @@ async function main() {
       getUsers,
       getUsersWithElo
     }); // Iniciar crons
+
+    // Aviso de inatividade e restauração de mutes
+    startInactiveReminder(client);
+    await restoreMutes(client);
   });
 
   client.on('messageCreate', async (message) => {
@@ -153,128 +160,6 @@ async function main() {
           [createErrorEmbed('Erro Interno', `Um erro inesperado ocorreu: ${err.message}`)] })
         .catch(() => { }
       );
-    }
-  });
-
-  // task com periodo
-  async function sendInactivePlayersReminder() {
-    try {
-      const channelId = inactivePlayersConfig.channelId;
-      if (!channelId) {
-        console.log('[Inactive Reminder] INACTIVE_PLAYERS_CHANNEL_ID not configured, skipping');
-        return;
-      }
-
-      const channel = client.channels.cache.get(channelId);
-      if (!channel) {
-        console.log(`[Inactive Reminder] Channel ${channelId} not found`);
-        return;
-      }
-
-      const inactivePlayers = await getInactivePlayers();
-
-      if (inactivePlayers.length === 0) {
-        console.log('[Inactive Reminder] No inactive players');
-        return;
-      }
-
-      const mentions = inactivePlayers
-        .filter(p => p.discord_id)
-        .map(p => `<@${p.discord_id}>`)
-        .join(' ');
-
-      const embed = new EmbedBuilder()
-        .setColor(0xfaa61a)
-        .setTitle('⚠️ Lembrete: Usuários Inativos')
-        .setDescription(`Olá! Vocês estão marcados como inativos
-          Se você está nesta lista, significa que fez menos de 1000 de contribuição na semana passada. 
-          Para saber como contribuir, veja o canal <#${'1480627066792579072'}> ou fale com um membro da staff.
-          Para mostrar que está ativo, use o comando \`.active\` com uma justificativa para se remover da lista.
-          Ex: \`.active Estava viajando e não consegui jogar.\``)
-        .setTimestamp();
-
-      await channel.send({
-        content: mentions, // Mencionar os players fora do embed pra pingar
-        embeds: [embed],
-        allowedMentions: {
-          users: inactivePlayers
-            .filter(p => p.discord_id)
-            .map(p => p.discord_id),
-        }
-      });
-
-      // DM
-      const dmEmbed = new EmbedBuilder()
-        .setColor(0xed4245)
-        .setTitle('⚠️ Aviso de Inatividade')
-        .setDescription(`Você está inativo. Para mostrar que está ativo, use o comando \`.active <justificativa>\` no canal <#1468600851290521692>.`)
-        .setTimestamp();
-
-      for (const player of inactivePlayers) {
-        if (!player.discord_id) continue;
-        try {
-          const user = await client.users.fetch(player.discord_id).catch(() => null);
-          if (user) {
-            await user.send({ embeds: [dmEmbed] }).catch(() => {
-              console.log(`[Inactive Reminder] Could not send DM to ${player.discord_id}`);
-            });
-          }
-        } catch (err) {
-          console.log(`[Inactive Reminder] Failed to DM ${player.discord_id}: ${err.message}`);
-        }
-      }
-
-      console.log(`[Inactive Reminder] Sent message and DMs with ${inactivePlayers.length} inactive players`);
-    } catch (err) {
-      console.error('[Inactive Reminder Error]', err);
-    }
-  }
-
-  // Configuração do lembrete periódico
-  if (inactivePlayersConfig.channelId) {
-    const interval = parseInt(inactivePlayersConfig.messageInterval) || 10800000; // 3 hours default
-    console.log(`[Scheduled] Inactive players reminder will run every ${interval}ms (${(interval / 1000 / 60 / 60 / 24).toFixed(1)} days)`);
-    setInterval(sendInactivePlayersReminder, interval);
-    setTimeout(sendInactivePlayersReminder, 5000);
-  }
-
-  // Inicializar mutes ativos
-  client.once(Events.ClientReady, async () => {
-    try {
-      const activeMutes = await getActiveMutes();
-      console.log(`[Boot] Restoring ${activeMutes.length} active mutes...`);
-
-      const guild = client.guilds.cache.get(discordConfig.guildId);
-      if (!guild) return;
-
-      let muteRole = guild.roles.cache.find(r => r.name === 'Muted');
-
-      for (const mute of activeMutes) {
-        const remainingMs = new Date(mute.expires_at) - new Date();
-        if (remainingMs <= 0) {
-          await removePersistentMute(mute.user_id);
-          const member = await guild.members.fetch(mute.user_id).catch(() => null);
-          if (member && muteRole) {
-            await member.roles.remove(muteRole).catch(() => { });
-          }
-          continue;
-        }
-
-        safeSetTimeout(async () => {
-          const m = await guild.members.fetch(mute.user_id).catch(() => null);
-          if (m && muteRole && m.roles.cache.has(muteRole.id)) {
-            await m.roles.remove(muteRole).catch(() => { });
-            if (m.voice.serverMute) await m.voice.setMute(false, 'Auto-unmute').catch(() => { });
-            await removePersistentMute(mute.user_id);
-            const channel = guild.channels.cache.find(c => c.name === 'staff-logs' || c.isTextBased());
-            if (channel) {
-              await channel.send({ embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('✅ Desmutado').setDescription(`${m.user.tag} desmutado automaticamente (restaurado do banco).`)] }).catch(() => { });
-            }
-          }
-        }, remainingMs);
-      }
-    } catch (err) {
-      console.error('[Boot] Error restoring mutes:', err);
     }
   });
 
