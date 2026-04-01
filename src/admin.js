@@ -1,9 +1,11 @@
 // admin.js - Comandos apenas para administradores
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, PermissionFlagsBits } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
 import { createClient, runSync, runEloSync } from './discord.js';
-import { addWarning, getUserWarnings, removeWarning, removeLastWarning, parseTime, formatTime as formatModTime } from './moderation.js';
-import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes, getMissionWeekStart, getActiveUser } from './db.js';
+import { addWarning, getUserWarnings, removeWarning, removeLastWarning, parseTime, formatTime as formatModTime, safeSetTimeout } from './moderation.js';
+import { getUsers, getUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes, getMissionWeekStart, getActiveUser } from './db.js';
 import { discord as discordConfig, ALLOWED_USER_IDS, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
+import { loadCustomNicknames } from './customNicknames.js';
+import { syncNicknames, updateMemberNicknameDiscordPortion, parseNickname, buildNickname, fetchBrawlhallaClanData, loadClanCache } from './nicknameSync.js';
 
 const EMOJIS = {
   arrowLeft: '<:arrowleft:1475806697162539059>',
@@ -42,6 +44,21 @@ function createSuccessEmbed(title, description) {
     .setDescription(description);
 }
 
+async function sendCleanMessage(originalMessage, options) {
+  try {
+    // Tenta editar primeiro. Se falhar (ex: não editável), cai no catch.
+    return await originalMessage.edit(options);
+  } catch (err) {
+    try {
+      const newMessage = await originalMessage.channel.send(options);
+      await originalMessage.delete().catch(() => { });
+      return newMessage;
+    } catch (innerErr) {
+      return await originalMessage.reply(options).catch(() => originalMessage.channel.send(options));
+    }
+  }
+}
+
 async function isAdmin(userId) {
   try {
     const user = await getUserByDiscordId(userId);
@@ -50,6 +67,64 @@ async function isAdmin(userId) {
     return user.role?.toLowerCase() === 'admin' && user.active;
   } catch (err) {
     return false;
+  }
+}
+
+// Configura permissões do cargo Muted em todos os canais (incluindo fóruns) — em paralelo
+async function setupMutePermissions(guild, muteRole) {
+  const denyPermissions = [
+    PermissionFlagsBits.SendMessages,
+    PermissionFlagsBits.SendMessagesInThreads,
+    PermissionFlagsBits.CreatePublicThreads,
+    PermissionFlagsBits.CreatePrivateThreads,
+    PermissionFlagsBits.AddReactions,
+    PermissionFlagsBits.Speak,
+  ];
+
+  const targetChannelTypes = [
+    ChannelType.GuildText,
+    ChannelType.GuildVoice,
+    ChannelType.GuildForum,
+    ChannelType.GuildStageVoice,
+    ChannelType.GuildCategory,
+    ChannelType.GuildMedia,
+  ];
+
+  const channels = guild.channels.cache.filter(c => targetChannelTypes.includes(c.type));
+
+  // Filtra apenas canais que precisam de atualização
+  const channelsToUpdate = [];
+  for (const [, channel] of channels) {
+    const existingOverwrite = channel.permissionOverwrites.cache.get(muteRole.id);
+    if (existingOverwrite) {
+      const denied = existingOverwrite.deny;
+      const allDenied = denyPermissions.every(p => denied.has(p));
+      if (allDenied) continue; // Já está configurado corretamente
+    }
+    channelsToUpdate.push(channel);
+  }
+
+  if (channelsToUpdate.length === 0) return;
+
+  // Atualiza todos os canais em paralelo
+  const muteOverrides = {
+    SendMessages: false,
+    SendMessagesInThreads: false,
+    CreatePublicThreads: false,
+    CreatePrivateThreads: false,
+    AddReactions: false,
+    Speak: false,
+  };
+
+  const results = await Promise.allSettled(
+    channelsToUpdate.map(channel =>
+      channel.permissionOverwrites.edit(muteRole, muteOverrides)
+    )
+  );
+
+  const failed = results.filter(r => r.status === 'rejected');
+  if (failed.length > 0) {
+    console.error(`[Mute] ${failed.length}/${channelsToUpdate.length} canais falharam ao configurar permissões.`);
   }
 }
 
@@ -514,7 +589,7 @@ export async function handleInacList(message, client) {
 }
 
 // ---- .concluida ----
-export async function handleConcluida(message) {
+export async function handleConcluida(message, args) {
   try {
     const numero = parseInt(args[0]);
 
@@ -636,7 +711,7 @@ export async function handleCadastrarMissao(message) {
 }
 
 // ---- .entrou ----
-export async function handleEntrou(message, client) {
+export async function handleEntrou(message, client, args) {
   if (!(await isAdmin(message.author.id))) {
     return message.reply({
       embeds: [createErrorEmbed('Acesso Negado', 'Apenas administradores podem usar este comando.')]
