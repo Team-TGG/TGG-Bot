@@ -136,7 +136,7 @@ async function main() {
     }); // Iniciar crons
 
     // Aviso de inatividade e restauração de mutes
-    //startInactiveReminder(client);
+    startInactiveReminder(client);
     await restoreMutes(client);
   });
 

@@ -1,6 +1,6 @@
 // Comandos da TGG-Coins
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder } from 'discord.js';
-import { addTransaction, updateBalance, getLastDaily, getBalance, getTransactions, getLeaderboard, getShopItems, getShopCount, getShopItemByPosition, hasPurchased, createPurchase, decreaseStock, getServiceProviders, addServiceProvider, removeServiceProvider, isServiceProvider } from './tggCoins.js';
+import { addTransaction, updateBalance, getLastDaily, getUserStreak, upsertUserStreak, getBalance, getTransactions, getLeaderboard, getShopItems, getShopCount, getShopItemByPosition, hasPurchased, createPurchase, decreaseStock, getServiceProviders, addServiceProvider, removeServiceProvider, isServiceProvider, canUseItem } from './tggCoins.js';
 import { getUserByDiscordId } from './db.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
 import { adminOnly } from '../utils/permissions.js';
@@ -32,13 +32,19 @@ export async function handleDaily(message) {
 
     // Pega o horário do último daily
     const lastDaily = await getLastDaily(discordId);
+    const streakData = await getUserStreak(discordId); // Pega a streak atual do usuário
 
     const now = new Date();
+
+    let streak = 1;
+    let reward = 50;
+    let streakMessage = '';
 
     if (lastDaily) {
       const last = new Date(lastDaily.created_at);
       const diffHours = (now - last) / (1000 * 60 * 60);
 
+      // Bloquear resgate se ainda não tiver passado 24h do último daily
       if (diffHours < 24) {
         return loading.edit({
           embeds: [
@@ -49,15 +55,31 @@ export async function handleDaily(message) {
           ]
         });
       }
+
+      if (diffHours <= 48) {
+        streak = (streakData?.streak || 1) + 1; // Aumenta em 1 a streak
+      } else {
+        streak = 1; // Reset da streak se tiver passado 48h
+      }
     }
 
-    let reward = 500;
+    // Sistema de streaks: Quanto maior a streak, maior a recompensa (até 7 dias)
+    if (streak >= 7) {
+      reward = 100;
+      streakMessage = `🔥 Streak de ${streak} dias! Recompensa máxima!`;
+    } else if (streak >= 3) {
+      reward = 75;
+      streakMessage = `🔥 Streak de ${streak} dias! Continue assim!`;
+    } else {
+      reward = 50;
+      streakMessage = `📅 Streak de ${streak} dia${streak > 1 ? 's' : ''}`;
+    }
+
     let bonusMessage = '';
 
-    // Verifica se o usuário tem o cargo "MVP Semanal"
     const member = message.member;
 
-    // Se tiver, ganha +20% de recompensa
+    // Verifica se o usuário tem o cargo "MVP Semanal", Se tiver, ganha +20% de recompensa
     if (member.roles.cache.has('1448466041997889769')) {
       const original = reward;
       reward = Math.floor(reward * 1.2);
@@ -65,6 +87,9 @@ export async function handleDaily(message) {
       const bonus = reward - original;
       bonusMessage = `\n✨ Bônus de MVP Semanal: +${bonus} TGG-Coins`;
     }
+
+    // Atualiza streak
+    await upsertUserStreak(discordId, streak);
 
     // Adiciona o valor como "Daily" e atualiza o saldo
     await addTransaction(discordId, reward, 'DAILY', 'Recompensa diária');
@@ -74,7 +99,7 @@ export async function handleDaily(message) {
       embeds: [
         createSuccessEmbed(
           'TGG Coins recebidas!',
-          `+${reward} TGG-Coins ${EMOJIS.TGGcoin}${bonusMessage}\nSaldo atual: **${newBalance}**`
+          `+${reward} TGG-Coins ${EMOJIS.TGGcoin}\n${streakMessage}${bonusMessage}\n\nSaldo atual: **${newBalance}**`
         )
       ]
     });
@@ -572,6 +597,100 @@ export async function handleBuy(message, args) {
         });
 
         collector.stop();
+      });
+
+      return;
+    }
+
+    // Para itens de MUTE, precisa escolher o usuário a ser mutado antes de finalizar a compra
+    if (item.type === 'MUTE') {
+
+      const canUse = await canUseItem(discordId, item.id);
+
+      // Verifica se já passou 1 hora desde o último mute comprado
+      if (!canUse) {
+        return message.reply({
+          embeds: [
+            createErrorEmbed(
+              'Cooldown ativo',
+              'Você já usou o mute recentemente. Aguarde 1 hora.'
+            )
+          ]
+        });
+      }
+
+      const msg = await message.reply({
+        content: 'Marque o usuário que você deseja mutar (30s):'
+      });
+
+      const filter = (m) => m.author.id === discordId;
+
+      const collector = message.channel.createMessageCollector({
+        filter,
+        time: 30000,
+        max: 1
+      });
+
+      collector.on('collect', async (msgResponse) => {
+        const target = msgResponse.mentions.members.first();
+
+        // Se não existir o usuário
+        if (!target) {
+          return message.reply({
+            embeds: [createErrorEmbed('Erro', 'Você precisa marcar um usuário válido.')]
+          });
+        }
+
+        // Não pode se mutar
+        if (target.id === discordId) {
+          return message.reply({
+            embeds: [createErrorEmbed('Erro', 'Você não pode mutar a si mesmo.')]
+          });
+        }
+
+        // Não pode mutar nenhum bot
+        if (target.user.bot) {
+          return message.reply({
+            embeds: [createErrorEmbed('Erro', 'Você não pode mutar bots.')]
+          });
+        }
+
+        try {
+          // Desconta saldo
+          await addTransaction(discordId, -item.price, 'SHOP_PURCHASE', `Mute: ${target.user.username}`);
+          const newBalance = await updateBalance(discordId, -item.price);
+
+          // Registra compra
+          await createPurchase(discordId, item);
+
+          // Diminui estoque (se tiver)
+          await decreaseStock(item.id, item.stock);
+
+          // Aplica timeout de 30s
+          await target.timeout(30 * 1000, `Mutado por ${message.author.username}`);
+
+          return message.reply({
+            embeds: [
+              createSuccessEmbed(
+                'Mutado com sucesso!',
+                `🔇 ${target.user.username} foi mutado por 30 segundos.\nSaldo atual: **${newBalance}**`
+              )
+            ]
+          });
+
+        } catch (err) {
+          return message.reply({
+            embeds: [createErrorEmbed('Erro ao mutar', err.message)]
+          });
+        }
+      });
+
+      collector.on('end', (collected) => {
+        if (!collected.size) {
+          message.reply({
+            embeds: [createErrorEmbed('Tempo esgotado', 'Você não escolheu ninguém.')]
+          });
+        }
       });
 
       return;

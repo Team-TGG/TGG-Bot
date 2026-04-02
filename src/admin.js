@@ -4,11 +4,11 @@ import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuil
 import { createClient, runSync, runEloSync } from './discord.js';
 import { addWarning, getUserWarnings, removeWarning, removeLastWarning, parseTime, formatTime as formatModTime, safeSetTimeout } from './moderation.js';
 import { getUsers, getUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes, getMissionWeekStart, getActiveUser } from './db.js';
-import { discord as discordConfig, ALLOWED_USER_IDS, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
+import { discord as discordConfig, STAFF_ROLE_IDS, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
 import { loadCustomNicknames } from './customNicknames.js';
 import { syncNicknames, updateMemberNicknameDiscordPortion, parseNickname, buildNickname, fetchBrawlhallaClanData, loadClanCache } from './nicknameSync.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
-import { isAdmin, adminOnly} from '../utils/permissions.js';
+import { isAdmin, adminOnly, hasPermission, getMemberLevel} from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
 
 // Funções auxiliares
@@ -133,6 +133,14 @@ export const handleRefreshCache = adminOnly(async (message, args, client) => {
 // .warn
 export const handleWarn = adminOnly(async (message, args, client) => {
   try {
+
+    // Apenas moderadores ou superiores podem usar esse comando
+    if (!hasPermission(message.member, 2)) {
+      return message.reply({
+        embeds: [createErrorEmbed('Acesso Negado', 'Apenas moderadores ou superiores podem dar avisos.')]
+      });
+    }
+
     const guild = client.guilds.cache.get(discordConfig.guildId);
     if (!guild) throw new Error('Guild não encontrada');
 
@@ -269,6 +277,14 @@ export const handleWarns = adminOnly(async (message, args, client) => {
 // .mute
 export const handleMute = adminOnly(async (message, args, client) => {
   try {
+
+    // Apenas moderadores ou superiores podem usar esse comando
+    if (!hasPermission(message.member, 2)) {
+      return message.reply({
+        embeds: [createErrorEmbed('Acesso Negado', 'Apenas moderadores ou superiores podem mutar usuários.')]
+      });
+    }
+
     const guild = client.guilds.cache.get(discordConfig.guildId);
     if (!guild) throw new Error('Guild não encontrada');
 
@@ -359,6 +375,14 @@ export const handleUnmute = adminOnly(async (message, args, client) => {
 // .ban
 export const handleBan = adminOnly(async (message, args, client) => {
   try {
+
+    // Apenas supervisores ou superiores podem usar esse comando
+    if (!hasPermission(message.member, 3)) {
+      return message.reply({
+        embeds: [createErrorEmbed('Acesso Negado', 'Apenas supervisores ou superiores podem banir.')]
+      });
+    }
+
     const guild = client.guilds.cache.get(discordConfig.guildId);
     if (!guild) throw new Error('Guild não encontrada');
 

@@ -86,6 +86,39 @@ export async function getLastDaily(discordId) {
   return data?.[0] || null;
 }
 
+/**
+ * Pega a streak do usuário
+ */
+export async function getUserStreak(discordId) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('tgg_coins_daily_streak')
+    .select('*')
+    .eq('discord_id', String(discordId))
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error;
+
+  return data || null;
+}
+
+/**
+ * Atualiza ou cria a streak do usuário (usado no daily)
+ */
+export async function upsertUserStreak(discordId, streak) {
+  const supabase = getClient();
+
+  const { error } = await supabase
+    .from('tgg_coins_daily_streak')
+    .upsert({
+      discord_id: String(discordId),
+      streak,
+      last_daily: new Date().toISOString()
+    });
+
+  if (error) throw error;
+}
 
 /**
  * Pega saldo atual
@@ -334,4 +367,25 @@ export async function isServiceProvider(shopId, discordId) {
   if (error) throw error;
 
   return data.length > 0;
+}
+
+/**
+ * Função para verificar se o usuário pode usar o mesmo item (limite de 1 por hora)
+ */
+export async function canUseItem(discordId, itemId) {
+  const supabase = getClient();
+
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from('tgg_coins_purchases')
+    .select('id, created_at')
+    .eq('discord_id', String(discordId))
+    .eq('shop_id', itemId)
+    .gte('created_at', oneHourAgo)
+    .limit(1);
+
+  if (error) throw error;
+
+  return data.length === 0;
 }

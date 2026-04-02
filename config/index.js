@@ -2,6 +2,16 @@
 // deprecated
 export const ALLOWED_USER_IDS = ['1447168951963353209', '252249131202904074', '1475984881640280126', '469616482721071134'];
 
+// Staff Roles ID's
+export const STAFF_ROLE_IDS = {
+  helper: '1467177078204924168',
+  moderator: '1461777581983535289',
+  supervisor: '1437445763721592892',
+  administrator: '1466951488730431518',
+  viceLeader: '1465154307002470596',
+  leader: '1437427830286717009',
+}
+
 export const discord = {
   token: process.env.DISCORD_TOKEN,
   guildId: process.env.DISCORD_GUILD_ID,
