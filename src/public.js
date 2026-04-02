@@ -79,14 +79,29 @@ export async function handleHelp(message, args, client) {
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
     .setTimestamp();
 
+  const page7 = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle(`${EMOJIS.TGGcoin} TGG Coins`)
+    .addFields(
+      { name: `${EMOJIS.arrowRight} .daily`, value: 'Receber as moedas diárias (1.2x para MVP Semanal)', inline: false },
+      { name: `${EMOJIS.arrowRight} .balance (.bal)`, value: 'Ver a quantidade atual de moedas que você tem', inline: false },
+      { name: `${EMOJIS.arrowRight} .historico (.hist)`, value: 'Ver seu histórico de gastos', inline: false },
+      { name: `${EMOJIS.arrowRight} .leaderboard (.lb)`, value: 'Ver um leaderboard com as pessoas que mais tem TGG-Coins', inline: false },
+      { name: `${EMOJIS.arrowRight} .shop`, value: 'Ver a loja de itens', inline: false },
+      { name: `${EMOJIS.arrowRight} .buy <número do item>`, value: 'Fazer uma compra de um item da loja (usar o número que aparece ao lado do item)', inline: false },
+    )
+    .setFooter({ text: 'Selecione uma categoria no dropdown' })
+    .setTimestamp();
+
   const isUserAdmin = await isAdmin(message.author.id);
 
   const options = [
     { label: 'Guilda', value: 'guild', emoji: EMOJIS.crossedSwords, description: 'Comandos da guilda' },
-    { label: 'Informações', value: 'info', emoji: EMOJIS.clipboard, description: 'Comandos de informação' }
+    { label: 'Informações', value: 'info', emoji: EMOJIS.clipboard, description: 'Comandos de informação' },
+    { label: 'TGG Coins', value: 'tggcoins', emoji: EMOJIS.TGGcoin, description: 'Comandos TGG Coins' }
   ];
 
-  // 🔹 Só adiciona se for admin
+  // Só adiciona se for admin
   if (isUserAdmin) {
     options.push(
       { label: 'Sincronização (admin).', value: 'sync', emoji: EMOJIS.hourglass, description: 'Comandos de sincronização' },
@@ -120,6 +135,7 @@ export async function handleHelp(message, args, client) {
       if (selected === 'users') embedToShow = page4;
       if (selected === 'inac') embedToShow = page5;
       if (selected === 'missions') embedToShow = page6;
+      if (selected === 'tggcoins') embedToShow = page7;
       await interaction.update({ embeds: [embedToShow], components: [row] });
     }
   });

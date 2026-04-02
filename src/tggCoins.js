@@ -268,3 +268,70 @@ export async function decreaseStock(itemId, currentStock) {
 
   if (error) throw error;
 }
+
+/**
+  * Pega os provedores de serviço ativos para um item específico
+ */
+export async function getServiceProviders(shopId) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('tgg_coins_service_providers')
+    .select('discord_id')
+    .eq('shop_id', shopId)
+    .eq('active', true);
+
+  if (error) throw error;
+
+  return data;
+}
+
+/**
+  * Adiciona um provedor de serviço para um item específico
+ */
+export async function addServiceProvider(shopId, discordId) {
+  const supabase = getClient();
+
+  const { error } = await supabase
+    .from('tgg_coins_service_providers')
+    .insert({
+      shop_id: shopId,
+      discord_id: String(discordId),
+      active: true
+    });
+
+  if (error) throw error;
+}
+
+/**
+  * Remove um provedor de serviço para um item específico
+ */
+export async function removeServiceProvider(shopId, discordId) {
+  const supabase = getClient();
+
+  const { error } = await supabase
+    .from('tgg_coins_service_providers')
+    .delete()
+    .eq('shop_id', shopId)
+    .eq('discord_id', String(discordId));
+
+  if (error) throw error;
+}
+
+/**
+  * Verifica se um usuário já é um provedor de serviço para um item específico (evitar duplicatas)
+ */
+export async function isServiceProvider(shopId, discordId) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('tgg_coins_service_providers')
+    .select('id')
+    .eq('shop_id', shopId)
+    .eq('discord_id', String(discordId))
+    .limit(1);
+
+  if (error) throw error;
+
+  return data.length > 0;
+}

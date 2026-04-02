@@ -1,8 +1,9 @@
 // Comandos da TGG-Coins
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder } from 'discord.js';
-import { addTransaction, updateBalance, getLastDaily, getBalance, getTransactions, getLeaderboard, getShopItems, getShopCount, getShopItemByPosition, hasPurchased, createPurchase, decreaseStock } from './tggCoins.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder } from 'discord.js';
+import { addTransaction, updateBalance, getLastDaily, getBalance, getTransactions, getLeaderboard, getShopItems, getShopCount, getShopItemByPosition, hasPurchased, createPurchase, decreaseStock, getServiceProviders, addServiceProvider, removeServiceProvider, isServiceProvider } from './tggCoins.js';
 import { getUserByDiscordId } from './db.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
+import { adminOnly } from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
 
 // ---- .daily ----
@@ -50,7 +51,20 @@ export async function handleDaily(message) {
       }
     }
 
-    const reward = 500;
+    let reward = 500;
+    let bonusMessage = '';
+
+    // Verifica se o usuário tem o cargo "MVP Semanal"
+    const member = message.member;
+
+    // Se tiver, ganha +20% de recompensa
+    if (member.roles.cache.has('1448466041997889769')) {
+      const original = reward;
+      reward = Math.floor(reward * 1.2);
+
+      const bonus = reward - original;
+      bonusMessage = `\n✨ Bônus de MVP Semanal: +${bonus} TGG-Coins`;
+    }
 
     // Adiciona o valor como "Daily" e atualiza o saldo
     await addTransaction(discordId, reward, 'DAILY', 'Recompensa diária');
@@ -60,7 +74,7 @@ export async function handleDaily(message) {
       embeds: [
         createSuccessEmbed(
           'TGG Coins recebidas!',
-          `+${reward} TGG-Coins ${EMOJIS.TGGcoin}\nSaldo atual: **${newBalance}**`
+          `+${reward} TGG-Coins ${EMOJIS.TGGcoin}${bonusMessage}\nSaldo atual: **${newBalance}**`
         )
       ]
     });
@@ -116,7 +130,7 @@ export async function handleHistorico(message) {
     }
 
     let page = 1;
-    const limit = 10;
+    const limit = 5;
 
     async function generateEmbed(page) {
       const { data, total } = await getTransactions(discordId, page, limit);
@@ -135,7 +149,7 @@ export async function handleHistorico(message) {
 
         const sinal = t.amount >= 0 ? '+' : '-';
 
-        return `**${sinal}${Math.abs(t.amount)}** | ${t.type}\n${date}`;
+        return `**${sinal}${Math.abs(t.amount)}** | ${t.description}\n${date}`;
       }).join('\n\n');
 
       return new EmbedBuilder()
@@ -459,8 +473,112 @@ export async function handleBuy(message, args) {
       });
     }
 
+    // Se for um serviço, escolhe o prestador antes de finalizar a compra
+    if (item.type === 'SERVICE') {
+      const providers = await getServiceProviders(item.id);
+
+      // Se não tiver prestadores, avisa que não tem como comprar o serviço no momento
+      if (!providers.length) {
+        return message.reply({
+          embeds: [createErrorEmbed('Sem prestadores', 'Nenhum usuário disponível para este serviço.')]
+        });
+      }
+
+      const options = [];
+
+      for (const p of providers) {
+        try {
+          const member = await message.guild.members.fetch(p.discord_id);
+
+          options.push({
+            label: member.user.username,
+            value: p.discord_id
+          });
+        } catch {
+          // ignora usuários que não estão mais na guilda
+        }
+      }
+
+      if (!options.length) {
+        return message.reply({
+          embeds: [createErrorEmbed('Erro', 'Nenhum prestador válido encontrado.')]
+        });
+      }
+
+      const select = new StringSelectMenuBuilder()
+        .setCustomId(`service_${item.id}`)
+        .setPlaceholder('Escolha o prestador')
+        .addOptions(options);
+
+      const row = new ActionRowBuilder().addComponents(select);
+
+      const msg = await message.reply({
+        content: `Selecione quem irá realizar **${item.name}**:`,
+        components: [row]
+      });
+
+      const collector = msg.createMessageComponentCollector({
+        time: 60000
+      });
+
+      // Caso tente usar o comando de outra pessoa, bloqueia
+      collector.on('collect', async (interaction) => {
+        if (interaction.user.id !== discordId) {
+          return interaction.reply({
+            content: 'Você não pode usar isso.',
+            ephemeral: true
+          });
+        }
+
+        const providerId = interaction.values[0];
+
+        // Impede de contratar a si mesmo (caso seja prestador de algum serviço)
+        if (providerId === discordId) {
+          return interaction.reply({
+            content: 'Você não pode contratar a si mesmo.',
+            ephemeral: true
+          });
+        }
+
+        // Dupla validação no saldo (Evita que o usuário compre algo, gaste o dinheiro, e depois escolha o prestador, causando um saldo negativo)
+        const balanceNow = await getBalance(discordId);
+
+        if (balanceNow < item.price) {
+          return interaction.reply({
+            embeds: [createErrorEmbed('Saldo insuficiente', 'Você não tem saldo suficiente.')],
+            ephemeral: true
+          });
+        }
+
+        // Gera a transação de pagamento para o comprador
+        await addTransaction(discordId, -item.price, 'SERVICE_PAYMENT', `Serviço: ${item.name}`);
+        const newBalance = await updateBalance(discordId, -item.price);
+
+        // Gera a transação de recebimento para o prestador
+        await addTransaction(providerId, item.price, 'SERVICE_RECEIVED', `Serviço: ${item.name}`);
+        await updateBalance(providerId, item.price);
+
+        // Registrar compra
+        await createPurchase(discordId, item);
+
+        await interaction.update({
+          embeds: [
+            createSuccessEmbed(
+              'Serviço contratado!',
+              `Você contratou **${item.name}**.\nPagamento enviado ao prestador.\nSaldo atual: **${newBalance}**`
+            )
+          ],
+          components: []
+        });
+
+        collector.stop();
+      });
+
+      return;
+    }
+
     // Adiciona a transação
-    await addTransaction(discordId, -item.price, 'SHOP_PURCHASE', 'Compra');
+    await addTransaction(discordId, -item.price, 'SHOP_PURCHASE', `Compra: ${item.name}` );
 
     // Atualizar o saldo
     const newBalance = await updateBalance(discordId, -item.price);
@@ -496,3 +614,107 @@ export async function handleBuy(message, args) {
     });
   }
 }
+
+// ---- .addprovider (admin) ----
+export const handleAddProvider    = adminOnly(async (message, args, client) => {
+  try {
+    const position = parseInt(args[0]);
+    const member = message.mentions.members.first();
+
+    if (isNaN(position) || position < 1 || !member) {
+      return message.reply({
+        embeds: [createErrorEmbed('Uso inválido', 'Use: `.addprovider <posição> @usuário`')]
+      });
+    }
+
+    const item = await getShopItemByPosition(position);
+
+    if (!item) {
+      return message.reply({
+        embeds: [createErrorEmbed('Erro', 'Item não encontrado.')]
+      });
+    }
+
+    if (item.type !== 'SERVICE') {
+      return message.reply({
+        embeds: [createErrorEmbed('Erro', 'Esse item não é um serviço.')]
+      });
+    }
+
+    const already = await isServiceProvider(item.id, member.id);
+
+    if (already) {
+      return message.reply({
+        embeds: [createErrorEmbed('Erro', 'Esse usuário já é prestador desse serviço.')]
+      });
+    }
+
+    await addServiceProvider(item.id, member.id);
+
+    return message.reply({
+      embeds: [
+        createSuccessEmbed(
+          'Prestador adicionado!',
+          `${member} agora pode realizar **${item.name}**`
+        )
+      ]
+    });
+
+  } catch (err) {
+    return message.reply({
+      embeds: [createErrorEmbed('Erro', err.message)]
+    });
+  }
+});
+
+// ---- .removeprovider (admin) ----
+export const handleRemoveProvider = adminOnly(async (message, args, client) => {
+  try {
+    const position = parseInt(args[0]);
+    const member = message.mentions.members.first();
+
+    if (isNaN(position) || position < 1 || !member) {
+      return message.reply({
+        embeds: [createErrorEmbed('Uso inválido', 'Use: `.removeprovider <posição> @usuário`')]
+      });
+    }
+
+    const item = await getShopItemByPosition(position);
+
+    if (!item) {
+      return message.reply({
+        embeds: [createErrorEmbed('Erro', 'Item não encontrado.')]
+      });
+    }
+
+    if (item.type !== 'SERVICE') {
+      return message.reply({
+        embeds: [createErrorEmbed('Erro', 'Esse item não é um serviço.')]
+      });
+    }
+
+    const exists = await isServiceProvider(item.id, member.id);
+
+    if (!exists) {
+      return message.reply({
+        embeds: [createErrorEmbed('Erro', 'Esse usuário não é prestador desse serviço.')]
+      });
+    }
+
+    await removeServiceProvider(item.id, member.id);
+
+    return message.reply({
+      embeds: [
+        createSuccessEmbed(
+          'Prestador removido!',
+          `${member} não pode mais realizar **${item.name}**`
+        )
+      ]
+    });
+
+  } catch (err) {
+    return message.reply({
+      embeds: [createErrorEmbed('Erro', err.message)]
+    });
+  }
+});
