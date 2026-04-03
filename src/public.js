@@ -154,12 +154,14 @@ export async function handleRegras(message, args, client) {
     .addFields(
       {
         name: `${EMOJIS.square} Sem Toxicidade`,
-        value: 'Proibido nomes ofensivos, assédio ou desrespeito.',
+        value: `${EMOJIS.xis} Proibido nomes ofensivos.
+                ${EMOJIS.xis} Evite mal comportamento dentro e fora do jogo.
+                ${EMOJIS.check} Reporte comportamentos indevidos dos membros no <#1461132037908856964>.`,
         inline: false
       },
       {
         name: `${EMOJIS.square} Contribua com a Guilda`,
-        value: `Ajude a guilda participando de missões, quests e atividades coletivas. Para mais informações, veja o canal <#${'1480627066792579072'}>`,
+        value: `${EMOJIS.check} Ajude a guilda participando de missões, quests e atividades coletivas. Para mais informações, veja o canal <#${'1480627066792579072'}>`,
         inline: false
       },
       {
@@ -171,6 +173,13 @@ export async function handleRegras(message, args, client) {
         name: `${EMOJIS.arrowRight} Vire membro e desbloqueie treinamentos gratuitos com jogadores experientes da guilda!`,
         value: `${EMOJIS.check} Consiga 40.000 de contribuição total
                 ${EMOJIS.check} Seja MVP Semanal (14 melhores contribuidores da semana)`,
+        inline: false
+      },
+      {
+        name: `${EMOJIS.arrowRight} Exigimos um mínimo de 1.000 de contribuição semanal, para conferir, basta verificar na aba da guilda dentro do jogo!`,
+        value: `${EMOJIS.check} Missões começam na quinta às 6 da manhã e vão até quarta às 6 da manhã!
+                ${EMOJIS.check} Se ficar inativo, o <@1470608096056447006> vai mandar uma mensagem privada.
+                ${EMOJIS.check} Para justificar, use ".active <motivo>" no canal informado pelo bot.`,
         inline: false
       },
       {
