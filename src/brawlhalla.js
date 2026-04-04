@@ -550,32 +550,33 @@ export function createRankedEmbed(playerData) {
   const ranked = stats.ranked || {};
   const legendsRanked = ranked.legends || [];
   const teams2v2 = ranked['2v2'] || [];
-  const rotating = ranked.rotating_ranked || [];
+  const rotating = ranked.rotating_ranked || null;
 
   const rankIcon = getRankIcon(ranked.tier);
 
-  // maior elo legend
-  const bestLegend = legendsRanked.length
-    ? legendsRanked.reduce((a, b) => ((b.rating || 0) > (a.rating || 0) ? b : a))
+  // 2v2 Solo (brawlhalla_id_two === 0)
+  const solo2v2 = teams2v2.find(t => t.brawlhalla_id_two === 0);
+
+  // 2v2 Team (melhor time que não seja solo)
+  const bestTeam = teams2v2.length > 0
+    ? teams2v2
+        .filter(t => t.brawlhalla_id_two !== 0)
+        .reduce((a, b) => {
+          if (!a) return b;
+          return (b.rating || 0) > (a.rating || 0) ? b : a;
+        }, null)
     : null;
 
-  let bestLegendName = 'N/A';
-  let bestLegendIcon = '❓';
-  if (bestLegend) {
-    const key = cleanLegendName(bestLegend.legend_name_key);
-    bestLegendName = LEGEND_NAMES[key] || bestLegend.legend_name_key || 'Unknown';
-    bestLegendIcon = LEGEND_EMOJIS[key] || '❓';
+  // 3v3 (rotating_ranked)
+  // rotating_ranked pode ser um array ou um objeto único
+  let rotatingStats = null;
+  if (rotating) {
+    if (Array.isArray(rotating)) {
+      rotatingStats = rotating.reduce((a, b) => ((b.rating || 0) > (a.rating || 0) ? b : a), null);
+    } else {
+      rotatingStats = rotating;
+    }
   }
-
-  // maior elo com um duo
-  const bestTeam = teams2v2.length
-    ? teams2v2.reduce((a, b) => ((b.rating || 0) > (a.rating || 0) ? b : a))
-    : null;
-
-  // maior 3v3
-  const bestRotating = rotating.length
-    ? rotating.reduce((a, b) => ((b.rating || 0) > (a.rating || 0) ? b : a))
-    : null;
 
   const embed = new EmbedBuilder()
     .setColor(0x00ff00)
@@ -591,16 +592,23 @@ export function createRankedEmbed(playerData) {
         const pct = g > 0 ? ((w / g) * 100).toFixed(1) : '0.0';
         return `**Rating:** \`${formatNumber(ranked.rating || 0)}\` (Peak: \`${formatNumber(ranked.peak_rating || 0)}\`)\n` +
           `**Tier:** \`${ranked.tier || 'N/A'}\`\n` +
-          `\`${formatNumber(w)} W\` · \`${formatNumber(l)} L\` (\`${pct}%\`)`;
+          `**Wins:** \`${formatNumber(w)}\` · **Losses:** \`${formatNumber(l)}\` (\`${pct}%\`)`;
       })(),
       inline: false
     }
   ];
 
-  if (bestLegend) {
+  if (solo2v2) {
+    const w = solo2v2.wins || 0;
+    const g = solo2v2.games || 0;
+    const l = g - w;
+    const pct = g > 0 ? ((w / g) * 100).toFixed(1) : '0.0';
     rankedFields.push({
-      name: '👑 Best Legend (Peak)',
-      value: `${bestLegendIcon} **${bestLegendName}** — \`${formatNumber(bestLegend.rating)}\` Elo`,
+      name: '� 2v2 Solo',
+      value:
+        `**Rating:** \`${formatNumber(solo2v2.rating)}\` (Peak: \`${formatNumber(solo2v2.peak_rating)}\`)\n` +
+        `**Tier:** \`${solo2v2.tier}\`\n` +
+        `**Wins:** \`${formatNumber(w)}\` · **Losses:** \`${formatNumber(l)}\` (\`${pct}%\`)`,
       inline: false
     });
   }
@@ -611,26 +619,27 @@ export function createRankedEmbed(playerData) {
     const l = g - w;
     const pct = g > 0 ? ((w / g) * 100).toFixed(1) : '0.0';
     rankedFields.push({
-      name: '👯 2v2 Ranked',
+      name: '👯 2v2 Team',
       value:
         `**Team:** \`${bestTeam.teamname}\`\n` +
         `**Rating:** \`${formatNumber(bestTeam.rating)}\` (Peak: \`${formatNumber(bestTeam.peak_rating)}\`)\n` +
-        `**Tier:** \`${bestTeam.tier}\` · \`${formatNumber(w)} W\` · \`${formatNumber(l)} L\` (\`${pct}%\`)`,
+        `**Tier:** \`${bestTeam.tier}\`\n` +
+        `**Wins:** \`${formatNumber(w)}\` · **Losses:** \`${formatNumber(l)}\` (\`${pct}%\`)`,
       inline: false
     });
   }
 
-  if (bestRotating) {
-    const w = bestRotating.wins || 0;
-    const g = bestRotating.games || 0;
+  if (rotatingStats) {
+    const w = rotatingStats.wins || 0;
+    const g = rotatingStats.games || 0;
     const l = g - w;
     const pct = g > 0 ? ((w / g) * 100).toFixed(1) : '0.0';
     rankedFields.push({
       name: '🎨 3v3 Ranked',
       value:
-        `**Team:** \`${bestRotating.teamname || 'N/A'}\`\n` +
-        `**Rating:** \`${formatNumber(bestRotating.rating)}\` (Peak: \`${formatNumber(bestRotating.peak_rating)}\`)\n` +
-        `**Tier:** \`${bestRotating.tier}\` · \`${formatNumber(w)} W\` · \`${formatNumber(l)} L\` (\`${pct}%\`)`,
+        `**Rating:** \`${formatNumber(rotatingStats.rating)}\` (Peak: \`${formatNumber(rotatingStats.peak_rating)}\`)\n` +
+        `**Tier:** \`${rotatingStats.tier}\`\n` +
+        `**Wins:** \`${formatNumber(w)}\` · **Losses:** \`${formatNumber(l)}\` (\`${pct}%\`)`,
       inline: false
     });
   }

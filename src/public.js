@@ -196,8 +196,10 @@ export async function handleRegras(message, args, client) {
 
 // .stats
 export async function handleStats(message, args, client) {
+  let loadingMsg = null;
   try {
     let targetUserId = message.author.id;
+
     if (args.length > 0) {
       const mentionMatch = args[0].match(/^<@!?(\d+)>$/);
       if (mentionMatch) {
