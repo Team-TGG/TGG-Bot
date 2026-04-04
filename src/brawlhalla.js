@@ -604,7 +604,7 @@ export function createRankedEmbed(playerData) {
     const l = g - w;
     const pct = g > 0 ? ((w / g) * 100).toFixed(1) : '0.0';
     rankedFields.push({
-      name: '� 2v2 Solo',
+      name: '🥋 2v2 Solo',
       value:
         `**Rating:** \`${formatNumber(solo2v2.rating)}\` (Peak: \`${formatNumber(solo2v2.peak_rating)}\`)\n` +
         `**Tier:** \`${solo2v2.tier}\`\n` +
