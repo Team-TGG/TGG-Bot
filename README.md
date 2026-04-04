@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img src="https://cdn.discordapp.com/attachments/1461812071774683439/1482823910503481626/tgg_logo.png?ex=69b85ae1&is=69b70961&hm=2cf80ec490662f33053df77f77520306a42708b8f7645e92e1792dd7707c09e3&" alt="TGG Logo" width="200" style="border-radius: 15px;"/>
+  <img src="https://github.com/Team-TGG/TGG-Bot/blob/main/tgg_logo.png?raw=true&" alt="TGG Logo" width="200" style="border-radius: 15px;"/>
 </p>
 
 <h1 align="center">TGG-Bot</h1>
