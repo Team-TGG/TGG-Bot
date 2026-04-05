@@ -76,16 +76,31 @@ export async function handleDaily(message) {
     }
 
     let bonusMessage = '';
-
     const member = message.member;
 
-    // Verifica se o usuário tem o cargo "MVP Semanal", Se tiver, ganha +20% de recompensa
-    if (member.roles.cache.has('1448466041997889769')) {
-      const original = reward;
-      reward = Math.floor(reward * 1.2);
+    let multiplier = 1;
+    let bonusDetails = [];
 
-      const bonus = reward - original;
-      bonusMessage = `\n✨ Bônus de MVP Semanal: +${bonus} TGG-Coins`;
+    // MVP Semanal (+0.4)
+    if (member.roles.cache.has('1448466041997889769')) {
+      multiplier += 0.4;
+      bonusDetails.push('✨ MVP Semanal (+40%)');
+    }
+
+    // VIP (+0.2)
+    if (member.roles.cache.has('1490462353995731054')) {
+      multiplier += 0.2;
+      bonusDetails.push('💎 VIP (+20%)');
+    }
+
+    // Aplica multiplicador
+    const original = reward;
+    reward = Math.floor(reward * multiplier);
+    const bonus = reward - original;
+
+    // Monta mensagem de bonus
+    if (bonus > 0) {
+      bonusMessage = `\n${bonusDetails.join('\n')}\n💰 Bônus total: +${bonus} TGG-Coins`;
     }
 
     // Atualiza streak
@@ -696,6 +711,56 @@ export async function handleBuy(message, args) {
       return;
     }
 
+    // Para os Cargos RDM (1 pessoa com o cargo por vez)
+    if (item.type === 'ROLE_TABLE_MASTER' && item.role_id) {
+      try {
+        const member = await message.guild.members.fetch(discordId);
+
+        // Impede comprar se já tem o cargo
+        if (member.roles.cache.has(item.role_id)) {
+          return message.reply({
+            embeds: [
+              createErrorEmbed('Erro', 'Você já possui este cargo.')
+            ]
+          });
+        }
+
+        // Busca quem atualmente tem o cargo
+        const currentHolder = message.guild.members.cache.find(m =>
+          m.roles.cache.has(item.role_id)
+        );
+
+        // Remove de quem tem atualmente
+        if (currentHolder) {
+          try {
+            await currentHolder.roles.remove(item.role_id);
+          } catch (err) {
+            console.error('Erro ao remover cargo do atual dono:', err);
+          }
+        }
+
+        // Dá o cargo para quem comprou
+        await member.roles.add(item.role_id);
+
+      } catch (err) {
+        console.error('Erro no ROLE_TABLE_MASTER:', err);
+
+        return message.reply({
+          embeds: [createErrorEmbed('Erro ao aplicar cargo', err.message)]
+        });
+      }
+    }
+
+    // Para itens que são cargos, aplicar cargo
+    if (item.type === 'ROLE' && item.role_id) {
+      try {
+        const member = await message.guild.members.fetch(discordId);
+        await member.roles.add(item.role_id);
+      } catch (err) {
+        console.error('Erro ao adicionar cargo:', err);
+      }
+    }
+
     // Adiciona a transação
     await addTransaction(discordId, -item.price, 'SHOP_PURCHASE', `Compra: ${item.name}` );
 
@@ -707,16 +772,6 @@ export async function handleBuy(message, args) {
 
     // Diminuir estoque (Se tiver estoque)
     await decreaseStock(item.id, item.stock);
-
-    // Para itens que são cargos, aplicar cargo
-    if (item.type === 'ROLE' && item.role_id) {
-      try {
-        const member = await message.guild.members.fetch(discordId);
-        await member.roles.add(item.role_id);
-      } catch (err) {
-        console.error('Erro ao adicionar cargo:', err);
-      }
-    }
 
     return message.reply({
       embeds: [
