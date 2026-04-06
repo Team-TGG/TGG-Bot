@@ -228,7 +228,7 @@ export async function getShopCount() {
 /**
  * Pega um item específico da loja pela posição (Usado para o ".buy")
  */
-export async function getShopItemByPosition(position) {
+export async function getShopItemByPosition(position, category = 'GERAL') {
   const supabase = getClient();
 
   const { data, error } = await supabase
@@ -239,7 +239,16 @@ export async function getShopItemByPosition(position) {
 
   if (error) throw error;
 
-  return data?.[position - 1] || null;
+  const filtered = data.filter(item => getCategory(item.type) === category);
+
+  return filtered[position - 1] || null;
+}
+
+// Função para pegar a categoria do item com base no tipo
+export function getCategory(type) {
+  if (type.startsWith('ROLE')) return 'CARGOS';
+  if (type === 'SERVICE') return 'SERVICOS';
+  return 'GERAL';
 }
 
 /**

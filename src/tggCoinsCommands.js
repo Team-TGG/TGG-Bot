@@ -1,6 +1,6 @@
 // Comandos da TGG-Coins
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder } from 'discord.js';
-import { addTransaction, updateBalance, getLastDaily, getUserStreak, upsertUserStreak, getBalance, getTransactions, getLeaderboard, getShopItems, getShopCount, getShopItemByPosition, hasPurchased, createPurchase, decreaseStock, getServiceProviders, addServiceProvider, removeServiceProvider, isServiceProvider, canUseItem } from './tggCoins.js';
+import { addTransaction, updateBalance, getLastDaily, getUserStreak, upsertUserStreak, getBalance, getTransactions, getLeaderboard, getShopItems, getShopCount, getShopItemByPosition, hasPurchased, createPurchase, decreaseStock, getServiceProviders, addServiceProvider, removeServiceProvider, isServiceProvider, canUseItem, getCategory } from './tggCoins.js';
 import { getUserByDiscordId } from './db.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
 import { adminOnly } from '../utils/permissions.js';
@@ -352,6 +352,10 @@ export async function handleLeaderboard(message) {
   }
 }
 
+// Estado temporário para a loja (Cada usuário tem seu próprio index de loja)
+const shopState = new Map();
+const SHOP_STATE_TTL = 2 * 60 * 1000; // Expira em 2 minutos
+
 // ---- .shop ----
 export async function handleShop(message, args) {
   try {
@@ -366,29 +370,58 @@ export async function handleShop(message, args) {
 
     const limit = 5;
 
-    let page = parseInt(args[0]);
-    if (isNaN(page) || page < 1) page = 1;
+    const categoryNames = {
+      GERAL: '📦 Geral',
+      CARGOS: '🎭 Cargos',
+      SERVICOS: '🛠️ Serviços'
+    };
 
-    const totalItems = await getShopCount();
-    const totalPages = Math.ceil(totalItems / limit) || 1;
+    let category = 'GERAL';
+    let page = 1;
 
-    // Joga pra última página existente
-    if (page > totalPages) page = totalPages;
+    const allItems = await getShopItems(1, 9999);
 
-    async function generateEmbed(page) {
-      const { data } = await getShopItems(page, limit);
+    function getFiltered() {
+      return allItems.data.filter(item => getCategory(item.type) === category);
+    }
+
+    function getPageItems() {
+      const filtered = getFiltered();
+      const start = (page - 1) * limit;
+      return filtered.slice(start, start + limit);
+    }
+
+    async function generateEmbed() {
+      const filtered = getFiltered();
+      const totalPages = Math.ceil(filtered.length / limit) || 1;
+
+      if (page > totalPages) page = totalPages;
+
+      const pageItems = getPageItems();
+
+      // Salva a loja do usuário para usar no buy
+      shopState.set(discordId, {
+        category,
+        items: filtered,
+        createdAt: Date.now()
+      });
 
       const embed = new EmbedBuilder()
         .setColor(0x5865f2)
-        .setTitle('🛒 Loja')
+        .setTitle(`🛒 Loja • ${categoryNames[category]}`)
         .setFooter({ text: `Página ${page}/${totalPages}` })
         .setTimestamp();
 
-      data.forEach((item, index) => {
+      // Se não tiver itens, mostra mensagem de loja vazia
+      if (!pageItems.length) {
+        embed.setDescription('Nenhum item nesta categoria.');
+        return embed;
+      }
+
+      pageItems.forEach((item, index) => {
         const position = (page - 1) * limit + index + 1;
 
         let extra = '';
-
         if (item.is_unique) extra += ' 🔒 Único';
         if (item.stock !== null) extra += ` • Estoque: ${item.stock}`;
 
@@ -402,52 +435,48 @@ export async function handleShop(message, args) {
       return embed;
     }
 
-    const row = (page) => {
-      if (totalPages <= 1) return [];
+    function getComponents() {
+      const select = new StringSelectMenuBuilder()
+        .setCustomId('shop_category')
+        .setPlaceholder('📂 Escolha uma categoria')
+        .addOptions([
+          { label: '📦 Geral', value: 'GERAL', default: category === 'GERAL' },
+          { label: '🎭 Cargos', value: 'CARGOS', default: category === 'CARGOS' },
+          { label: '🛠️ Serviços', value: 'SERVICOS', default: category === 'SERVICOS' }
+        ]);
 
-      return [
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId('shop_prev')
-            .setLabel('⬅️')
-            .setStyle(1)
-            .setDisabled(page <= 1),
-
-          new ButtonBuilder()
-            .setCustomId('shop_next')
-            .setLabel('➡️')
-            .setStyle(1)
-            .setDisabled(page >= totalPages)
-        )
-      ];
-    };
+      return [new ActionRowBuilder().addComponents(select)];
+    }
 
     const msg = await message.reply({
-      embeds: [await generateEmbed(page)],
-      components: row(page)
+      embeds: [await generateEmbed()],
+      components: getComponents()
     });
 
-    if (totalPages <= 1) return;
-
-    const collector = msg.createMessageComponentCollector({
-      time: 60000
-    });
+    const collector = msg.createMessageComponentCollector({ time: 60000 });
 
     collector.on('collect', async (interaction) => {
-      if (interaction.user.id !== message.author.id) {
-        return interaction.reply({
-          content: 'Você não pode usar isso.',
-          ephemeral: true
+      try {
+        if (interaction.user.id !== discordId) {
+          return interaction.reply({
+            content: 'Você não pode usar isso.',
+            ephemeral: true
+          });
+        }
+
+        if (interaction.customId === 'shop_category') {
+          category = interaction.values[0];
+          page = 1;
+        }
+
+        await interaction.update({
+          embeds: [await generateEmbed()],
+          components: getComponents()
         });
+
+      } catch (err) {
+        console.error(err);
       }
-
-      if (interaction.customId === 'shop_prev') page--;
-      if (interaction.customId === 'shop_next') page++;
-
-      await interaction.update({
-        embeds: [await generateEmbed(page)],
-        components: row(page)
-      });
     });
 
   } catch (err) {
@@ -477,12 +506,29 @@ export async function handleBuy(message, args) {
       });
     }
 
-    // Pega o número do item
-    const item = await getShopItemByPosition(position);
+    // Pega o estado da loja do usuário para saber quais itens ele está vendo
+    const state = shopState.get(discordId);
+
+    if (!state) {
+      return message.reply({
+        embeds: [createErrorEmbed('Erro', 'Abra a loja primeiro usando `.shop`.')]
+      });
+    }
+
+    // Se a loja tiver expirado (2 minutos sem usar), remove o estado e pede para abrir a loja de novo
+    if (Date.now() - state.createdAt > SHOP_STATE_TTL) {
+      shopState.delete(discordId);
+
+      return message.reply({
+        embeds: [createErrorEmbed('Tempo expirado', 'Abra a loja novamente com `.shop`.')]
+      });
+    }
+
+    const item = state.items[position - 1];
 
     if (!item) {
       return message.reply({
-        embeds: [createErrorEmbed('Item não encontrado', 'Esse item não existe.')]
+        embeds: [createErrorEmbed('Item não encontrado', 'Esse item não existe nessa categoria/página.')]
       });
     }
 
@@ -892,3 +938,14 @@ export const handleRemoveProvider = adminOnly(async (message, args, client) => {
     });
   }
 });
+
+// Limpeza do estado da loja a cada 2 minutos (Remove estados expirados)
+setInterval(() => {
+  const now = Date.now();
+
+  for (const [userId, state] of shopState.entries()) {
+    if (now - state.createdAt > SHOP_STATE_TTL) {
+      shopState.delete(userId);
+    }
+  }
+}, 2 * 60 * 1000); // roda a cada 2 minutos

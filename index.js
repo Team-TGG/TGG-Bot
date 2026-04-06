@@ -80,6 +80,8 @@ async function main() {
     'balance': 'balance',
     'bal': 'balance',
     'coins': 'balance',
+    'moedas': 'balance',
+    'saldo  ': 'balance',
     'historico': 'historico',
     'histórico': 'historico',
     'hist': 'historico',
