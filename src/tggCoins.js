@@ -400,14 +400,43 @@ export async function canUseItem(discordId, itemId) {
   return data.length === 0;
 }
 
+/**
+ * Função para calcular o preço com desconto (usado para boosters)
+ */
 export function getDiscountedPrice(member, item) {
   let price = item.price;
 
-  // Se for booster
+  if (item.type === 'EVENT'){
+    return item.price; // Sem desconto para itens de eventos
+  }
+
+  // Booster pegam cores de graça
+  if (member.roles.cache.has(TGG_COINS_ROLES.BOOSTER) && (item.type === 'ROLE_REGULAR' || item.type === 'ROLE_VIP') ) {
+    return 0;
+  }
+
+  // Desconto padrão de booster
   if (member.roles.cache.has(TGG_COINS_ROLES.BOOSTER)) {
     const discount = 0.05; // 5% de desconto
     price = Math.floor(price * (1 - discount));
   }
 
   return price;
+}
+
+/**
+ * Pegar as cores de cargo disponíveis para compra
+ */
+export async function getShopRolesByShopId(shopId) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('tgg_coins_shop_roles')
+    .select('id, shop_id, name, role_id, created_at')
+    .eq('shop_id', shopId)
+    .order('name', { ascending: true });
+
+  if (error) throw error;
+
+  return data || [];
 }

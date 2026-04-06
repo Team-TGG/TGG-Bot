@@ -1,6 +1,6 @@
 // Comandos da TGG-Coins
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder } from 'discord.js';
-import { addTransaction, updateBalance, getLastDaily, getUserStreak, upsertUserStreak, getBalance, getTransactions, getLeaderboard, getShopItems, getShopCount, getShopItemByPosition, hasPurchased, createPurchase, decreaseStock, getServiceProviders, addServiceProvider, removeServiceProvider, isServiceProvider, canUseItem, getCategory, getDiscountedPrice } from './tggCoins.js';
+import { addTransaction, updateBalance, getLastDaily, getUserStreak, upsertUserStreak, getBalance, getTransactions, getLeaderboard, getShopItems, getShopCount, getShopItemByPosition, hasPurchased, createPurchase, decreaseStock, getServiceProviders, addServiceProvider, removeServiceProvider, isServiceProvider, canUseItem, getCategory, getDiscountedPrice, getShopRolesByShopId } from './tggCoins.js';
 import { getUserByDiscordId } from './db.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
 import { adminOnly } from '../utils/permissions.js';
@@ -391,7 +391,16 @@ export async function handleShop(message, args) {
     const allItems = await getShopItems(1, 9999);
 
     function getFiltered() {
-      return allItems.data.filter(item => getCategory(item.type) === category);
+      return allItems.data.filter(item => {
+        if (getCategory(item.type) !== category) return false;
+
+        // Cores de VIP e Booster (Role_VIP) aparecem só pra quem tem esses cargos
+        if (item.type === 'ROLE_VIP') {
+          return member.roles.cache.has(TGG_COINS_ROLES.VIP) || member.roles.cache.has(TGG_COINS_ROLES.BOOSTER);
+        }
+
+        return true;
+      });
     }
 
     function getPageItems() {
@@ -440,10 +449,16 @@ export async function handleShop(message, args) {
 
         const finalPrice = getDiscountedPrice(member, item);
 
-        let priceText = `${EMOJIS.TGGcoin} **${finalPrice} TGG-Coins**`;
+        let priceText;
 
-        if (finalPrice < item.price) {
-          priceText = `~~${item.price}~~ → ${priceText} 🔥`;
+        if (finalPrice === 0) {
+          priceText = `🆓 **Grátis para Booster**`;
+        } else {
+          priceText = `${EMOJIS.TGGcoin} **${finalPrice} TGG-Coins**`;
+
+          if (finalPrice < item.price) {
+            priceText = `~~${item.price}~~ → ${priceText} 🔥`;
+          }
         }
 
         embed.addFields({
@@ -775,6 +790,154 @@ export async function handleBuy(message, args) {
         if (!collected.size) {
           message.reply({
             embeds: [createErrorEmbed('Tempo esgotado', 'Você não escolheu ninguém.')]
+          });
+        }
+      });
+
+      return;
+    }
+
+    // Segurança extra para os cargos VIP
+    if (item.type === 'ROLE_VIP') {
+      const hasAccess =
+        member.roles.cache.has(TGG_COINS_ROLES.VIP) ||
+        member.roles.cache.has(TGG_COINS_ROLES.BOOSTER);
+
+      if (!hasAccess) {
+        return message.reply({
+          embeds: [
+            createErrorEmbed(
+              'Acesso negado',
+              'Você precisa ser VIP ou Booster para comprar este item.'
+            )
+          ]
+        });
+      }
+    }
+
+    // Cargos de cor (agrupados em um único tipo ROLE_*) - O usuário escolhe qual cor quer entre as opções disponíveis para aquele item
+    if (item.type === 'ROLE_REGULAR' || item.type === 'ROLE_VIP') {
+
+      // valida acesso VIP
+      if (item.type === 'ROLE_VIP') {
+        const hasAccess = member.roles.cache.has(TGG_COINS_ROLES.VIP) || member.roles.cache.has(TGG_COINS_ROLES.BOOSTER);
+
+        if (!hasAccess) {
+          return message.reply({
+            embeds: [
+              createErrorEmbed(
+                'Acesso negado',
+                'Você precisa ser VIP ou Booster para comprar este item.'
+              )
+            ]
+          });
+        }
+      }
+
+      const roles = await getShopRolesByShopId(item.id);
+
+      if (!roles.length) {
+        return message.reply({
+          embeds: [createErrorEmbed('Erro', 'Nenhum cargo configurado para este item.')]
+        });
+      }
+
+      // Verifica a cor atual
+      const currentRole = roles.find(r => member.roles.cache.has(r.role_id));
+
+      // monta opções, destacando a atual, se tiver
+      const options = roles.slice(0, 25).map(r => ({
+        label: currentRole && r.role_id === currentRole.role_id
+          ? `${r.name} (Atual)`
+          : r.name,
+        value: String(r.role_id)
+      }));
+
+      const select = new StringSelectMenuBuilder()
+        .setCustomId(`role_${item.type.toLowerCase()}_${item.id}`)
+        .setPlaceholder('Escolha sua cor')
+        .addOptions(options);
+
+      const row = new ActionRowBuilder().addComponents(select);
+
+      const msg = await message.reply({
+        content: `Escolha um cargo para **${item.name}**:`,
+        components: [row]
+      });
+
+      const collector = msg.createMessageComponentCollector({
+        time: 60000
+      });
+
+      collector.on('collect', async (interaction) => {
+        if (interaction.user.id !== discordId) {
+          return interaction.reply({
+            content: 'Você não pode usar isso.',
+            ephemeral: true
+          });
+        }
+
+        const selectedRoleId = interaction.values[0];
+
+        // Segurança extra: Verifica se o cargo selecionado ainda é válido
+        const currentRoleNow = roles.find(r => member.roles.cache.has(r.role_id));
+
+        // Impedir de escolher a mesma cor
+        if (currentRoleNow && String(currentRoleNow.role_id) === String(selectedRoleId)) {
+          return interaction.reply({
+            embeds: [
+              createErrorEmbed('Erro', 'Você já está usando essa cor.')
+            ],
+            ephemeral: true
+          });
+        }
+
+        const balanceNow = await getBalance(discordId);
+
+        if (balanceNow < finalPrice) {
+          return interaction.reply({
+            embeds: [createErrorEmbed('Saldo insuficiente', 'Você não tem saldo suficiente.')],
+            ephemeral: true
+          });
+        }
+
+        try {
+          // Remove qualquer cor desse grupo
+          for (const r of roles) {
+            if (member.roles.cache.has(r.role_id)) {
+              await member.roles.remove(r.role_id);
+            }
+          }
+
+          // Adiciona nova
+          await member.roles.add(selectedRoleId);
+
+          await addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Cargo: ${item.name}`);
+          const newBalance = await updateBalance(discordId, -finalPrice);
+
+          await createPurchase(discordId, item);
+          await decreaseStock(item.id, item.stock);
+
+          const actionText = currentRoleNow ? 'substituiu sua cor' : 'adquiriu um cargo';
+
+          await interaction.update({
+            embeds: [
+              createSuccessEmbed(
+                'Cargo atualizado!',
+                `Você ${actionText} de **${item.name}**.\nSaldo atual: **${newBalance}**`
+              )
+            ],
+            components: []
+          });
+
+          collector.stop();
+
+        } catch (err) {
+          console.error(err);
+
+          return interaction.reply({
+            embeds: [createErrorEmbed('Erro', err.message)],
+            ephemeral: true
           });
         }
       });
