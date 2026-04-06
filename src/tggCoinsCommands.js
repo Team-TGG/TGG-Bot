@@ -1,10 +1,17 @@
 // Comandos da TGG-Coins
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder } from 'discord.js';
-import { addTransaction, updateBalance, getLastDaily, getUserStreak, upsertUserStreak, getBalance, getTransactions, getLeaderboard, getShopItems, getShopCount, getShopItemByPosition, hasPurchased, createPurchase, decreaseStock, getServiceProviders, addServiceProvider, removeServiceProvider, isServiceProvider, canUseItem, getCategory } from './tggCoins.js';
+import { addTransaction, updateBalance, getLastDaily, getUserStreak, upsertUserStreak, getBalance, getTransactions, getLeaderboard, getShopItems, getShopCount, getShopItemByPosition, hasPurchased, createPurchase, decreaseStock, getServiceProviders, addServiceProvider, removeServiceProvider, isServiceProvider, canUseItem, getCategory, getDiscountedPrice } from './tggCoins.js';
 import { getUserByDiscordId } from './db.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
 import { adminOnly } from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
+
+// Cargos relacionados às TGG-Coins (IDs dos cargos no Discord)
+export const TGG_COINS_ROLES = {
+  MVP_SEMANAL:  '1448466041997889769',  // MVP Semanal
+  VIP:          '1490462353995731054',  // VIP
+  BOOSTER:      '1437560273031528470'   // Booster
+};
 
 // ---- .daily ----
 export async function handleDaily(message) {
@@ -82,13 +89,13 @@ export async function handleDaily(message) {
     let bonusDetails = [];
 
     // MVP Semanal (+0.4)
-    if (member.roles.cache.has('1448466041997889769')) {
+    if (member.roles.cache.has(TGG_COINS_ROLES.MVP_SEMANAL)) {
       multiplier += 0.4;
       bonusDetails.push('✨ MVP Semanal (+40%)');
     }
 
     // VIP (+0.2)
-    if (member.roles.cache.has('1490462353995731054')) {
+    if (member.roles.cache.has(TGG_COINS_ROLES.VIP)) {
       multiplier += 0.2;
       bonusDetails.push('💎 VIP (+20%)');
     }
@@ -368,6 +375,8 @@ export async function handleShop(message, args) {
       });
     }
 
+    const member = await message.guild.members.fetch(discordId);
+
     const limit = 5;
 
     const categoryNames = {
@@ -399,7 +408,6 @@ export async function handleShop(message, args) {
 
       const pageItems = getPageItems();
 
-      // Salva a loja do usuário para usar no buy
       shopState.set(discordId, {
         category,
         items: filtered,
@@ -411,6 +419,11 @@ export async function handleShop(message, args) {
         .setTitle(`🛒 Loja • ${categoryNames[category]}`)
         .setFooter({ text: `Página ${page}/${totalPages}` })
         .setTimestamp();
+
+      // Aviso de booster na loja
+      if (member.roles.cache.has(TGG_COINS_ROLES.BOOSTER)) {
+        embed.setDescription('🔥 Você possui **desconto de Booster (5%)** ativo!');
+      }
 
       // Se não tiver itens, mostra mensagem de loja vazia
       if (!pageItems.length) {
@@ -425,9 +438,17 @@ export async function handleShop(message, args) {
         if (item.is_unique) extra += ' 🔒 Único';
         if (item.stock !== null) extra += ` • Estoque: ${item.stock}`;
 
+        const finalPrice = getDiscountedPrice(member, item);
+
+        let priceText = `${EMOJIS.TGGcoin} **${finalPrice} TGG-Coins**`;
+
+        if (finalPrice < item.price) {
+          priceText = `~~${item.price}~~ → ${priceText} 🔥`;
+        }
+
         embed.addFields({
           name: `#${position} • ${item.name}`,
-          value: `${item.description || 'Sem descrição'}\n${EMOJIS.TGGcoin} **${item.price} TGG-Coins**${extra}`,
+          value: `${item.description || 'Sem descrição'}\n${priceText}${extra}`,
           inline: false
         });
       });
@@ -490,6 +511,7 @@ export async function handleShop(message, args) {
 export async function handleBuy(message, args) {
   try {
     const discordId = message.author.id;
+    const member = await message.guild.members.fetch(discordId);
 
     const user = await getUserByDiscordId(discordId);
     if (!user || !user.active) {
@@ -532,6 +554,9 @@ export async function handleBuy(message, args) {
       });
     }
 
+    // Preço final (verifica se o usuario tem desconto (booster) e aplica o desconto)
+    const finalPrice = getDiscountedPrice(member, item);
+
     // Se for um item único
     if (item.is_unique) {
       const alreadyHas = await hasPurchased(discordId, item.id);
@@ -553,9 +578,9 @@ export async function handleBuy(message, args) {
     const balance = await getBalance(discordId);
 
     // Se não tiver saldo suficiente, trava
-    if (balance < item.price) {
+    if (balance < finalPrice) {
       return message.reply({
-        embeds: [createErrorEmbed('Saldo insuficiente', `Você precisa de ${item.price} TGG-Coins.`)]
+        embeds: [createErrorEmbed('Saldo insuficiente', `Você precisa de ${finalPrice} TGG-Coins.`)]
       });
     }
 
@@ -629,7 +654,7 @@ export async function handleBuy(message, args) {
         // Dupla validação no saldo (Evita que o usuário compre algo, gaste o dinheiro, e depois escolha o prestador, causando um saldo negativo)
         const balanceNow = await getBalance(discordId);
 
-        if (balanceNow < item.price) {
+        if (balanceNow < finalPrice) {
           return interaction.reply({
             embeds: [createErrorEmbed('Saldo insuficiente', 'Você não tem saldo suficiente.')],
             ephemeral: true
@@ -637,12 +662,12 @@ export async function handleBuy(message, args) {
         }
 
         // Gera a transação de pagamento para o comprador
-        await addTransaction(discordId, -item.price, 'SERVICE_PAYMENT', `Serviço: ${item.name}`);
-        const newBalance = await updateBalance(discordId, -item.price);
+        await addTransaction(discordId, -finalPrice, 'SERVICE_PAYMENT', `Serviço: ${item.name}`);
+        const newBalance = await updateBalance(discordId, -finalPrice);
 
         // Gera a transação de recebimento para o prestador
-        await addTransaction(providerId, item.price, 'SERVICE_RECEIVED', `Serviço: ${item.name}`);
-        await updateBalance(providerId, item.price);
+        await addTransaction(providerId, finalPrice, 'SERVICE_RECEIVED', `Serviço: ${item.name}`);
+        await updateBalance(providerId, finalPrice);
 
         // Registrar compra
         await createPurchase(discordId, item);
@@ -718,8 +743,8 @@ export async function handleBuy(message, args) {
 
         try {
           // Desconta saldo
-          await addTransaction(discordId, -item.price, 'SHOP_PURCHASE', `Mute: ${target.user.username}`);
-          const newBalance = await updateBalance(discordId, -item.price);
+          await addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Mute: ${target.user.username}`);
+          const newBalance = await updateBalance(discordId, -finalPrice);
 
           // Registra compra
           await createPurchase(discordId, item);
@@ -808,10 +833,10 @@ export async function handleBuy(message, args) {
     }
 
     // Adiciona a transação
-    await addTransaction(discordId, -item.price, 'SHOP_PURCHASE', `Compra: ${item.name}` );
+    await addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Compra: ${item.name}`);
 
     // Atualizar o saldo
-    const newBalance = await updateBalance(discordId, -item.price);
+    const newBalance = await updateBalance(discordId, -finalPrice);
 
     // Registrar a compra
     await createPurchase(discordId, item);
@@ -819,11 +844,18 @@ export async function handleBuy(message, args) {
     // Diminuir estoque (Se tiver estoque)
     await decreaseStock(item.id, item.stock);
 
+    let priceText = `**${finalPrice} TGG-Coins**`;
+    
+    // Mensagem extra para quem comprou com desconto
+    if (finalPrice < item.price) {
+      priceText = `~~${item.price}~~ → ${priceText} 🔥 (desconto de Booster aplicado)`;
+    }
+
     return message.reply({
       embeds: [
         createSuccessEmbed(
           'Compra realizada!',
-          `Você comprou **${item.name}** por ${item.price} TGG-Coins.\nSaldo atual: **${newBalance}**`
+          `Você comprou **${item.name}** por ${priceText}.\nSaldo atual: **${newBalance}**`
         )
       ]
     });

@@ -1,4 +1,5 @@
 import { getClient } from './db.js';
+import { TGG_COINS_ROLES } from './tggCoinsCommands.js';
 
 /**
  * Adiciona transação
@@ -397,4 +398,16 @@ export async function canUseItem(discordId, itemId) {
   if (error) throw error;
 
   return data.length === 0;
+}
+
+export function getDiscountedPrice(member, item) {
+  let price = item.price;
+
+  // Se for booster
+  if (member.roles.cache.has(TGG_COINS_ROLES.BOOSTER)) {
+    const discount = 0.05; // 5% de desconto
+    price = Math.floor(price * (1 - discount));
+  }
+
+  return price;
 }
