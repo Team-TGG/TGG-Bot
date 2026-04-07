@@ -2,7 +2,7 @@ import { getUserByDiscordId } from '../src/db.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from './discordUtils.js';
 import { STAFF_ROLE_IDS } from '../config/index.js';
 
-const ROLE_HIERARCHY = {
+export const ROLE_HIERARCHY = {
   [STAFF_ROLE_IDS.helper]: 1,
   [STAFF_ROLE_IDS.moderator]: 2,
   [STAFF_ROLE_IDS.supervisor]: 3,

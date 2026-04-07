@@ -20,7 +20,7 @@ import { restoreMutes } from './src/services/muteManager.js';
 // Handlers
 import { handleSync, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleMute, handleUnmute, handleBan, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou } from './src/admin.js';
 import { handleHelp, handleStats, handleClan, handleActive, handleRegras, handleMissoes } from './src/public.js';
-import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider } from './src/tggCoinsCommands.js';
+import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak } from './src/tggCoinsCommands.js';
 
 async function main() {
   if (!discordConfig.token || !discordConfig.guildId) {
@@ -91,6 +91,11 @@ async function main() {
     'loja': 'shop',
     'buy': 'buy',
     'comprar': 'buy',
+    'conquistas': 'conquistas',
+    'achievements': 'conquistas',
+    'streak': 'streak',
+    'sequencia': 'streak',
+    'sequência': 'streak',
     'addprovider': 'addprovider',
     'removeprovider': 'removeprovider',
   };
@@ -128,6 +133,8 @@ async function main() {
     leaderboard: handleLeaderboard,
     shop: handleShop,
     buy: handleBuy,
+    conquistas: handleConquistas,
+    streak: handleStreak,
     addprovider: handleAddProvider,
     removeprovider: handleRemoveProvider
   };

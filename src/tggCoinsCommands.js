@@ -1,10 +1,12 @@
 // Comandos da TGG-Coins
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder } from 'discord.js';
-import { addTransaction, updateBalance, getLastDaily, getUserStreak, upsertUserStreak, getBalance, getTransactions, getLeaderboard, getShopItems, getShopCount, getShopItemByPosition, hasPurchased, createPurchase, decreaseStock, getServiceProviders, addServiceProvider, removeServiceProvider, isServiceProvider, canUseItem, getCategory, getDiscountedPrice, getShopRolesByShopId } from './tggCoins.js';
-import { getUserByDiscordId } from './db.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder, ButtonStyle } from 'discord.js';
+import * as tggCoins from './tggCoins.js';
+import { getUserByDiscordId, getMissionWeekStart, formatDateBR } from './db.js';
+import { fetchPlayerStats } from './brawlhalla.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
-import { adminOnly } from '../utils/permissions.js';
+import { adminOnly, ROLE_HIERARCHY } from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
+import { STAFF_ROLE_IDS } from '../config/index.js';
 
 // Cargos relacionados às TGG-Coins (IDs dos cargos no Discord)
 export const TGG_COINS_ROLES = {
@@ -38,8 +40,8 @@ export async function handleDaily(message) {
     }
 
     // Pega o horário do último daily
-    const lastDaily = await getLastDaily(discordId);
-    const streakData = await getUserStreak(discordId); // Pega a streak atual do usuário
+    const lastDaily = await tggCoins.getLastDaily(discordId);
+    const streakData = await tggCoins.getUserStreak(discordId); // Pega a streak atual do usuário
 
     const now = new Date();
 
@@ -50,14 +52,25 @@ export async function handleDaily(message) {
     if (lastDaily) {
       const last = new Date(lastDaily.created_at);
       const diffHours = (now - last) / (1000 * 60 * 60);
+      const diffMs = now - last;
 
       // Bloquear resgate se ainda não tiver passado 24h do último daily
-      if (diffHours < 24) {
+      if (diffMs < 24 * 60 * 60 * 1000) {
+        const remainingMs = (24 * 60 * 60 * 1000) - diffMs;
+
+        const hours = Math.floor(remainingMs / (1000 * 60 * 60));
+        const minutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+
+        const timeText =
+          hours > 0
+            ? `${hours}h ${minutes}m`
+            : `${minutes}m`;
+
         return loading.edit({
           embeds: [
             createErrorEmbed(
               'Daily já resgatado',
-              `Volte em ${Math.ceil(24 - diffHours)}h`
+              `Volte em ${timeText}`
             )
           ]
         });
@@ -111,17 +124,17 @@ export async function handleDaily(message) {
     }
 
     // Atualiza streak
-    await upsertUserStreak(discordId, streak);
+    await tggCoins.upsertUserStreak(discordId, streak);
 
     // Adiciona o valor como "Daily" e atualiza o saldo
-    await addTransaction(discordId, reward, 'DAILY', 'Recompensa diária');
-    const newBalance = await updateBalance(discordId, reward);
+    await tggCoins.addTransaction(discordId, reward, 'DAILY', 'Recompensa diária');
+    const newBalance = await tggCoins.updateBalance(discordId, reward);
 
     return loading.edit({
       embeds: [
         createSuccessEmbed(
           'TGG Coins recebidas!',
-          `+${reward} TGG-Coins ${EMOJIS.TGGcoin}\n${streakMessage}${bonusMessage}\n\nSaldo atual: **${newBalance}**`
+          `+${reward} TGG-Coins ${EMOJIS.TGGcoin}\n${streakMessage}${bonusMessage}\n\nSaldo atual: **${newBalance.toLocaleString('pt-BR')}**`
         )
       ]
     });
@@ -145,14 +158,14 @@ export async function handleBalance(message) {
       });
     }
 
-    const balance = await getBalance(discordId);
+    const balance = await tggCoins.getBalance(discordId);
 
     return message.reply({
       embeds: [
         new EmbedBuilder()
           .setColor(0x5865f2)
           .setTitle(`${EMOJIS.TGGcoin} Seu saldo`)
-          .setDescription(`Você possui **${balance} TGG-Coins**`)
+          .setDescription(`Você possui **${balance.toLocaleString('pt-BR')} TGG-Coins**`)
           .setTimestamp()
       ]
     });
@@ -180,7 +193,7 @@ export async function handleHistorico(message) {
     const limit = 5;
 
     async function generateEmbed(page) {
-      const { data, total } = await getTransactions(discordId, page, limit);
+      const { data, total } = await tggCoins.getTransactions(discordId, page, limit);
 
       const totalPages = Math.ceil(total / limit) || 1;
 
@@ -196,7 +209,7 @@ export async function handleHistorico(message) {
 
         const sinal = t.amount >= 0 ? '+' : '-';
 
-        return `**${sinal}${Math.abs(t.amount)}** | ${t.description}\n${date}`;
+        return `**${sinal}${Math.abs(t.amount).toLocaleString('pt-BR')}** | ${t.description}\n${date}`;
       }).join('\n\n');
 
       return new EmbedBuilder()
@@ -221,7 +234,7 @@ export async function handleHistorico(message) {
         .setDisabled(page >= totalPages)
     );
 
-    let { total } = await getTransactions(discordId, page, limit);
+    let { total } = await tggCoins.getTransactions(discordId, page, limit);
     let totalPages = Math.ceil(total / limit) || 1;
 
     const msg = await message.reply({
@@ -244,7 +257,7 @@ export async function handleHistorico(message) {
       if (interaction.customId === 'prev') page--;
       if (interaction.customId === 'next') page++;
 
-      let { total } = await getTransactions(discordId, page, limit);
+      let { total } = await tggCoins.getTransactions(discordId, page, limit);
       let totalPages = Math.ceil(total / limit) || 1;
 
       await interaction.update({
@@ -267,7 +280,7 @@ export async function handleLeaderboard(message) {
     const limit = 10;
 
     async function generateEmbed(page) {
-      const { data, total } = await getLeaderboard(page, limit);
+      const { data, total } = await tggCoins.getLeaderboard(page, limit);
 
       const totalPages = Math.ceil(total / limit) || 1;
 
@@ -294,7 +307,7 @@ export async function handleLeaderboard(message) {
             position === 3 ? '🥉' :
             `#${position}`;
 
-          return `${medal} **${username}** — ${user.balance} TGG-Coins`;
+          return `${medal} **${username}** — ${user.balance.toLocaleString('pt-BR')} TGG-Coins`;
         })
       );
 
@@ -320,7 +333,7 @@ export async function handleLeaderboard(message) {
         .setDisabled(page >= totalPages)
     );
 
-    let { total } = await getLeaderboard(page, limit);
+    let { total } = await tggCoins.getLeaderboard(page, limit);
     let totalPages = Math.ceil(total / limit) || 1;
 
     const msg = await message.reply({
@@ -343,7 +356,7 @@ export async function handleLeaderboard(message) {
       if (interaction.customId === 'prev_lb') page--;
       if (interaction.customId === 'next_lb') page++;
 
-      let { total } = await getLeaderboard(page, limit);
+      let { total } = await tggCoins.getLeaderboard(page, limit);
       let totalPages = Math.ceil(total / limit) || 1;
 
       await interaction.update({
@@ -388,18 +401,24 @@ export async function handleShop(message, args) {
     let category = 'GERAL';
     let page = 1;
 
-    const allItems = await getShopItems(1, 9999);
+    const allItems = await tggCoins.getShopItems(1, 9999);
 
     function getFiltered() {
-      return allItems.data.filter(item => {
-        if (getCategory(item.type) !== category) return false;
+      const filtered = allItems.data.filter(item => {
+        if (tggCoins.getCategory(item.type) !== category) return false;
 
-        // Cores de VIP e Booster (Role_VIP) aparecem só pra quem tem esses cargos
         if (item.type === 'ROLE_VIP') {
           return member.roles.cache.has(TGG_COINS_ROLES.VIP) || member.roles.cache.has(TGG_COINS_ROLES.BOOSTER);
         }
 
         return true;
+      });
+
+      // Colocar itens de evento em primeiro
+      return filtered.sort((a, b) => {
+        if (a.type === 'EVENT' && b.type !== 'EVENT') return -1;
+        if (a.type !== 'EVENT' && b.type === 'EVENT') return 1;
+        return 0;
       });
     }
 
@@ -447,22 +466,24 @@ export async function handleShop(message, args) {
         if (item.is_unique) extra += ' 🔒 Único';
         if (item.stock !== null) extra += ` • Estoque: ${item.stock}`;
 
-        const finalPrice = getDiscountedPrice(member, item);
+        const finalPrice = tggCoins.getDiscountedPrice(member, item);
 
         let priceText;
 
         if (finalPrice === 0) {
           priceText = `🆓 **Grátis para Booster**`;
         } else {
-          priceText = `${EMOJIS.TGGcoin} **${finalPrice} TGG-Coins**`;
+          priceText = `${EMOJIS.TGGcoin} **${finalPrice.toLocaleString('pt-BR')} TGG-Coins**`;
 
           if (finalPrice < item.price) {
-            priceText = `~~${item.price}~~ → ${priceText} 🔥`;
+            priceText = `~~${item.price.toLocaleString('pt-BR')}~~ → ${priceText} 🔥`;
           }
         }
 
+        // Colocar emoji caso seja item de evento
+        const emoji = item.type === 'EVENT' ? '🎉 ' : '';
         embed.addFields({
-          name: `#${position} • ${item.name}`,
+          name: `#${position} • ${emoji}${item.name}`,
           value: `${item.description || 'Sem descrição'}\n${priceText}${extra}`,
           inline: false
         });
@@ -570,11 +591,11 @@ export async function handleBuy(message, args) {
     }
 
     // Preço final (verifica se o usuario tem desconto (booster) e aplica o desconto)
-    const finalPrice = getDiscountedPrice(member, item);
+    const finalPrice = tggCoins.getDiscountedPrice(member, item);
 
     // Se for um item único
     if (item.is_unique) {
-      const alreadyHas = await hasPurchased(discordId, item.id);
+      const alreadyHas = await tggCoins.hasPurchased(discordId, item.id);
       if (alreadyHas) {
         return message.reply({
           embeds: [createErrorEmbed('Item único', 'Você já comprou este item.')]
@@ -590,18 +611,18 @@ export async function handleBuy(message, args) {
     }
 
     // Ver o saldo do usuário
-    const balance = await getBalance(discordId);
+    const balance = await tggCoins.getBalance(discordId);
 
     // Se não tiver saldo suficiente, trava
     if (balance < finalPrice) {
       return message.reply({
-        embeds: [createErrorEmbed('Saldo insuficiente', `Você precisa de ${finalPrice} TGG-Coins.`)]
+        embeds: [createErrorEmbed('Saldo insuficiente', `Você precisa de ${finalPrice.toLocaleString('pt-BR')} TGG-Coins.`)]
       });
     }
 
     // Se for um serviço, escolhe o prestador antes de finalizar a compra
     if (item.type === 'SERVICE') {
-      const providers = await getServiceProviders(item.id);
+      const providers = await tggCoins.getServiceProviders(item.id);
 
       // Se não tiver prestadores, avisa que não tem como comprar o serviço no momento
       if (!providers.length) {
@@ -667,7 +688,7 @@ export async function handleBuy(message, args) {
         }
 
         // Dupla validação no saldo (Evita que o usuário compre algo, gaste o dinheiro, e depois escolha o prestador, causando um saldo negativo)
-        const balanceNow = await getBalance(discordId);
+        const balanceNow = await tggCoins.getBalance(discordId);
 
         if (balanceNow < finalPrice) {
           return interaction.reply({
@@ -677,21 +698,22 @@ export async function handleBuy(message, args) {
         }
 
         // Gera a transação de pagamento para o comprador
-        await addTransaction(discordId, -finalPrice, 'SERVICE_PAYMENT', `Serviço: ${item.name}`);
-        const newBalance = await updateBalance(discordId, -finalPrice);
+        await tggCoins.addTransaction(discordId, -finalPrice, 'SERVICE_PAYMENT', `Serviço: ${item.name}`);
+        const newBalance = await tggCoins.updateBalance(discordId, -finalPrice);
 
         // Gera a transação de recebimento para o prestador
-        await addTransaction(providerId, finalPrice, 'SERVICE_RECEIVED', `Serviço: ${item.name}`);
-        await updateBalance(providerId, finalPrice);
+        await tggCoins.addTransaction(providerId, finalPrice, 'SERVICE_RECEIVED', `Serviço: ${item.name}`);
+        await tggCoins.updateBalance(providerId, finalPrice);
 
         // Registrar compra
-        await createPurchase(discordId, item);
+        await tggCoins.createPurchase(discordId, item);
 
         await interaction.update({
+          content: `<@${providerId}>`,
           embeds: [
             createSuccessEmbed(
               'Serviço contratado!',
-              `Você contratou **${item.name}**.\nPagamento enviado ao prestador.\nSaldo atual: **${newBalance}**`
+              `Você contratou **${item.name}**.\nPrestador: <@${providerId}>\nSaldo atual: **${newBalance}**`
             )
           ],
           components: []
@@ -706,7 +728,7 @@ export async function handleBuy(message, args) {
     // Para itens de MUTE, precisa escolher o usuário a ser mutado antes de finalizar a compra
     if (item.type === 'MUTE') {
 
-      const canUse = await canUseItem(discordId, item.id);
+      const canUse = await tggCoins.canUseItem(discordId, item.id);
 
       // Verifica se já passou 1 hora desde o último mute comprado
       if (!canUse) {
@@ -758,14 +780,14 @@ export async function handleBuy(message, args) {
 
         try {
           // Desconta saldo
-          await addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Mute: ${target.user.username}`);
-          const newBalance = await updateBalance(discordId, -finalPrice);
+          await tggCoins.addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Mute: ${target.user.username}`);
+          const newBalance = await tggCoins.updateBalance(discordId, -finalPrice);
 
           // Registra compra
-          await createPurchase(discordId, item);
+          await tggCoins.createPurchase(discordId, item);
 
           // Diminui estoque (se tiver)
-          await decreaseStock(item.id, item.stock);
+          await tggCoins.decreaseStock(item.id, item.stock);
 
           // Aplica timeout de 30s
           await target.timeout(30 * 1000, `Mutado por ${message.author.username}`);
@@ -795,6 +817,37 @@ export async function handleBuy(message, args) {
       });
 
       return;
+    }
+
+    // Para itens tipo SERVER, marcar admin+ (cargos que tem permissão de criar cargos / emojis)
+    if (item.type === 'SERVER') {
+
+      const rolesToPing = Object.entries(ROLE_HIERARCHY)
+        .filter(([roleId, level]) => level >= ROLE_HIERARCHY[STAFF_ROLE_IDS.administrator])
+        .map(([roleId]) => `<@&${roleId}>`)
+        .join(' ');
+
+      if (!rolesToPing) {
+        return message.reply({
+          embeds: [createErrorEmbed('Erro', 'Nenhum cargo de administrador encontrado.')]
+        });
+      }
+
+      await tggCoins.addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Server: ${item.name}`);
+      const newBalance = await tggCoins.updateBalance(discordId, -finalPrice);
+
+      await tggCoins.createPurchase(discordId, item);
+      await tggCoins.decreaseStock(item.id, item.stock);
+
+      return message.reply({
+        content: rolesToPing,
+        embeds: [
+          createSuccessEmbed(
+            'Compra realizada!',
+            `Você ativou **${item.name}**.\nA staff foi notificada.\nSaldo atual: **${newBalance}**`
+          )
+        ]
+      });
     }
 
     // Segurança extra para os cargos VIP
@@ -834,7 +887,7 @@ export async function handleBuy(message, args) {
         }
       }
 
-      const roles = await getShopRolesByShopId(item.id);
+      const roles = await tggCoins.getShopRolesByShopId(item.id);
 
       if (!roles.length) {
         return message.reply({
@@ -892,7 +945,7 @@ export async function handleBuy(message, args) {
           });
         }
 
-        const balanceNow = await getBalance(discordId);
+        const balanceNow = await tggCoins.getBalance(discordId);
 
         if (balanceNow < finalPrice) {
           return interaction.reply({
@@ -912,11 +965,11 @@ export async function handleBuy(message, args) {
           // Adiciona nova
           await member.roles.add(selectedRoleId);
 
-          await addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Cargo: ${item.name}`);
-          const newBalance = await updateBalance(discordId, -finalPrice);
+          await tggCoins.addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Cargo: ${item.name}`);
+          const newBalance = await tggCoins.updateBalance(discordId, -finalPrice);
 
-          await createPurchase(discordId, item);
-          await decreaseStock(item.id, item.stock);
+          await tggCoins.createPurchase(discordId, item);
+          await tggCoins.decreaseStock(item.id, item.stock);
 
           const actionText = currentRoleNow ? 'substituiu sua cor' : 'adquiriu um cargo';
 
@@ -996,22 +1049,22 @@ export async function handleBuy(message, args) {
     }
 
     // Adiciona a transação
-    await addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Compra: ${item.name}`);
+    await tggCoins.addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Compra: ${item.name}`);
 
     // Atualizar o saldo
-    const newBalance = await updateBalance(discordId, -finalPrice);
+    const newBalance = await tggCoins.updateBalance(discordId, -finalPrice);
 
     // Registrar a compra
-    await createPurchase(discordId, item);
+    await tggCoins.createPurchase(discordId, item);
 
     // Diminuir estoque (Se tiver estoque)
-    await decreaseStock(item.id, item.stock);
+    await tggCoins.decreaseStock(item.id, item.stock);
 
-    let priceText = `**${finalPrice} TGG-Coins**`;
+    let priceText = `**${finalPrice.toLocaleString('pt-BR')} TGG-Coins**`;
     
     // Mensagem extra para quem comprou com desconto
     if (finalPrice < item.price) {
-      priceText = `~~${item.price}~~ → ${priceText} 🔥 (desconto de Booster aplicado)`;
+      priceText = `~~${item.price.toLocaleString('pt-BR')}~~ → ${priceText} 🔥 (desconto de Booster aplicado)`;
     }
 
     return message.reply({
@@ -1030,9 +1083,222 @@ export async function handleBuy(message, args) {
   }
 }
 
-// ---- .addprovider (admin) ----
-export const handleAddProvider    = adminOnly(async (message, args, client) => {
+// ---- .conquistas ----
+export async function handleConquistas(message) {
+  const loading = await message.reply({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(0xfaa61a)
+        .setTitle(`${EMOJIS.loading} Carregando conquistas...`)
+    ]
+  });
+
   try {
+    const discordId = message.author.id;
+    const user = await getUserByDiscordId(discordId);
+
+    if (!user) {
+      return loading.edit({
+        embeds: [
+          createErrorEmbed('Acesso Negado', 'Você não está na guilda.')
+        ]
+      });
+    }
+
+    const weekStart = getMissionWeekStart();
+    const missions = await tggCoins.getWeeklyMissions(weekStart);
+
+    // Se não tiver missões cadastradas, mostra mensagem de erro
+    if (!missions || missions.length === 0) {
+      return loading.edit({
+        embeds: [
+          createErrorEmbed(
+            'Nenhuma missão encontrada',
+            'Ainda não há missões cadastradas para esta semana.'
+          )
+        ]
+      });
+    }
+
+    let activeText = '';
+    let historyText = '';
+
+    const stats = await fetchPlayerStats(user.brawlhalla_id);
+
+    for (const [index, mission] of missions.entries()) {
+      const mode = mission.mode;
+      const type = mission.type;
+      const fields = tggCoins.getModeFields(mode);
+
+      let text = `**${index + 1}. ${mode}**\n`;
+
+      if (type === 'ELO') {
+        text += `🏆 Alcançar **${mission.target_elo} de elo**\n`;
+      } else if (type === 'WINS') {
+        text += `🥇 Ganhar **${mission.target_elo} partidas**\n`;
+      } else if (type === 'GAMES') {
+        text += `🎮 Jogar **${mission.target_elo} partidas**\n`;
+      }
+
+      // Pegar os dados iniciais do jogador no momento que a missão começou (ou seja, o elo, wins e games que ele tinha quando a missão foi atribuída)
+      const progress = await tggCoins.getPlayerMissionProgress(user.brawlhalla_id, mission.id);
+
+      const initial_elo = progress[fields.elo] || 0;
+      const initial_games = progress[fields.games] || 0;
+      const initial_wins = progress[fields.wins] || 0;
+
+      // Dados da API, usado para comparar com os dados iniciais e ver se o jogador completou a missão ou não
+      const current = tggCoins.extractModeData(stats, mode);
+
+      const result = tggCoins.checkMissionCompletion({type, initial_elo, initial_games, initial_wins, final_elo: current.elo, final_games: current.games, final_wins: current.wins, target_elo: mission.target_elo});
+
+      const alreadyCompleted = await tggCoins.hasCompletedMission(discordId, mission.id);
+
+      // Se tiver completado a missão
+      if (result.completed) {
+        if (!alreadyCompleted) {
+          // Se tiver completado a missão, mostra a quantidade de moedas que o usuário ganhou e registra a missão como concluída para o usuário
+          await tggCoins.completeMission(discordId, mission);
+          text += `✅ Concluído (+${mission.tgg_coins_reward} coins)\n\n`;
+        } else {
+          text += `✅ Concluído\n\n`; // Fallback caso já tenha concluído anteriormente
+        }
+      } else {
+        text += `⏳ Em progresso\n`;
+        if (result.tip) text += `${result.tip}\n`; // Se tiver alguma dica, coloca a dica para ajudar o usuário a completar a missão
+        text += `\n`;
+      }
+
+      activeText += text;
+    }
+
+    // Mostrar as conquistas concluídas do usuário (histórico)
+    const history = await tggCoins.getUserAchievements(discordId);
+
+    if (history && history.length > 0) {
+      history.forEach((item, index) => {
+        const mission = item.elo_missions;
+
+        if (!mission) return;
+
+        let text = `**${index + 1}. ${mission.mode}**\n`;
+
+        if (mission.type === 'ELO') {
+          text += `🏆 Alcançou **${mission.target_elo} de elo**\n`;
+        } else if (mission.type === 'WINS') {
+          text += `🥇 Ganhou **${mission.target_elo} partidas**\n`;
+        } else if (mission.type === 'GAMES') {
+          text += `🎮 Jogou **${mission.target_elo} partidas**\n`;
+        }
+
+        text += `💰 +${item.coins_earned} coins\n`;
+
+        if (item.completed_at) {
+          const date = item.completed_at.split('T')[0];
+          text += `📅 ${formatDateBR(date)}\n`;
+        }
+
+        text += `\n`;
+
+        historyText += text;
+      });
+    }
+
+    // Embeds
+    const activeEmbed = new EmbedBuilder()
+      .setColor(0x00ff99)
+      .setTitle('🎯 Missões da Semana')
+      .setDescription(activeText || 'Nenhuma missão ativa.')
+      .setFooter({
+        text: `Semana iniciada em ${formatDateBR(weekStart)}`
+      });
+
+    const historyEmbed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle('🏆 Missões Concluídas')
+      .setDescription(historyText || 'Nenhuma missão concluída ainda.');
+
+    // Botões para alternar entre missões ativas e histórico
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('active')
+        .setLabel('🎯 Ativas')
+        .setStyle(ButtonStyle.Success),
+
+      new ButtonBuilder()
+        .setCustomId('history')
+        .setLabel('🏆 Concluídas')
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    const msg = await loading.edit({
+      embeds: [activeEmbed],
+      components: [row]
+    });
+
+    const collector = msg.createMessageComponentCollector({
+      time: 60000
+    });
+
+    collector.on('collect', async (interaction) => {
+      if (interaction.user.id !== discordId) {
+        return interaction.reply({
+          content: 'Você não pode usar isso.',
+          ephemeral: true
+        });
+      }
+
+      if (interaction.customId === 'active') {
+        await interaction.update({
+          embeds: [activeEmbed],
+          components: [row]
+        });
+      }
+
+      if (interaction.customId === 'history') {
+        await interaction.update({
+          embeds: [historyEmbed],
+          components: [row]
+        });
+      }
+    });
+
+  } catch (err) {
+    return loading.edit({
+      embeds: [
+        createErrorEmbed('Erro ao carregar conquistas', err.message)
+      ]
+    });
+  }
+}
+
+export async function handleStreak(message) {
+  try {
+    const discordId = message.author.id;
+
+    const streakData = await tggCoins.getUserStreak(discordId);
+    const streak = streakData?.streak || 0;
+
+    return message.reply({
+      embeds: [
+        createSuccessEmbed(
+          '🔥 Sua Streak',
+          `Você está com **${streak} dia(s)** de streak.`
+        )
+      ]
+    });
+
+  } catch (err) {
+    return message.reply({
+      embeds: [createErrorEmbed('Erro', err.message)]
+    });
+  }
+}
+
+// ---- .addprovider (admin) ----
+export const handleAddProvider = adminOnly(async (message, args, client) => {
+  try {
+    const discordId = message.author.id;
     const position = parseInt(args[0]);
     const member = message.mentions.members.first();
 
@@ -1042,11 +1308,27 @@ export const handleAddProvider    = adminOnly(async (message, args, client) => {
       });
     }
 
-    const item = await getShopItemByPosition(position);
+    const state = shopState.get(discordId);
+
+    if (!state) {
+      return message.reply({
+        embeds: [createErrorEmbed('Erro', 'Abra a loja primeiro usando `.shop`.')]
+      });
+    }
+
+    if (Date.now() - state.createdAt > SHOP_STATE_TTL) {
+      shopState.delete(discordId);
+
+      return message.reply({
+        embeds: [createErrorEmbed('Tempo expirado', 'Abra a loja novamente com `.shop`.')]
+      });
+    }
+
+    const item = state.items[position - 1];
 
     if (!item) {
       return message.reply({
-        embeds: [createErrorEmbed('Erro', 'Item não encontrado.')]
+        embeds: [createErrorEmbed('Erro', 'Item não encontrado nessa página/categoria.')]
       });
     }
 
@@ -1056,7 +1338,7 @@ export const handleAddProvider    = adminOnly(async (message, args, client) => {
       });
     }
 
-    const already = await isServiceProvider(item.id, member.id);
+    const already = await tggCoins.isServiceProvider(item.id, member.id);
 
     if (already) {
       return message.reply({
@@ -1064,7 +1346,7 @@ export const handleAddProvider    = adminOnly(async (message, args, client) => {
       });
     }
 
-    await addServiceProvider(item.id, member.id);
+    await tggCoins.addServiceProvider(item.id, member.id);
 
     return message.reply({
       embeds: [
@@ -1085,6 +1367,7 @@ export const handleAddProvider    = adminOnly(async (message, args, client) => {
 // ---- .removeprovider (admin) ----
 export const handleRemoveProvider = adminOnly(async (message, args, client) => {
   try {
+    const discordId = message.author.id;
     const position = parseInt(args[0]);
     const member = message.mentions.members.first();
 
@@ -1094,11 +1377,27 @@ export const handleRemoveProvider = adminOnly(async (message, args, client) => {
       });
     }
 
-    const item = await getShopItemByPosition(position);
+    const state = shopState.get(discordId);
+
+    if (!state) {
+      return message.reply({
+        embeds: [createErrorEmbed('Erro', 'Abra a loja primeiro usando `.shop`.')]
+      });
+    }
+
+    if (Date.now() - state.createdAt > SHOP_STATE_TTL) {
+      shopState.delete(discordId);
+
+      return message.reply({
+        embeds: [createErrorEmbed('Tempo expirado', 'Abra a loja novamente com `.shop`.')]
+      });
+    }
+
+    const item = state.items[position - 1];
 
     if (!item) {
       return message.reply({
-        embeds: [createErrorEmbed('Erro', 'Item não encontrado.')]
+        embeds: [createErrorEmbed('Erro', 'Item não encontrado nessa página/categoria.')]
       });
     }
 
@@ -1108,7 +1407,7 @@ export const handleRemoveProvider = adminOnly(async (message, args, client) => {
       });
     }
 
-    const exists = await isServiceProvider(item.id, member.id);
+    const exists = await tggCoins.isServiceProvider(item.id, member.id);
 
     if (!exists) {
       return message.reply({
@@ -1116,7 +1415,7 @@ export const handleRemoveProvider = adminOnly(async (message, args, client) => {
       });
     }
 
-    await removeServiceProvider(item.id, member.id);
+    await tggCoins.removeServiceProvider(item.id, member.id);
 
     return message.reply({
       embeds: [
