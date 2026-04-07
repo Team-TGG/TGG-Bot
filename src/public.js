@@ -83,7 +83,8 @@ export async function handleHelp(message, args, client) {
     .setColor(0x5865f2)
     .setTitle(`${EMOJIS.TGGcoin} TGG Coins`)
     .addFields(
-      { name: `${EMOJIS.arrowRight} .daily`, value: 'Receber as moedas diárias (1.2x para MVP Semanal)', inline: false },
+      { name: `${EMOJIS.arrowRight} .daily`, value: 'Receber as moedas diárias (+0.4x para MVP Semanal e +0.2x pra VIP)', inline: false },
+      { name: `${EMOJIS.arrowRight} .streak`, value: 'Ver sua sequência atual de "dailys"', inline: false },
       { name: `${EMOJIS.arrowRight} .balance (.bal)`, value: 'Ver a quantidade atual de moedas que você tem', inline: false },
       { name: `${EMOJIS.arrowRight} .historico (.hist)`, value: 'Ver seu histórico de gastos', inline: false },
       { name: `${EMOJIS.arrowRight} .leaderboard (.lb)`, value: 'Ver um leaderboard com as pessoas que mais tem TGG-Coins', inline: false },
