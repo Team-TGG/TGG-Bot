@@ -545,6 +545,78 @@ export function createStatsEmbed(playerData) {
     .setTimestamp();
 }
 
+// Tabela de XP (Nível -> XP Acumulado)
+const XP_TABLE = [
+  0, 210, 578, 1033, 1575, 2203, 2940, 3807, 4804, 5931,
+  7209, 8639, 10221, 11954, 13861, 15941, 18194, 20621, 23243, 26060,
+  29072, 32279, 35681, 39299, 43112, 47142, 51389, 55852, 60532, 65450,
+  70585, 75958, 81570, 87420, 93508, 99880, 106445, 113248, 120311, 127613,
+  135175, 142975, 151035, 159355, 167935, 176775, 185897, 195279, 204921, 214844,
+  225027, 235492, 246239, 257246, 268534, 280104, 291956, 304069, 316484, 329202,
+  342202, 355484, 369069, 382936, 397106, 411579, 426334, 441392, 456754, 472419,
+  488387, 504659, 521234, 538112, 555294, 572801, 590611, 608724, 627162, 645904,
+  664971, 684341, 704036, 724056, 744379, 765027, 786000, 807298, 828921, 850869,
+  873142, 895740, 918663, 941933, 965528, 989448, 1013715, 1038307, 1063224, 1088487
+];
+
+/**
+ * Calcula o nível de uma lenda com base no seu XP.
+ * @param {number} xp 
+ * @returns {number}
+ */
+export function calculateLevel(xp) {
+  if (!xp || xp < 0) return 1;
+  // Busca binária para eficiência (O(log N))
+  let left = 0;
+  let right = XP_TABLE.length - 1;
+  let level = 1;
+
+  while (left <= right) {
+    let mid = Math.floor((left + right) / 2);
+    if (XP_TABLE[mid] <= xp) {
+      level = mid + 1;
+      left = mid + 1;
+    } else {
+      right = mid - 1;
+    }
+  }
+  return level;
+}
+
+export function createLegendsStatsEmbed(playerData) {
+  const stats = playerData || {};
+  const legends = stats.legends || [];
+
+  // Ordena por XP decrescente e pega o top 10
+  const topLegends = [...legends]
+    .sort((a, b) => (b.xp || 0) - (a.xp || 0))
+    .slice(0, 10);
+
+  const embed = new EmbedBuilder()
+    .setColor(0x00ff00)
+    .setTitle(`🏆 ${stats.name || 'Player'} — Top 10 Legends`)
+    .setFooter({ text: 'Brawlhalla Stats • Legends' })
+    .setTimestamp();
+
+  if (topLegends.length === 0) {
+    embed.setDescription('Nenhum dado de lenda encontrado.');
+    return embed;
+  }
+
+  const legendList = topLegends.map((l, i) => {
+    const key = cleanLegendName(l.legend_name_key);
+    const name = LEGEND_NAMES[key] || l.legend_name_key || 'Unknown';
+    const icon = LEGEND_EMOJIS[key] || '❓';
+    const level = calculateLevel(l.xp);
+    const xpFormatted = formatNumber(l.xp || 0);
+    
+    return `**${i + 1}.** ${icon} **${name}**\n╰ \`Lv. ${level}\` — \`${xpFormatted} XP\``;
+  }).join('\n\n');
+
+  embed.setDescription(legendList);
+  return embed;
+}
+
 export function createRankedEmbed(playerData) {
   const stats = playerData || {};
   const ranked = stats.ranked || {};

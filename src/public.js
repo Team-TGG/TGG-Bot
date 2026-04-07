@@ -224,10 +224,12 @@ export async function handleStats(message, args, client) {
 
     const mainEmbed = createStatsEmbed(playerData);
     const rankedEmbed = createRankedEmbed(playerData);
+    const legendsEmbed = (await import('./brawlhalla.js')).createLegendsStatsEmbed(playerData);
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('stats_main').setLabel('Geral').setStyle(1),
-      new ButtonBuilder().setCustomId('stats_ranked').setLabel('Ranked').setStyle(1)
+      new ButtonBuilder().setCustomId('stats_ranked').setLabel('Ranked').setStyle(1),
+      new ButtonBuilder().setCustomId('stats_legends').setLabel('Legends').setStyle(1)
     );
 
     const statsMsg = await sendCleanMessage(loadingMsg, { embeds: [mainEmbed], components: [row] });
@@ -244,6 +246,8 @@ export async function handleStats(message, args, client) {
           await i.update({ embeds: [mainEmbed], components: [row] }).catch(() => { });
         } else if (i.customId === 'stats_ranked') {
           await i.update({ embeds: [rankedEmbed], components: [row] }).catch(() => { });
+        } else if (i.customId === 'stats_legends') {
+          await i.update({ embeds: [legendsEmbed], components: [row] }).catch(() => { });
         }
       } catch (err) {
         console.error('[Interaction] Error handled in collector:', err.message);
