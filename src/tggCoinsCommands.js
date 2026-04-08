@@ -482,6 +482,7 @@ export async function handleShop(message, args) {
 
         // Colocar emoji caso seja item de evento
         const emoji = item.type === 'EVENT' ? '🎉 ' : '';
+
         embed.addFields({
           name: `#${position} • ${emoji}${item.name}`,
           value: `${item.description || 'Sem descrição'}\n${priceText}${extra}`,
@@ -492,7 +493,9 @@ export async function handleShop(message, args) {
       return embed;
     }
 
-    function getComponents() {
+    function getComponents(filteredLength) {
+      const totalPages = Math.ceil(filteredLength / limit) || 1;
+
       const select = new StringSelectMenuBuilder()
         .setCustomId('shop_category')
         .setPlaceholder('📂 Escolha uma categoria')
@@ -502,12 +505,31 @@ export async function handleShop(message, args) {
           { label: '🛠️ Serviços', value: 'SERVICOS', default: category === 'SERVICOS' }
         ]);
 
-      return [new ActionRowBuilder().addComponents(select)];
+      const buttons = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('shop_prev')
+          .setLabel('⬅️')
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(page === 1),
+
+        new ButtonBuilder()
+          .setCustomId('shop_next')
+          .setLabel('➡️')
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(page >= totalPages)
+      );
+
+      return [
+        new ActionRowBuilder().addComponents(select),
+        buttons
+      ];
     }
+
+    const filteredInitial = getFiltered();
 
     const msg = await message.reply({
       embeds: [await generateEmbed()],
-      components: getComponents()
+      components: getComponents(filteredInitial.length)
     });
 
     const collector = msg.createMessageComponentCollector({ time: 60000 });
@@ -526,9 +548,19 @@ export async function handleShop(message, args) {
           page = 1;
         }
 
+        if (interaction.customId === 'shop_prev') {
+          page--;
+        }
+
+        if (interaction.customId === 'shop_next') {
+          page++;
+        }
+
+        const filtered = getFiltered();
+
         await interaction.update({
           embeds: [await generateEmbed()],
-          components: getComponents()
+          components: getComponents(filtered.length)
         });
 
       } catch (err) {
