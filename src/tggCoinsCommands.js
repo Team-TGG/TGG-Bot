@@ -1,7 +1,7 @@
 // Comandos da TGG-Coins
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder, ButtonStyle } from 'discord.js';
 import * as tggCoins from './tggCoins.js';
-import { getUserByDiscordId, getMissionWeekStart, formatDateBR } from './db.js';
+import { getUserByDiscordId, getMissionWeekStart, formatDateBR, getMissionWeekEnd } from './db.js';
 import { fetchPlayerStats } from './brawlhalla.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
 import { adminOnly, ROLE_HIERARCHY } from '../utils/permissions.js';
@@ -1106,7 +1106,8 @@ export async function handleConquistas(message) {
     }
 
     const weekStart = getMissionWeekStart();
-    const missions = await tggCoins.getWeeklyMissions(weekStart);
+    const weekEnd = getMissionWeekEnd();
+    const missions = await tggCoins.getWeeklyMissions(weekStart, weekEnd);
 
     // Se não tiver missões cadastradas, mostra mensagem de erro
     if (!missions || missions.length === 0) {
@@ -1272,6 +1273,7 @@ export async function handleConquistas(message) {
   }
 }
 
+// ---- .streak ----
 export async function handleStreak(message) {
   try {
     const discordId = message.author.id;

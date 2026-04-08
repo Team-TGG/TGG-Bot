@@ -21,6 +21,17 @@ export function formatDateBR(dateString) {
   return `${day}/${month}/${year}`;
 }
 
+export function formatDateTime(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
 function getLastWednesdayReference() {
   const today = new Date();
   const dayOfWeek = today.getDay();
@@ -56,6 +67,33 @@ export function getMissionWeekStart() {
   const day = String(today.getDate()).padStart(2, '0');
 
   return `${year}-${month}-${day}`;
+}
+
+export function getMissionWeekEnd() {
+  const today = new Date();
+  const now = new Date();
+
+  const dayOfWeek = today.getDay();
+
+  // Quarta-feira
+  const diff = (dayOfWeek - 3 + 7) % 7;
+
+  today.setDate(today.getDate() - diff);
+  today.setHours(6, 0, 0, 0);
+
+  // Se ainda não chegou em quarta 06:00, volta 1 semana
+  if (now < today) {
+    today.setDate(today.getDate() - 7);
+  }
+
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  const hours = String(today.getHours()).padStart(2, '0');
+  const minutes = String(today.getMinutes()).padStart(2, '0');
+  const seconds = String(today.getSeconds()).padStart(2, '0');
+
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
 
@@ -330,6 +368,8 @@ export async function getWeeklyMissions() {
 
   return data ?? [];
 }
+
+
 export async function reactivateOrAddUser(discord_id, brawlhalla_id, username) {
   const supabase = getClient();
   

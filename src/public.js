@@ -1,6 +1,6 @@
 // public.js - Comandos públicos
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
-import { getUsers, getUsersWithElo, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes, getMissionWeekStart, getActiveUser } from './db.js';
+import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd } from './db.js';
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createClanEmbed, getUserBrawlhallaId, getCached } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
@@ -84,7 +84,8 @@ export async function handleHelp(message, args, client) {
     .setTitle(`${EMOJIS.TGGcoin} TGG Coins`)
     .addFields(
       { name: `${EMOJIS.arrowRight} .daily`, value: 'Receber as moedas diárias (+0.4x para MVP Semanal e +0.2x pra VIP)', inline: false },
-      { name: `${EMOJIS.arrowRight} .streak`, value: 'Ver sua sequência atual de "dailys"', inline: false },
+      { name: `${EMOJIS.arrowRight} .streak`, value: 'Ver sua sequência atual de daily/diárias', inline: false },
+      { name: `${EMOJIS.arrowRight} .conquistas`, value: 'Ver as conquistas cadastradas da semana, complete para ganhar TGG Coins', inline: false },
       { name: `${EMOJIS.arrowRight} .balance (.bal)`, value: 'Ver a quantidade atual de moedas que você tem', inline: false },
       { name: `${EMOJIS.arrowRight} .historico (.hist)`, value: 'Ver seu histórico de gastos', inline: false },
       { name: `${EMOJIS.arrowRight} .leaderboard (.lb)`, value: 'Ver um leaderboard com as pessoas que mais tem TGG-Coins', inline: false },
@@ -308,8 +309,10 @@ export async function handleClan(message, args, client) {
 export async function handleMissoes(message, args, client) {
   try {
     const missions = await getWeeklyMissions();
+    const weekEnd = getMissionWeekEnd();
+    const now = new Date();
 
-    if (!missions || missions.length === 0) {
+    if (!missions || missions.length === 0 || new Date(weekEnd) < now) {
       return message.reply({
         embeds: [
           createErrorEmbed(

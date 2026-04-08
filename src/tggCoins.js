@@ -1,4 +1,4 @@
-import { getClient } from './db.js';
+import { getClient, formatDateTime } from './db.js';
 import { TGG_COINS_ROLES } from './tggCoinsCommands.js';
 
 /**
@@ -444,8 +444,16 @@ export async function getShopRolesByShopId(shopId) {
 /**
  * Pegar as missões semanais para a semana atual (usado para as conquistas)
  */
-export async function getWeeklyMissions(weekStart) {
+export async function getWeeklyMissions(weekStart, weekEnd) {
   const supabase = getClient();
+
+  const now = new Date();
+  const end = new Date(weekEnd);
+
+  // Se já passou do fim da semana (Quarta-feira às 06:00), não retorna missões
+  if (now > end) {
+    return [];
+  }
 
   const { data, error } = await supabase
     .from('elo_missions')
