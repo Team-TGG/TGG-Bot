@@ -1,7 +1,7 @@
 // Comandos da TGG-Coins
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder, ButtonStyle } from 'discord.js';
 import * as tggCoins from './tggCoins.js';
-import { getUserByDiscordId, getMissionWeekStart, formatDateBR, getMissionWeekEnd } from './db.js';
+import { getUserByDiscordId, getMissionWeekStart, formatDateBR, getMissionWeekEnd, resolveBrawlhallaId, loadAliases } from './db.js';
 import { fetchPlayerStats } from './brawlhalla.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
 import { adminOnly, ROLE_HIERARCHY } from '../utils/permissions.js';
@@ -14,6 +14,69 @@ export const TGG_COINS_ROLES = {
   VIP:          '1490462353995731054',  // VIP
   BOOSTER:      '1437560273031528470'   // Booster
 };
+
+// Funções auxiliares
+
+// Função pra rodar o daily após a negar ou recuper o streak
+async function runDaily(target, member, discordId, streak, recovered) {
+  let reward = 50;
+  let streakMessage = '';
+
+  if (streak >= 7) {
+    reward = 100;
+    streakMessage = `🔥 Streak de ${streak} dias! Recompensa máxima!`;
+  } else if (streak >= 3) {
+    reward = 75;
+    streakMessage = `🔥 Streak de ${streak} dias! Continue assim!`;
+  } else {
+    reward = 50;
+    streakMessage = `📅 Streak de ${streak} dia${streak > 1 ? 's' : ''}`;
+  }
+
+  if (recovered) {
+    streakMessage += `\n💸 Streak recuperada por 200 moedas!`;
+  }
+
+  let multiplier = 1;
+  let bonusDetails = [];
+
+  if (member.roles.cache.has(TGG_COINS_ROLES.MVP_SEMANAL)) {
+    multiplier += 0.4;
+    bonusDetails.push('✨ MVP Semanal (+40%)');
+  }
+
+  if (member.roles.cache.has(TGG_COINS_ROLES.VIP)) {
+    multiplier += 0.2;
+    bonusDetails.push('💎 VIP (+20%)');
+  }
+
+  const original = reward;
+  reward = Math.floor(reward * multiplier);
+  const bonus = reward - original;
+
+  let bonusMessage = '';
+  if (bonus > 0) {
+    bonusMessage = `\n${bonusDetails.join('\n')}\n💰 Bônus total: +${bonus} TGG-Coins`;
+  }
+
+  await tggCoins.upsertUserStreak(discordId, streak);
+  await tggCoins.addTransaction(discordId, reward, 'DAILY', 'Recompensa diária');
+  const newBalance = await tggCoins.updateBalance(discordId, reward);
+
+  const replyMethod = typeof target.update === 'function'
+    ? target.update.bind(target)
+    : target.edit.bind(target);
+
+  return replyMethod({
+    embeds: [
+      createSuccessEmbed(
+        'TGG Coins recebidas!',
+        `+${reward} TGG-Coins ${EMOJIS.TGGcoin}\n${streakMessage}${bonusMessage}\n\nSaldo atual: **${newBalance.toLocaleString('pt-BR')}**`
+      )
+    ],
+    components: []
+  });
+}
 
 // ---- .daily ----
 export async function handleDaily(message) {
@@ -46,13 +109,14 @@ export async function handleDaily(message) {
     const now = new Date();
 
     let streak = 1;
-    let reward = 50;
-    let streakMessage = '';
+    let recovered = false;
+
+    const RECOVERY_COST = 300;
 
     if (lastDaily) {
       const last = new Date(lastDaily.created_at);
-      const diffHours = (now - last) / (1000 * 60 * 60);
       const diffMs = now - last;
+      const diffHours = diffMs / (1000 * 60 * 60);
 
       // Bloquear resgate se ainda não tiver passado 24h do último daily
       if (diffMs < 24 * 60 * 60 * 1000) {
@@ -60,84 +124,99 @@ export async function handleDaily(message) {
 
         const hours = Math.floor(remainingMs / (1000 * 60 * 60));
         const minutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
-
-        const timeText =
-          hours > 0
-            ? `${hours}h ${minutes}m`
-            : `${minutes}m`;
+        const seconds = Math.floor((remainingMs % (1000 * 60)) / 1000);
 
         return loading.edit({
           embeds: [
             createErrorEmbed(
               'Daily já resgatado',
-              `Volte em ${timeText}`
+              `Volte em ${hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m ${seconds}s`}.`
             )
           ]
         });
       }
 
       if (diffHours <= 48) {
-        streak = (streakData?.streak || 1) + 1; // Aumenta em 1 a streak
-      } else {
-        streak = 1; // Reset da streak se tiver passado 48h
+        streak = (streakData?.streak || 1) + 1;
+      }
+
+      // Se perdeu streak em até 72h, pode recuperar
+      else {
+        const canRecover = diffHours <= 72;
+
+        if (canRecover && streakData?.streak > 0) {
+          const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`recover_${discordId}`)
+              .setLabel('Recuperar streak')
+              .setStyle(ButtonStyle.Success),
+
+            new ButtonBuilder()
+              .setCustomId(`skip_${discordId}`)
+              .setLabel('Ignorar')
+              .setStyle(ButtonStyle.Secondary)
+          );
+
+          await loading.edit({
+            embeds: [
+              createErrorEmbed(
+                'Streak perdida!',
+                `Você perdeu sua streak de **${streakData.streak} dia(s)**.\n\nDeseja recuperar por **${RECOVERY_COST} moedas**?`
+              )
+            ],
+            components: [row]
+          });
+
+          const filter = i => i.user.id === discordId;
+          const collector = loading.createMessageComponentCollector({
+            filter,
+            time: 30000,
+            max: 1
+          });
+
+          collector.on('collect', async (interaction) => {
+            let finalStreak = 1;
+
+            if (interaction.customId.startsWith('recover')) {
+              const balance = await tggCoins.getBalance(discordId);
+
+              if (balance >= RECOVERY_COST) {
+                await tggCoins.addTransaction(
+                  discordId,
+                  -RECOVERY_COST,
+                  'STREAK_RECOVERY',
+                  'Recuperação de streak'
+                );
+
+                await tggCoins.updateBalance(discordId, -RECOVERY_COST);
+
+                finalStreak = (streakData?.streak || 1) + 1;
+                recovered = true;
+              }
+            }
+
+            await runDaily(interaction, message.member, discordId, finalStreak, recovered);
+          });
+
+          collector.on('end', async (collected) => {
+            if (collected.size === 0) {
+              await loading.edit({
+                embeds: [createErrorEmbed('Tempo esgotado', 'Você não respondeu a tempo.')],
+                components: []
+              });
+            }
+          });
+
+          return;
+        }
+
+        // Reset normal
+        streak = 1;
       }
     }
 
-    // Sistema de streaks: Quanto maior a streak, maior a recompensa (até 7 dias)
-    if (streak >= 7) {
-      reward = 100;
-      streakMessage = `🔥 Streak de ${streak} dias! Recompensa máxima!`;
-    } else if (streak >= 3) {
-      reward = 75;
-      streakMessage = `🔥 Streak de ${streak} dias! Continue assim!`;
-    } else {
-      reward = 50;
-      streakMessage = `📅 Streak de ${streak} dia${streak > 1 ? 's' : ''}`;
-    }
-
-    let bonusMessage = '';
-    const member = message.member;
-
-    let multiplier = 1;
-    let bonusDetails = [];
-
-    // MVP Semanal (+0.4)
-    if (member.roles.cache.has(TGG_COINS_ROLES.MVP_SEMANAL)) {
-      multiplier += 0.4;
-      bonusDetails.push('✨ MVP Semanal (+40%)');
-    }
-
-    // VIP (+0.2)
-    if (member.roles.cache.has(TGG_COINS_ROLES.VIP)) {
-      multiplier += 0.2;
-      bonusDetails.push('💎 VIP (+20%)');
-    }
-
-    // Aplica multiplicador
-    const original = reward;
-    reward = Math.floor(reward * multiplier);
-    const bonus = reward - original;
-
-    // Monta mensagem de bonus
-    if (bonus > 0) {
-      bonusMessage = `\n${bonusDetails.join('\n')}\n💰 Bônus total: +${bonus} TGG-Coins`;
-    }
-
-    // Atualiza streak
-    await tggCoins.upsertUserStreak(discordId, streak);
-
-    // Adiciona o valor como "Daily" e atualiza o saldo
-    await tggCoins.addTransaction(discordId, reward, 'DAILY', 'Recompensa diária');
-    const newBalance = await tggCoins.updateBalance(discordId, reward);
-
-    return loading.edit({
-      embeds: [
-        createSuccessEmbed(
-          'TGG Coins recebidas!',
-          `+${reward} TGG-Coins ${EMOJIS.TGGcoin}\n${streakMessage}${bonusMessage}\n\nSaldo atual: **${newBalance.toLocaleString('pt-BR')}**`
-        )
-      ]
-    });
+    // Fluxo normal da função
+    return runDaily(loading, message.member, discordId, streak, recovered);
 
   } catch (err) {
     return loading.edit({
@@ -1129,6 +1208,14 @@ export async function handleConquistas(message) {
     const discordId = message.author.id;
     const user = await getUserByDiscordId(discordId);
 
+    // Garante que os aliases estão carregados
+    await loadAliases();
+
+    // Resolve o brawlhalla_id para pegar as quests da conta correta
+    if (user.brawlhalla_id) {
+      user.brawlhalla_id = resolveBrawlhallaId(String(user.brawlhalla_id));
+    }
+
     if (!user) {
       return loading.edit({
         embeds: [
@@ -1165,8 +1252,13 @@ export async function handleConquistas(message) {
 
       let text = `**${index + 1}. ${mode} (${mission.tgg_coins_reward}${EMOJIS.TGGcoin})**\n`;
 
+      let extraHint = '';
+      if (mode === 'Ranked 2v2') {
+        extraHint = 'no elo de time (Team Rating)';
+      }
+
       if (type === 'ELO') {
-        text += `🏆 Alcançar **${mission.target_elo} de elo**\n`;
+        text += `🏆 Alcançar **${mission.target_elo} de elo ${extraHint}**\n`;
       } else if (type === 'WINS') {
         text += `🥇 Ganhar **${mission.target_elo} partidas**\n`;
       } else if (type === 'GAMES') {
@@ -1183,7 +1275,7 @@ export async function handleConquistas(message) {
       // Dados da API, usado para comparar com os dados iniciais e ver se o jogador completou a missão ou não
       const current = tggCoins.extractModeData(stats, mode);
 
-      const result = tggCoins.checkMissionCompletion({type, initial_elo, initial_games, initial_wins, final_elo: current.elo, final_games: current.games, final_wins: current.wins, target_elo: mission.target_elo});
+      const result = tggCoins.checkMissionCompletion({type, mode, initial_elo, initial_games, initial_wins, final_elo: current.elo, final_games: current.games, final_wins: current.wins, target_elo: mission.target_elo});
 
       const alreadyCompleted = await tggCoins.hasCompletedMission(discordId, mission.id);
 
@@ -1305,7 +1397,6 @@ export async function handleConquistas(message) {
   }
 }
 
-// ---- .streak ----
 export async function handleStreak(message) {
   try {
     const discordId = message.author.id;
@@ -1313,11 +1404,30 @@ export async function handleStreak(message) {
     const streakData = await tggCoins.getUserStreak(discordId);
     const streak = streakData?.streak || 0;
 
+    let nextBonus = null;
+    let daysLeft = null;
+
+    if (streak < 3) {
+      nextBonus = 75;
+      daysLeft = 3 - streak;
+    } else if (streak < 7) {
+      nextBonus = 100;
+      daysLeft = 7 - streak;
+    }
+
+    let description = `Você está com **${streak} dia(s)** de streak.`;
+
+    if (nextBonus !== null) {
+      description += `\n\n⏳ Faltam **${daysLeft} dia(s)${daysLeft > 1 ? 's' : ''}** para o próximo bônus de **${nextBonus} moedas**.`;
+    } else {
+      description += `\n\n🏆 Você já atingiu o bônus máximo de **100 moedas**!`;
+    }
+
     return message.reply({
       embeds: [
         createSuccessEmbed(
           '🔥 Sua Streak',
-          `Você está com **${streak} dia(s)** de streak.`
+          description
         )
       ]
     });

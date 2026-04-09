@@ -130,7 +130,7 @@ export async function getActiveUser(discordId) {
 
 let BRAWLHALLA_ALIASES = null;
 
-async function loadAliases() {
+export async function loadAliases() {
   if (BRAWLHALLA_ALIASES !== null) return;
 
   const supabase = getClient();
@@ -148,7 +148,7 @@ async function loadAliases() {
   }
 }
 
-function resolveBrawlhallaId(id) {
+export function resolveBrawlhallaId(id) {
   return BRAWLHALLA_ALIASES[id] || id;
 }
 

@@ -1,12 +1,12 @@
 import { EmbedBuilder } from 'discord.js';
-import { getUserByDiscordId } from './db.js';
+import { getUserByDiscordId, resolveBrawlhallaId, loadAliases } from './db.js';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs';
 import { resolve } from 'path';
 
 // Configuração do cache
 const CACHE_DIR = resolve(process.cwd(), 'cache');
 const SHARED_FILE = resolve(CACHE_DIR, 'shared.json');
-const CACHE_TTL = 20 * 60 * 1000; // 20 min
+const CACHE_TTL = 5 * 60 * 1000; // 5 min
 
 if (!existsSync(CACHE_DIR)) {
   try {
@@ -344,10 +344,16 @@ function normalizeUnicode(str) {
 // API
 
 export async function fetchPlayerStats(brawlhallaId) {
-  const key = `player:${brawlhallaId}`;
+  await loadAliases(); // Garante que os aliases foram carregados
+
+  // Resolve o ID (caso seja um alt)
+  const resolvedId = resolveBrawlhallaId(String(brawlhallaId));
+
+  const key = `player:${resolvedId}`;
   const hit = getCached(key);
+
   if (hit) {
-    console.log(`[Brawlhalla] Cache hit for player ${brawlhallaId}`);
+    console.log(`[Brawlhalla] Cache hit for player ${resolvedId}`);
     return hit;
   }
 
@@ -355,8 +361,8 @@ export async function fetchPlayerStats(brawlhallaId) {
 
   try {
     const [statsData, rankedData] = await Promise.all([
-      apiFetch(`https://api.brawlhalla.com/player/${brawlhallaId}/stats?api_key=${process.env.BRAWLHALLA_API_KEY}`),
-      apiFetch(`https://api.brawlhalla.com/player/${brawlhallaId}/ranked?api_key=${process.env.BRAWLHALLA_API_KEY}`)
+      apiFetch(`https://api.brawlhalla.com/player/${resolvedId}/stats?api_key=${process.env.BRAWLHALLA_API_KEY}`),
+      apiFetch(`https://api.brawlhalla.com/player/${resolvedId}/ranked?api_key=${process.env.BRAWLHALLA_API_KEY}`)
     ]);
 
     if (statsData.name) statsData.name = normalizeUnicode(statsData.name);
@@ -379,6 +385,7 @@ export async function fetchPlayerStats(brawlhallaId) {
     }
 
     const combined = { ...statsData, ranked: rankedData };
+    
     setCached(key, combined);
     return combined;
   } catch (err) {
