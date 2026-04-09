@@ -451,14 +451,15 @@ export async function getWeeklyMissions(weekStart, weekEnd) {
   const end = new Date(weekEnd);
 
   // Se já passou do fim da semana (Quarta-feira às 06:00), não retorna missões
-  if (now > end) {
+  if (now >= end) {
     return [];
   }
 
   const { data, error } = await supabase
     .from('elo_missions')
     .select('*')
-    .eq('week_start', weekStart)
+    .gte('week_start', weekStart)
+    .lt('week_start', weekEnd)
     .order('mode', { ascending: true });
 
   if (error) throw error;

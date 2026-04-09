@@ -1163,7 +1163,7 @@ export async function handleConquistas(message) {
       const type = mission.type;
       const fields = tggCoins.getModeFields(mode);
 
-      let text = `**${index + 1}. ${mode}**\n`;
+      let text = `**${index + 1}. ${mode} (${mission.tgg_coins_reward}${EMOJIS.TGGcoin})**\n`;
 
       if (type === 'ELO') {
         text += `🏆 Alcançar **${mission.target_elo} de elo**\n`;

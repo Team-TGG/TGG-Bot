@@ -70,28 +70,33 @@ export function getMissionWeekStart() {
 }
 
 export function getMissionWeekEnd() {
-  const today = new Date();
   const now = new Date();
 
-  const dayOfWeek = today.getDay();
+  const dayOfWeek = now.getDay();
 
   // Quarta-feira
-  const diff = (dayOfWeek - 3 + 7) % 7;
+  let diff = (3 - dayOfWeek + 7) % 7;
 
-  today.setDate(today.getDate() - diff);
-  today.setHours(6, 0, 0, 0);
+  // Se hoje já é quarta mas ainda não passou das 06:00
+  if (diff === 0) {
+    const quartaHoje = new Date(now);
+    quartaHoje.setHours(6, 0, 0, 0);
 
-  // Se ainda não chegou em quarta 06:00, volta 1 semana
-  if (now < today) {
-    today.setDate(today.getDate() - 7);
+    if (now >= quartaHoje) {
+      diff = 7; // vai pra próxima quarta
+    }
   }
 
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, '0');
-  const day = String(today.getDate()).padStart(2, '0');
-  const hours = String(today.getHours()).padStart(2, '0');
-  const minutes = String(today.getMinutes()).padStart(2, '0');
-  const seconds = String(today.getSeconds()).padStart(2, '0');
+  const nextWednesday = new Date(now);
+  nextWednesday.setDate(now.getDate() + diff);
+  nextWednesday.setHours(6, 0, 0, 0);
+
+  const year = nextWednesday.getFullYear();
+  const month = String(nextWednesday.getMonth() + 1).padStart(2, '0');
+  const day = String(nextWednesday.getDate()).padStart(2, '0');
+  const hours = String(nextWednesday.getHours()).padStart(2, '0');
+  const minutes = String(nextWednesday.getMinutes()).padStart(2, '0');
+  const seconds = String(nextWednesday.getSeconds()).padStart(2, '0');
 
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
