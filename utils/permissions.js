@@ -15,7 +15,12 @@ export const ROLE_HIERARCHY = {
 const ALLOWED_CHANNELS = [
   '1437504463375175936', // Comandos Staff
   '1437416481343406122', // Principal
-  '1437416406038872225'  // Comandos
+  '1437416406038872225' // Comandos
+];
+
+const ALLOWED_CATEGORIES = [
+  '1460768037518180352', // Categoria de Cards
+  '1437504178220961815'  // Categoria da Staff
 ];
 
 export async function isAdmin(userId) {
@@ -64,21 +69,21 @@ export function hasPermission(member, requiredLevel) {
 
 // Verifica se o comando foi usado em um canal permitido
 export async function checkChannelPermission(message) {
-  if (ALLOWED_CHANNELS.includes(message.channel.id)) {
+  const channelId = message.channel.id;
+  const categoryId = message.channel.parentId;
+
+  // Permite se estiver na lista de canais ou dentro da categoria
+  if (ALLOWED_CHANNELS.includes(channelId) || ALLOWED_CATEGORIES.includes(categoryId)) {
     return true;
   }
 
-  // Se não for permitido, avisa o usuário e apaga a mensagem
   try {
-    // Apaga a mensagem do usuário
     await message.delete().catch(() => {});
 
-    // Envia aviso para o usuário do canal
     const msg = await message.channel.send({
       content: `${message.author}, use o canal <#1437416406038872225> para utilizar os comandos do bot.`
     });
 
-    // Apaga o aviso depois de 5s
     setTimeout(() => {
       msg.delete().catch(() => {});
     }, 5000);
