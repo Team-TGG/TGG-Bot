@@ -12,6 +12,7 @@ import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } fr
 import { startCronJobs } from './src/scheduler/cron.js';
 import { getUsers, getUsersWithElo } from './src/db.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from './utils/discordUtils.js';
+import { checkChannelPermission } from './utils/permissions.js';
 
 // Services
 import { startInactiveReminder } from './src/services/inactivePlayers.js';
@@ -165,6 +166,10 @@ async function main() {
   client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
     if (!message.content.startsWith(PREFIX)) return;
+
+    // Verificar permissão de canal antes de processar o comando
+    const allowed = await checkChannelPermission(message); 
+    if (!allowed) return;
 
     const content = message.content.slice(PREFIX.length).trim();
     if (!content) return;

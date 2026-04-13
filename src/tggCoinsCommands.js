@@ -17,7 +17,7 @@ export const TGG_COINS_ROLES = {
 
 // Funções auxiliares
 
-// Função pra rodar o daily após a negar ou recuper o streak
+// Função pra rodar o daily normalmente, também é chamada quando o usuário recupera a streak, para evitar duplicação de código
 async function runDaily(target, member, discordId, streak, recovered) {
   let reward = 50;
   let streakMessage = '';

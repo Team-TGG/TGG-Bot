@@ -11,6 +11,13 @@ export const ROLE_HIERARCHY = {
   [STAFF_ROLE_IDS.leader]: 6,
 };
 
+// Canais permitidos para comandos do bot
+const ALLOWED_CHANNELS = [
+  '1437504463375175936', // Comandos Staff
+  '1437416481343406122', // Principal
+  '1437416406038872225'  // Comandos
+];
+
 export async function isAdmin(userId) {
   try {
     const user = await getUserByDiscordId(userId);
@@ -53,4 +60,32 @@ export function getMemberLevel(member) {
 
 export function hasPermission(member, requiredLevel) {
   return getMemberLevel(member) >= requiredLevel;
+}
+
+// Verifica se o comando foi usado em um canal permitido
+export async function checkChannelPermission(message) {
+  if (ALLOWED_CHANNELS.includes(message.channel.id)) {
+    return true;
+  }
+
+  // Se não for permitido, avisa o usuário e apaga a mensagem
+  try {
+    // Apaga a mensagem do usuário
+    await message.delete().catch(() => {});
+
+    // Envia aviso para o usuário do canal
+    const msg = await message.channel.send({
+      content: `${message.author}, use o canal <#1437416406038872225> para utilizar os comandos do bot.`
+    });
+
+    // Apaga o aviso depois de 5s
+    setTimeout(() => {
+      msg.delete().catch(() => {});
+    }, 5000);
+
+  } catch (err) {
+    console.error('Erro ao verificar canal:', err);
+  }
+
+  return false;
 }
