@@ -11,6 +11,8 @@ export const ROLE_HIERARCHY = {
   [STAFF_ROLE_IDS.leader]: 6,
 };
 
+export const LEADER_ID = '252249131202904074'; // ID do líder para acesso total
+
 // Canais permitidos para comandos do bot
 const ALLOWED_CHANNELS = [
   '1437504463375175936', // Comandos Staff
@@ -32,6 +34,11 @@ export async function isAdmin(userId) {
   }
 }
 
+// Função para verificar se o usuário é líder da guilda (usado para comandos muito específicos)
+export function isLeader(userId) {
+  return userId === LEADER_ID;
+}
+
 export function adminOnly(handler) {
   return async (message, ...args) => {
     const allowed = await isAdmin(message.author.id);
@@ -45,6 +52,23 @@ export function adminOnly(handler) {
             )
             ]
         });
+    }
+
+    return handler(message, ...args);
+  };
+}
+
+export function leaderOnly(handler) {
+  return async (message, ...args) => {
+    if (!isLeader(message.author.id)) {
+      return message.reply({
+        embeds: [
+          createErrorEmbed(
+            'Acesso Negado',
+            'Apenas o líder pode usar esse comando.'
+          )
+        ]
+      });
     }
 
     return handler(message, ...args);

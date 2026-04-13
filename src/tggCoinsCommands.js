@@ -4,7 +4,7 @@ import * as tggCoins from './tggCoins.js';
 import { getUserByDiscordId, getMissionWeekStart, formatDateBR, getMissionWeekEnd, resolveBrawlhallaId, loadAliases } from './db.js';
 import { fetchPlayerStats } from './brawlhalla.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
-import { adminOnly, ROLE_HIERARCHY } from '../utils/permissions.js';
+import { adminOnly, leaderOnly, ROLE_HIERARCHY } from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
 import { STAFF_ROLE_IDS } from '../config/index.js';
 
@@ -1397,6 +1397,7 @@ export async function handleConquistas(message) {
   }
 }
 
+// ---- .streak ----
 export async function handleStreak(message) {
   try {
     const discordId = message.author.id;
@@ -1438,6 +1439,85 @@ export async function handleStreak(message) {
     });
   }
 }
+
+// ---- .addcoins (líder) ----
+export const handleAddCoins = leaderOnly(async (message, args, client) => {
+  const loading = await message.reply({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(0xfaa61a)
+        .setTitle('💰 Adicionando moedas...')
+    ]
+  });
+
+  try {
+    const target = message.mentions.users.first();
+    if (!target) {
+      return loading.edit({
+        embeds: [createErrorEmbed('Erro', 'Mencione um usuário.')]
+      });
+    }
+
+    const targetId = target.id;
+
+    // Junta tudo depois do comando original
+    const fullContent = message.content;
+
+    // Regex pra pegar tipo + "descrição" + quantidade
+    const match = fullContent.match(/\.addcoins\s+<@!?\d+>\s+(\w+)\s+"([^"]+)"\s+(-?\d+)/i);
+
+    if (!match) {
+      return loading.edit({
+        embeds: [
+          createErrorEmbed(
+            'Formato inválido',
+            'Use:\n`.addcoins @usuario TIPO "descrição" quantidade`'
+          )
+        ]
+      });
+    }
+
+    let [, type, description, amount] = match;
+
+    type = type.toUpperCase();
+    amount = parseInt(amount);
+
+    if (isNaN(amount)) {
+      return loading.edit({
+        embeds: [createErrorEmbed('Erro', 'Quantidade inválida.')]
+      });
+    }
+
+    // Verifica usuário
+    const user = await getUserByDiscordId(targetId);
+    if (!user || !user.active) {
+      return loading.edit({
+        embeds: [createErrorEmbed('Erro', 'Usuário não está na guilda.')]
+      });
+    }
+
+    // Transação e balance
+    await tggCoins.addTransaction(targetId, amount, type, description);
+    const newBalance = await tggCoins.updateBalance(targetId, amount);
+
+    return loading.edit({
+      embeds: [
+        createSuccessEmbed(
+          'Moedas adicionadas!',
+          `${target} recebeu **+${amount} TGG-Coins** 💰\n\n` +
+          `📌 Tipo: **${type}**\n` +
+          `📝 ${description}\n\n` +
+          `💳 Novo saldo: **${newBalance.toLocaleString('pt-BR')}**`
+        )
+      ]
+    });
+
+  } catch (err) {
+    return loading.edit({
+      embeds: [createErrorEmbed('Erro ao adicionar coins', err.message)]
+    });
+  }
+});
 
 // ---- .addprovider (admin) ----
 export const handleAddProvider = adminOnly(async (message, args, client) => {
