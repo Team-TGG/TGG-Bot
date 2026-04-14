@@ -186,22 +186,19 @@ async function main() {
 
     if (!command) return;
 
-    // Verificação de rate limit (exceto comando daily)
-    if (command !== 'daily') {
+    // Verificação de rate limit para todos os comandos
+    const now = Date.now();
+    const userId = message.author.id;
+    const lastCommand = rateLimitMap.get(userId);
 
-      const now = Date.now();
-      const userId = message.author.id;
-      const lastCommand = rateLimitMap.get(userId);
-
-      if (lastCommand && now - lastCommand < RATE_LIMIT_MS) {
-        const remaining = Math.ceil((RATE_LIMIT_MS - (now - lastCommand)) / 1000);
-        return await message.reply({
-          embeds: [createErrorEmbed('Calma lá!', `Aguarde **${remaining}s** para usar outro comando.`)]
-        }).catch(() => {});
-      }
-
-      rateLimitMap.set(userId, now);
+    if (lastCommand && now - lastCommand < RATE_LIMIT_MS) {
+      const remaining = Math.ceil((RATE_LIMIT_MS - (now - lastCommand)) / 1000);
+      return await message.reply({
+        embeds: [createErrorEmbed('Calma lá!', `Aguarde **${remaining}s** para usar outro comando.`)]
+      }).catch(() => {});
     }
+
+    rateLimitMap.set(userId, now);
 
     const cmd = commands[command];
     if (!cmd) return;
