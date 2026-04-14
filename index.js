@@ -165,12 +165,16 @@ async function main() {
     await restoreMutes(client);
   });
 
+  // Armazenamento de rate limit
+  const rateLimitMap = new Map();
+  const RATE_LIMIT_MS = 5000; // 5 segundos
+
   client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
     if (!message.content.startsWith(PREFIX)) return;
 
     // Verificar permissão de canal antes de processar o comando
-    const allowed = await checkChannelPermission(message); 
+    const allowed = await checkChannelPermission(message);
     if (!allowed) return;
 
     const content = message.content.slice(PREFIX.length).trim();
@@ -182,6 +186,23 @@ async function main() {
 
     if (!command) return;
 
+    // Verificação de rate limit (exceto comando daily)
+    if (command !== 'daily') {
+
+      const now = Date.now();
+      const userId = message.author.id;
+      const lastCommand = rateLimitMap.get(userId);
+
+      if (lastCommand && now - lastCommand < RATE_LIMIT_MS) {
+        const remaining = Math.ceil((RATE_LIMIT_MS - (now - lastCommand)) / 1000);
+        return await message.reply({
+          embeds: [createErrorEmbed('Calma lá!', `Aguarde **${remaining}s** para usar outro comando.`)]
+        }).catch(() => {});
+      }
+
+      rateLimitMap.set(userId, now);
+    }
+
     const cmd = commands[command];
     if (!cmd) return;
 
@@ -189,11 +210,9 @@ async function main() {
       await cmd(message, args, client);
     } catch (err) {
       console.error('[Command Error]', err);
-      await message.reply({ 
-        embeds: 
-          [createErrorEmbed('Erro Interno', `Um erro inesperado ocorreu: ${err.message}`)] })
-        .catch(() => { }
-      );
+      await message.reply({
+        embeds: [createErrorEmbed('Erro Interno', `Um erro inesperado ocorreu: ${err.message}`)]
+      }).catch(() => {});
     }
   });
 
