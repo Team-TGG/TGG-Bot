@@ -460,3 +460,23 @@ export async function getActiveMutes() {
   if (error) throw error;
   return data ?? [];
 }
+
+/**
+ * MOTD (Message of the Day)
+ */
+
+export async function addMotd(discordId, message) {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('motd')
+    .insert({
+      discord_id: String(discordId),
+      message: message,
+      created_at: new Date().toISOString(),
+      used: false
+    })
+    .select();
+
+  if (error) throw error;
+  return data?.[0] || null;
+}

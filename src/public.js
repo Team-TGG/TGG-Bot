@@ -1,12 +1,12 @@
 // public.js - Comandos públicos
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
-import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd } from './db.js';
+import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd } from './db.js';
+
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createClanEmbed, getUserBrawlhallaId, getCached } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
 import { isAdmin, adminOnly} from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
-
 
 // .help
 export async function handleHelp(message, args, client) {
@@ -194,6 +194,43 @@ export async function handleRegras(message, args, client) {
     .setTimestamp();
 
   await message.reply({ embeds: [rulesEmbed] });
+}
+
+// .motd
+export async function handleMotd(message, args, client) {
+  try {
+    const motdMessage = args.join(' ').trim();
+
+    if (!motdMessage) {
+      return message.reply({
+        embeds: [createErrorEmbed('Mensagem Vazia', 'Uso: `.motd <mensagem>`')]
+      });
+    }
+
+    if (motdMessage.length > 255) {
+      return message.reply({
+        embeds: [createErrorEmbed('Mensagem Longa', 'A mensagem deve ter no máximo 255 caracteres.')]
+      });
+    }
+
+    await addMotd(message.author.id, motdMessage);
+
+    const embed = new EmbedBuilder()
+      .setColor(0x00ff00)
+      .setTitle('📢 Mensagem do Dia')
+      .setDescription('Sua mensagem foi salva com sucesso e será sorteada no site!')
+      .addFields({ name: 'Mensagem', value: `"${motdMessage}"` })
+      .setFooter({ text: 'TGG Bot • MOTD' })
+      .setTimestamp();
+
+    await message.reply({ embeds: [embed] });
+
+  } catch (err) {
+    console.error('Erro ao salvar MOTD:', err);
+    await message.reply({
+      embeds: [createErrorEmbed('Erro ao Salvar', 'Não foi possível salvar sua mensagem no momento.')]
+    });
+  }
 }
 
 // .stats
