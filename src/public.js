@@ -585,7 +585,9 @@ export async function handleBirthday(message, args) {
     // Inserir no banco
     await addBirthday(message.author.id, birthdayISO);
 
-    return message.reply(`Seu aniversário foi registrado: **${dateInput}**`);
+    return message.reply({
+      embeds: [createSuccessEmbed(`Seu aniversário foi registrado: **${dateInput}**`)]
+    });
 
   } catch (err) {
     console.error('[Birthday Error]', err);
