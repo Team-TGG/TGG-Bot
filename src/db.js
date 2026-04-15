@@ -480,3 +480,56 @@ export async function addMotd(discordId, message) {
   if (error) throw error;
   return data?.[0] || null;
 }
+
+/**
+ * BIRTHDAYS
+ */
+
+export async function getBirthdayByUserId(userId) {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('birthdays')
+    .select('user_id, birthday')
+    .eq('user_id', String(userId))
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error;
+  return data || null;
+}
+
+export async function addBirthday(userId, birthday) {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('birthdays')
+    .insert({
+      user_id: String(userId),
+      birthday: birthday
+    })
+    .select();
+
+  if (error) throw error;
+  return data?.[0] || null;
+}
+
+export async function getTodayBirthdays() {
+  const supabase = getClient();
+  const today = new Date();
+  const todayMonth = String(today.getMonth() + 1).padStart(2, '0');
+  const todayDay = String(today.getDate()).padStart(2, '0');
+
+  // Cast user_id to text in PostgreSQL to prevent precision loss
+  const { data, error } = await supabase
+    .from('birthdays')
+    .select('user_id::text, birthday');
+
+  if (error) throw error;
+
+  // Filter birthdays matching today's month/day (ignore year)
+  return (data ?? []).filter(b => {
+    const [, month, day] = b.birthday.split('-');
+    return month === todayMonth && day === todayDay;
+  }).map(b => ({
+    ...b,
+    user_id: String(b.user_id)
+  }));
+}

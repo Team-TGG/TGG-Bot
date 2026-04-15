@@ -46,3 +46,8 @@ export const inactivePlayers = {
   channelId: '1468600851290521692',
   messageInterval: process.env.INACTIVE_MESSAGE_INTERVAL,
 };
+
+export const birthdays = {
+  roleId: '1478478167961370845',
+  channelId: '1437416350183325727',
+};

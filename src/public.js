@@ -1,6 +1,6 @@
 // public.js - Comandos públicos
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
-import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd } from './db.js';
+import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getBirthdayByUserId, addBirthday, formatDateBR } from './db.js';
 
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createClanEmbed, getUserBrawlhallaId, getCached } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
@@ -513,6 +513,58 @@ export async function handleActive(message, args, client) {
     // Fallback dos erros
     await message.reply({
       embeds: [createErrorEmbed('Erro ao Ativar Usuário', err.message)]
+    });
+  }
+}
+
+// .birthday <DD/MM/YYYY>
+export async function handleBirthday(message, args) {
+  if (args.length === 0) {
+    return message.reply({
+      embeds: [createErrorEmbed('Uso incorreto', 'Use: `.birthday DD/MM/YYYY`')]
+    });
+  }
+
+  const dateInput = args[0];
+  const dateRegex = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+  const match = dateInput.match(dateRegex);
+
+  if (!match) {
+    return message.reply({
+      embeds: [createErrorEmbed('Formato inválido', 'Use o formato: `DD/MM/YYYY` (exemplo: 25/12/2000)')]
+    });
+  }
+
+  const [, day, month, year] = match;
+  const birthdayISO = `${year}-${month}-${day}`;
+
+  // Validar data
+  const dateObj = new Date(birthdayISO);
+  if (isNaN(dateObj.getTime())) {
+    return message.reply({
+      embeds: [createErrorEmbed('Data inválida', 'A data informada não é válida.')]
+    });
+  }
+
+  try {
+    // Verificar se já existe
+    const existing = await getBirthdayByUserId(message.author.id);
+
+    if (existing) {
+      return message.reply({
+        embeds: [createErrorEmbed('Aniversário já registrado', `Seu aniversário já está registrado para ${formatDateBR(existing.birthday)}.`)]
+      });
+    }
+
+    // Inserir no banco
+    await addBirthday(message.author.id, birthdayISO);
+
+    return message.reply(`Seu aniversário foi registrado: **${dateInput}**`);
+
+  } catch (err) {
+    console.error('[Birthday Error]', err);
+    return message.reply({
+      embeds: [createErrorEmbed('Erro ao registrar', 'Ocorreu um erro ao registrar seu aniversário. Tente novamente.')]
     });
   }
 }

@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { discord as discordConfig } from '../../config/index.js';
+import { processBirthdays, removeBirthdayRole } from '../services/birthdayService.js';
 
 export function startCronJobs(client, services) {
 
@@ -35,6 +36,16 @@ export function startCronJobs(client, services) {
       console.error('[CRON ERROR]', err);
     }
 
+  });
+
+  // Aniversários - 00:00: remove cargos do dia anterior e adiciona novos
+  cron.schedule('0 0 * * *', async () => {
+    try {
+      await removeBirthdayRole(client);
+      await processBirthdays(client);
+    } catch (err) {
+      console.error('[CRON ERROR - Birthdays]', err);
+    }
   });
 
 }
