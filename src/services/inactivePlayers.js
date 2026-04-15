@@ -33,8 +33,11 @@ export async function sendInactivePlayersReminder(client) {
         .setTitle('⚠️ Lembrete: Usuários Inativos')
         .setDescription(`Olá! Vocês estão marcados como inativos
           Se você está nesta lista, significa que fez menos de 1000 de contribuição na semana passada. 
+
           Para saber como contribuir, veja o canal <#${'1480627066792579072'}> ou fale com um membro da staff.
+
           Para mostrar que está ativo, use o comando \`.active\` com uma justificativa para se remover da lista.
+          
           Ex: \`.active Estava viajando e não consegui jogar.\``)
         .setTimestamp();
 
