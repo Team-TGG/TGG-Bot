@@ -3,7 +3,7 @@ import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuil
 
 import { createClient, runSync, runEloSync } from './discord.js';
 import { addWarning, getUserWarnings, removeWarning, removeLastWarning, parseTime, formatTime as formatModTime, safeSetTimeout } from './moderation.js';
-import { getUsers, getUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes, getMissionWeekStart, getActiveUser } from './db.js';
+import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes, getMissionWeekStart, getActiveUser } from './db.js';
 import { discord as discordConfig, STAFF_ROLE_IDS, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
 import { loadCustomNicknames } from './customNicknames.js';
 import { syncNicknames, updateMemberNicknameDiscordPortion, parseNickname, buildNickname, fetchBrawlhallaClanData, loadClanCache } from './nicknameSync.js';
@@ -90,6 +90,50 @@ export const handleSync = adminOnly(async (message, args, client) => {
     await loading.edit({ embeds: [resultEmbed] });
   } catch (err) {
     await loading.edit({ embeds: [createErrorEmbed('Erro de Sincronização', err.message)] });
+  }
+});
+
+// .sync-all
+export const handleSyncAll = adminOnly(async (message, args, client) => {
+  const loading = await message.reply({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(0xfaa61a)
+        .setTitle(`${EMOJIS.loading} Sincronizando (FULL)...`)
+        .setDescription('Executando sincronização completa (todos os usuários)...')
+    ]
+  });
+
+  try {
+    const users = await getAllUsers();
+    const guildResult = await runSync(client, users);
+
+    const usersWithElo = await getAllUsersWithElo();
+    const eloResult = await runEloSync(client, usersWithElo);
+
+    const resultEmbed = new EmbedBuilder()
+      .setColor(0x57f287)
+      .setTitle(`${EMOJIS.check} Sincronização Completa (FULL)`)
+      .addFields(
+        {
+          name: 'Ranks',
+          value: `${EMOJIS.check} ${guildResult.synced} | ${EMOJIS.checkbox} ${guildResult.skipped} | ${EMOJIS.xis} ${guildResult.errors}`,
+          inline: true
+        },
+        {
+          name: 'ELO',
+          value: `${EMOJIS.check} ${eloResult.synced} | ${EMOJIS.checkbox} ${eloResult.skipped} | ${EMOJIS.xis} ${eloResult.errors}`,
+          inline: true
+        }
+      )
+      .setTimestamp();
+
+    await loading.edit({ embeds: [resultEmbed] });
+
+  } catch (err) {
+    await loading.edit({
+      embeds: [createErrorEmbed('Erro de Sincronização', err.message)]
+    });
   }
 });
 

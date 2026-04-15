@@ -1,6 +1,6 @@
 // public.js - Comandos públicos
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
-import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getBirthdayByUserId, addBirthday, formatDateBR } from './db.js';
+import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatDateBR } from './db.js';
 
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createClanEmbed, getUserBrawlhallaId, getCached } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
@@ -25,7 +25,8 @@ export async function handleHelp(message, args, client) {
     .setColor(0x5865f2)
     .setTitle(`${EMOJIS.hourglass} Sincronização`)
     .addFields(
-      { name: `${EMOJIS.arrowRight} .sync`, value: 'Sincronização completa (ranks + ELO)', inline: false },
+      { name: `${EMOJIS.arrowRight} .sync`, value: 'Sincronização dos membros que precisam ser atualizados (ranks + ELO)', inline: false },
+      { name: `${EMOJIS.arrowRight} .sync-all`, value: 'Sincronização completa de todos os membros (ranks + ELO)', inline: false },
       { name: `${EMOJIS.arrowRight} .sync-nick`, value: 'Sincronizar apelidos Brawlhalla', inline: false },
       { name: `${EMOJIS.arrowRight} .refresh-cache`, value: 'Atualizar cache do clan', inline: false }
     )
@@ -211,6 +212,31 @@ export async function handleMotd(message, args, client) {
       return message.reply({
         embeds: [createErrorEmbed('Mensagem Longa', 'A mensagem deve ter no máximo 255 caracteres.')]
       });
+    }
+
+    // Pega a última motd
+    const lastMotd = await getLastMotd(message.author.id);
+
+    if (lastMotd) {
+      const lastDate = new Date(lastMotd.created_at);
+      const now = new Date();
+
+      const diffMs = now - lastDate;
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+      // Bloquear mensagens pelo mesmo membro se já tiver enviado uma nos últimos 7 dias
+      if (diffDays < 7) {
+        const daysLeft = Math.ceil(7 - diffDays);
+
+        return message.reply({
+          embeds: [
+            createErrorEmbed(
+              'Aguarde para enviar novamente',
+              `Você já enviou uma mensagem recentemente.\nTente novamente em **${daysLeft} dia(s)**.`
+            )
+          ]
+        });
+      }
     }
 
     await addMotd(message.author.id, motdMessage);

@@ -112,6 +112,21 @@ export async function getUsers() {
   return data ?? [];
 }
 
+/**
+ * Ignora o need_update e pega todos os usuários que estão na guilda
+ */
+export async function getAllUsers() {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('discord_id, role, active')
+    .eq('active', true) // Pegar somente os usuários que estão na guilda
+
+  if (error) throw error;
+  return data ?? [];
+}
+
 export async function getActiveUser(discordId) {
   const supabase = getClient();
 
@@ -210,6 +225,63 @@ export async function getUsersWithElo() {
   return result;
 }
 
+/**
+ * Pega os maiores elos de todos os usuários ativos, ignorando o "need_update"
+ */
+export async function getAllUsersWithElo() {
+  await loadAliases();
+
+  const supabase = getClient();
+
+  // Busca direto da view com os maiores elos
+  const { data: eloData, error: eloError } = await supabase
+    .from('vw_player_elo_max')
+    .select('brawlhalla_id, max_1v1, max_2v2, max_3v3');
+
+  if (eloError) throw eloError;
+
+  // Somente usuários ativos na guilda
+  const { data: users, error: usersError } = await supabase
+    .from('users')
+    .select('discord_id, brawlhalla_id')
+    .eq('active', true);
+
+  if (usersError) throw usersError;
+
+  // Map com maior elo por player
+  const eloByBrawlhalla = new Map();
+
+  for (const row of eloData ?? []) {
+    const id = resolveBrawlhallaId(row.brawlhalla_id);
+
+    const peak1 = row.max_1v1 != null ? Number(row.max_1v1) : 0;
+    const peak2 = row.max_2v2 != null ? Number(row.max_2v2) : 0;
+    const peak3 = row.max_3v3 != null ? Number(row.max_3v3) : 0;
+
+    const highest = Math.max(peak1, peak2, peak3);
+
+    eloByBrawlhalla.set(id, highest);
+  }
+
+  const result = [];
+
+  for (const u of users ?? []) {
+    if (!u.discord_id) continue;
+
+    const resolvedId = resolveBrawlhallaId(u.brawlhalla_id);
+    const elo = eloByBrawlhalla.get(resolvedId);
+
+    if (elo == null) continue;
+
+    result.push({
+      discord_id: u.discord_id,
+      brawlhalla_id: resolvedId,
+      elo,
+    });
+  }
+
+  return result;
+}
 
 export async function getUsersByBrawlhallaIds(brawlhallaIds) {
   const supabase = getClient();
@@ -479,6 +551,25 @@ export async function addMotd(discordId, message) {
 
   if (error) throw error;
   return data?.[0] || null;
+}
+
+/**
+ * Pegar o último MOTD criado por um usuário
+ */
+export async function getLastMotd(discordId) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('motd')
+    .select('created_at')
+    .eq('discord_id', String(discordId))
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  return data || null;
 }
 
 /**

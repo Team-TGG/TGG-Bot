@@ -10,7 +10,7 @@ import { createClient, runSync, runEloSync } from './src/discord.js';
 import { syncNicknames, fetchBrawlhallaClanData } from './src/nicknameSync.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from './config/index.js';
 import { startCronJobs } from './src/scheduler/cron.js';
-import { getUsers, getUsersWithElo } from './src/db.js';
+import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo } from './src/db.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from './utils/discordUtils.js';
 import { checkChannelPermission } from './utils/permissions.js';
 
@@ -19,7 +19,7 @@ import { startInactiveReminder } from './src/services/inactivePlayers.js';
 import { restoreMutes } from './src/services/muteManager.js';
 
 // Handlers
-import { handleSync, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleMute, handleUnmute, handleBan, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou } from './src/admin.js';
+import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleMute, handleUnmute, handleBan, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou } from './src/admin.js';
 import { handleHelp, handleStats, handleClan, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday } from './src/public.js';
 import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins } from './src/tggCoinsCommands.js';
 
@@ -56,6 +56,7 @@ async function main() {
     'sync-guild': 'sync',
     'sync-roles': 'sync',
     'sync-elo': 'sync',
+    'sync-all': 'sync-all',
     'sync-nick': 'sync-nick',
     'sync-nicknames': 'sync-nick',
     'refresh-cache': 'refresh-cache',
@@ -126,6 +127,7 @@ async function main() {
 
     // Admin
     sync: handleSync,
+    'sync-all': handleSyncAll,
     'sync-nick': handleSyncNick,
     'refresh-cache': handleRefreshCache,
     warn: handleWarn,
@@ -163,7 +165,9 @@ async function main() {
       runEloSync,
       syncNicknames,
       getUsers,
-      getUsersWithElo
+      getUsersWithElo,
+      getAllUsers,
+      getAllUsersWithElo
     }); // Iniciar crons
 
     // Aviso de inatividade e restauração de mutes
