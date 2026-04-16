@@ -991,6 +991,211 @@ export async function handleConquistas(message) {
   }
 }
 
+// ---- .conquistasTest ----
+export async function handleConquistasTest(message) {
+  const loading = await message.reply({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(0xfaa61a)
+        .setTitle(`${EMOJIS.loading} Carregando conquistas...`)
+    ]
+  });
+
+  try {
+    const discordId = message.author.id;
+    const user = await getUserByDiscordId(discordId);
+
+    // Garante que os aliases estão carregados
+    await loadAliases();
+
+    // Resolve o brawlhalla_id para pegar as quests da conta correta
+    if (user.brawlhalla_id) {
+      user.brawlhalla_id = resolveBrawlhallaId(String(user.brawlhalla_id));
+    }
+
+    if (!user) {
+      return loading.edit({
+        embeds: [
+          createErrorEmbed('Acesso Negado', 'Você não está na guilda.')
+        ]
+      });
+    }
+
+    const weekStart = getMissionWeekStart();
+    const weekEnd = getMissionWeekEnd();
+    const missions = await tggCoins.getWeeklyMissionsTest(weekStart, weekEnd);
+
+    // Se não tiver missões cadastradas, mostra mensagem de erro
+    if (!missions || missions.length === 0) {
+      return loading.edit({
+        embeds: [
+          createErrorEmbed(
+            'Nenhuma missão encontrada',
+            'Ainda não há missões cadastradas para esta semana.'
+          )
+        ]
+      });
+    }
+
+    let activeText = '';
+    let historyText = '';
+
+    const stats = await fetchPlayerStats(user.brawlhalla_id);
+
+    for (const [index, mission] of missions.entries()) {
+      const mode = mission.mode;
+      const type = mission.type;
+      const fields = tggCoins.getModeFieldsTest(mode);
+
+      let text = `**${index + 1}. ${mode} (${mission.reward}${EMOJIS.TGGcoin})**\n`;
+
+      let extraHint = '';
+      if (mode === 'Ranked 2v2') {
+        extraHint = 'no elo de time (Team Rating)';
+      }
+
+      if (type === 'ELO') {
+        text += `🏆 Alcançar **${mission.target} de elo ${extraHint}**\n`;
+      } else if (type === 'WINS') {
+        text += `🥇 Ganhar **${mission.target} partidas**\n`;
+      } else if (type === 'GAMES') {
+        text += `🎮 Jogar **${mission.target} partidas**\n`;
+      }
+
+      // Pegar os dados iniciais do jogador no momento que a missão começou (ou seja, o elo, wins e games que ele tinha quando a missão foi atribuída)
+      const progress = await tggCoins.getPlayerMissionProgressTest(user.brawlhalla_id, mission.week_start);
+
+      const row = progress[0];
+
+      const initial_elo = row?.[fields.elo] || 0;
+      const initial_games = row?.[fields.games] || 0;
+      const initial_wins = row?.[fields.wins] || 0;
+
+      // Dados da API, usado para comparar com os dados iniciais e ver se o jogador completou a missão ou não
+      const current = tggCoins.extractModeDataTest(stats, mode);
+
+      const result = tggCoins.checkMissionCompletionTest({type, mode, initial_elo, initial_games, initial_wins, final_elo: current.elo, final_games: current.games, final_wins: current.wins, target: mission.target});
+
+      const alreadyCompleted = await tggCoins.hasCompletedMissionTest(discordId, mission.id);
+
+      // Se tiver completado a missão
+      if (result.completed) {
+        if (!alreadyCompleted) {
+          // Se tiver completado a missão, mostra a quantidade de moedas que o usuário ganhou e registra a missão como concluída para o usuário
+          await tggCoins.completeMissionTest(discordId, mission);
+          text += `✅ Concluído (+${mission.reward} coins)\n\n`;
+        } else {
+          text += `✅ Concluído\n\n`; // Fallback caso já tenha concluído anteriormente
+        }
+      } else {
+        text += `⏳ Em progresso\n`;
+        if (result.tip) text += `${result.tip}\n`; // Se tiver alguma dica, coloca a dica para ajudar o usuário a completar a missão
+        text += `\n`;
+      }
+
+      activeText += text;
+    }
+
+    // Mostrar as conquistas concluídas do usuário (histórico)
+    const history = await tggCoins.getUserAchievementsTest(discordId);
+
+    if (history && history.length > 0) {
+      history.forEach((item, index) => {
+        const mission = item.tgg_coins_achievements_test;
+
+        if (!mission) return;
+
+        let text = `**${index + 1}. ${mission.mode}**\n`;
+
+        if (mission.type === 'ELO') {
+          text += `🏆 Alcançou **${mission.target} de elo**\n`;
+        } else if (mission.type === 'WINS') {
+          text += `🥇 Ganhou **${mission.target} partidas**\n`;
+        } else if (mission.type === 'GAMES') {
+          text += `🎮 Jogou **${mission.target} partidas**\n`;
+        }
+
+        text += `💰 +${item.coins_earned} coins\n`;
+
+        if (item.completed_at) {
+          const date = item.completed_at.split('T')[0];
+          text += `📅 ${formatDateBR(date)}\n`;
+        }
+
+        text += `\n`;
+
+        historyText += text;
+      });
+    }
+
+    // Embeds
+    const activeEmbed = new EmbedBuilder()
+      .setColor(0x00ff99)
+      .setTitle('🎯 Missões da Semana')
+      .setDescription(activeText || 'Nenhuma missão ativa.')
+      .setFooter({
+        text: `Semana iniciada em ${formatDateBR(weekStart)}`
+      });
+
+    const historyEmbed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle('🏆 Missões Concluídas')
+      .setDescription(historyText || 'Nenhuma missão concluída ainda.');
+
+    // Botões para alternar entre missões ativas e histórico
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('active')
+        .setLabel('🎯 Ativas')
+        .setStyle(ButtonStyle.Success),
+
+      new ButtonBuilder()
+        .setCustomId('history')
+        .setLabel('🏆 Concluídas')
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    const msg = await loading.edit({
+      embeds: [activeEmbed],
+      components: [row]
+    });
+
+    const collector = msg.createMessageComponentCollector({
+      time: 60000
+    });
+
+    collector.on('collect', async (interaction) => {
+      if (interaction.user.id !== discordId) {
+        return interaction.reply({
+          content: 'Você não pode usar isso.',
+          ephemeral: true
+        });
+      }
+
+      if (interaction.customId === 'active') {
+        await interaction.update({
+          embeds: [activeEmbed],
+          components: [row]
+        });
+      }
+
+      if (interaction.customId === 'history') {
+        await interaction.update({
+          embeds: [historyEmbed],
+          components: [row]
+        });
+      }
+    });
+
+  } catch (err) {
+    return loading.edit({
+      embeds: [
+        createErrorEmbed('Erro ao carregar conquistas', err.message)
+      ]
+    });
+  }
+}
+
 // ---- .streak ----
 export async function handleStreak(message) {
   try {

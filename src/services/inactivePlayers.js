@@ -31,8 +31,7 @@ export async function sendInactivePlayersReminder(client) {
       const embed = new EmbedBuilder()
         .setColor(0xfaa61a)
         .setTitle('⚠️ Lembrete: Usuários Inativos')
-        .setDescription(`Olá! Vocês estão marcados como inativos
-          Se você está nesta lista, significa que fez menos de 1000 de contribuição na semana passada. 
+        .setDescription(`Olá! Se você está nesta lista, significa que fez menos de 1.000 de contribuição na semana passada e foi marcado como inativo. 
 
           Para saber como contribuir, veja o canal <#${'1480627066792579072'}> ou fale com um membro da staff.
 
