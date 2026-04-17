@@ -475,42 +475,40 @@ export function checkMissionCompletion({type, initial_elo, initial_games, initia
   // Missões do tipo "elo"
   if (typeNormalized === 'elo') {
 
-    // Se não tiver feito a md10
-    if (initial_games < 10) {
-      return {
-        completed: final_games >= 10,
-        tip: '💡 Termine a MD10'
-      };
+    // SEMPRE faz validação pelo target real
+    const completed = final_elo >= target;
+
+    // Dica separada da lógica de conclusão
+    let tip = '';
+
+    if (final_games < 10) {
+      tip = '💡 Termine a MD10'; // Se não tiver feito a md10
+    } else if (final_elo < target) {
+      tip = `💡 Atinga ${target} de elo`; // Se tiver feito a md10 mas não tiver atingido o elo alvo, mostra a dica de ganhar partidas
+    } else {
+      tip = '💡 Vença 1 partida'; // Se tiver o elo, ganhar 1 partida
     }
 
-    // Se tiver feito a md10 mas não tiver atingido o elo alvo, mostra a dica de ganhar partidas
-    if (initial_elo < target) {
-      return {
-        completed: final_elo >= target,
-        tip: `💡 Atinga ${target} de elo`
-      };
-    }
-
-    // Se tiver o elo, ganhar 1 partida
-    return {
-      completed: final_wins > initial_wins,
-      tip: '💡 Vença 1 partida'
-    };
+    return { completed, tip };
   }
 
   // Missões do tipo "wins"
   if (typeNormalized === 'wins') {
+    const progress = final_wins - initial_wins;
+
     return {
-      completed: (final_wins - initial_wins) >= target,
-      tip: `💡 Ganhe mais ${target - (final_wins - initial_wins)} partidas`
+      completed: progress >= target,
+      tip: `💡 Ganhe mais ${Math.max(0, target - progress)} partidas`
     };
   }
 
   // Missões do tipo "games"
   if (typeNormalized === 'games') {
+    const progress = final_games - initial_games;
+
     return {
-      completed: (final_games - initial_games) >= target,
-      tip: `💡 Jogue mais ${target - (final_games - initial_games)} partidas`
+      completed: progress >= target,
+      tip: `💡 Jogue mais ${Math.max(0, target - progress)} partidas`
     };
   }
 
