@@ -21,7 +21,7 @@ import { restoreMutes } from './src/services/muteManager.js';
 // Handlers
 import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleMute, handleUnmute, handleBan, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou } from './src/admin.js';
 import { handleHelp, handleStats, handleClan, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday } from './src/public.js';
-import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins, handleConquistasTest } from './src/tggCoinsCommands.js';
+import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins } from './src/tggCoinsCommands.js';
 
 async function main() {
   if (!discordConfig.token || !discordConfig.guildId) {
@@ -112,9 +112,6 @@ async function main() {
     'addprovider': 'addprovider',
     'removeprovider': 'removeprovider',
     'addcoins': 'addcoins',
-
-    'testconquistas': 'conquistasTest',
-    'testconq': 'conquistasTest',
   };
 
   // Lista de comandos
@@ -157,8 +154,7 @@ async function main() {
     streak: handleStreak,
     addprovider: handleAddProvider,
     removeprovider: handleRemoveProvider,
-    addcoins: handleAddCoins,
-    conquistasTest: handleConquistasTest
+    addcoins: handleAddCoins
   };
 
   client.once(Events.ClientReady, async () => {
@@ -176,7 +172,7 @@ async function main() {
     }); // Iniciar crons
 
     // Aviso de inatividade e restauração de mutes
-    //startInactiveReminder(client);
+    startInactiveReminder(client);
     await restoreMutes(client);
   });
 

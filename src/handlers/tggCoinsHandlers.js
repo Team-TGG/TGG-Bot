@@ -4,6 +4,7 @@ import * as tggCoins from '../tggCoins.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../../utils/discordUtils.js';
 import { adminOnly, leaderOnly, ROLE_HIERARCHY } from '../../utils/permissions.js';
 import { STAFF_ROLE_IDS } from '../../config/index.js';
+import { EMOJIS } from '../../config/emojis.js';
 
 // Cargos relacionados às TGG-Coins (IDs dos cargos no Discord)
 export const TGG_COINS_ROLES = {
@@ -396,7 +397,7 @@ export async function handleBuyRoleTableMaster(ctx) {
     // Dá o cargo para quem comprou
     await member.roles.add(item.role_id);
 
-    // 💰 FINALIZA COMPRA
+    // Finaliza a compra
     await tggCoins.addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Cargo RDM: ${item.name}`);
     const newBalance = await tggCoins.updateBalance(discordId, -finalPrice);
 
@@ -426,7 +427,7 @@ export async function handleBuyRole(ctx) {
   try {
     await member.roles.add(item.role_id);
 
-    // 💰 FINALIZA COMPRA
+    // Finalizar a compra
     await tggCoins.addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Cargo: ${item.name}`);
     const newBalance = await tggCoins.updateBalance(discordId, -finalPrice);
 
@@ -461,3 +462,147 @@ export const buyHandlers = {
     ROLE_TABLE_MASTER: handleBuyRoleTableMaster,
     ROLE: handleBuyRole
 };
+
+
+// Handlers pra conquistas
+
+// Configurações para cada tipo de missão
+export const typeConfig = {
+  ELO: {
+    icon: '🏆',
+    getCurrent: c => c.elo,
+    getInitial: i => i.initial_elo,
+    getProgress: (c, i) => c.elo, // absoluto
+    format: (target, extra) => `Alcançar **${target} de elo ${extra}**`
+  },
+  WINS: {
+    icon: '🥇',
+    getCurrent: c => c.wins,
+    getInitial: i => i.initial_wins,
+    getProgress: (c, i) => c.wins - i.initial_wins,
+    format: target => `Ganhar **${target} partidas**`
+  },
+  GAMES: {
+    icon: '🎮',
+    getCurrent: c => c.games,
+    getInitial: i => i.initial_games,
+    getProgress: (c, i) => c.games - i.initial_games,
+    format: target => `Jogar **${target} partidas**`
+  }
+};
+
+// Gera o header da missão com base no índice, modo e recompensa
+export function buildHeader(index, mode, reward) {
+  return `**${index}. ${mode} (${reward}${EMOJIS.TGGcoin})**\n`;
+}
+
+// Gera o texto completo da missão, verificando progresso e conclusão
+export async function buildMissionText({tierMissions, mode, type, stats, user, discordId, groupIndex }) {
+  const config = typeConfig[type];
+  const fields = tggCoins.getModeFields(mode);
+
+  const extraHint =
+    mode === 'Ranked 2v2' ? 'no elo de time (Team Rating)' : '';
+
+  const { week_start } = tierMissions[0];
+  if (!week_start) return '';
+
+  const progress = await tggCoins.getPlayerMissionProgress(
+    user.brawlhalla_id,
+    week_start
+  );
+
+  const row = progress[0] || {};
+
+  const initial = {
+    initial_elo: row?.[fields.elo] || 0,
+    initial_games: row?.[fields.games] || 0,
+    initial_wins: row?.[fields.wins] || 0
+  };
+
+  const current = tggCoins.extractModeData(stats, mode);
+  const progressValue = config.getProgress(current, initial);
+
+  // Missões de 1 tier
+  if (tierMissions.length === 1) {
+    const m = tierMissions[0];
+
+    let text = buildHeader(groupIndex, mode, m.reward);
+    text += `${config.icon} ${config.format(m.target, extraHint)}\n`;
+
+    const result = tggCoins.checkMissionCompletion({
+      type,
+      ...initial,
+      final_elo: current.elo,
+      final_games: current.games,
+      final_wins: current.wins,
+      target: m.target
+    });
+
+    const done = await tggCoins.hasCompletedMission(discordId, m.id);
+
+    if (result.completed) {
+      if (!done) {
+        await tggCoins.completeMission(discordId, m);
+        text += `✅ Concluído (+${m.reward} coins)\n\n`;
+      } else {
+        text += `✅ Concluído\n\n`;
+      }
+    } else {
+      text += `Progresso: ${progressValue} / ${m.target}\n`;
+      text += `⏳ Em progresso\n`;
+      if (result.tip) text += `${result.tip}\n`;
+      text += `\n`;
+    }
+
+    return text;
+  }
+
+  // Missões de múltiplos tiers (ex: games)
+  let currentTier = 0;
+  let rewards = [];
+
+  for (let i = 0; i < tierMissions.length; i++) {
+    const tier = tierMissions[i];
+
+    const result = tggCoins.checkMissionCompletion({
+      type,
+      ...initial,
+      final_elo: current.elo,
+      final_games: current.games,
+      final_wins: current.wins,
+      target: tier.target
+    });
+
+    const done = await tggCoins.hasCompletedMission(discordId, tier.id);
+
+    if (result.completed) {
+      if (!done) {
+        await tggCoins.completeMission(discordId, tier);
+        rewards.push(tier.reward);
+      }
+      currentTier = i + 1;
+    }
+  }
+
+  const currentMission =
+    tierMissions[currentTier] ||
+    tierMissions[tierMissions.length - 1];
+
+  let text = buildHeader(groupIndex, mode, currentMission.reward);
+  text += `${config.icon} ${config.format(currentMission.target, extraHint)}\n`;
+
+  text += `Progresso: ${progressValue} / ${currentMission.target}\n`;
+  text += `Tier: ${currentTier} / ${tierMissions.length}\n`;
+
+  if (rewards.length) {
+    text += `💰 +${rewards.join(' +')} coins\n`;
+  }
+
+  text +=
+    currentTier === tierMissions.length
+      ? `✅ Concluído\n\n`
+      : `⏳ Em progresso\n\n`;
+
+  return text;
+}
