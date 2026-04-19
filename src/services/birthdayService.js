@@ -6,8 +6,8 @@ export function createBirthdayEmbed(userId) {
   return new EmbedBuilder()
     .setColor(0xff69b4) 
     .setTitle('🎉 Feliz Aniversário! 🎂')
-    .setDescription(`Parabéns <@${userId}> que você comemore seu aniversário e tenha um dia cheio de aura!`)
-    .setImage('https://tenor.com/view/superman-superman-flying-tongue-meme-ai-gif-12285929760681474519')
+    .setDescription(`Parabéns, <@${userId}>! Que você celebre seu aniversário com muita alegria e tenha um dia incrível cheio de felicidades!`)
+    .setImage('https://i.imgur.com/R5cODcM.gif')
     .setTimestamp()
     .setFooter({ text: 'Team TGG' });
 }
