@@ -1,5 +1,5 @@
 // public.js - Comandos públicos
-import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
 import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, getMissionWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId } from './db.js';
 
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createClanEmbed, getUserBrawlhallaId, getCached } from './brawlhalla.js';
@@ -16,6 +16,7 @@ export async function handleHelp(message, args, client) {
     .addFields(
       { name: `${EMOJIS.arrowRight} .missoes`, value: 'Mostrar as missões da semana atual', inline: false },
       { name: `${EMOJIS.arrowRight} .stats`, value: 'Trazer seus status atualizados do jogo', inline: false },
+      { name: `${EMOJIS.arrowRight} .games`, value: 'Mostra a quantidade de jogos jogados durante a SEMANA', inline: false },
       { name: `${EMOJIS.arrowRight} .clan`, value: 'Ver informações do clã Team TGG', inline: false },
     )
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
@@ -392,7 +393,7 @@ export async function handleGames(message, args) {
     const initial = await getWeeklyInitial(brawlhallaId, weekStart);
 
     if (!initial) {
-      return await message.reply({
+      return await sendCleanMessage(loadingMsg, {
         embeds: [createErrorEmbed('Erro', 'Dados semanais não encontrados')]
       });
     }
@@ -417,9 +418,6 @@ export async function handleGames(message, args) {
     const games2v2 = current2v2 - (initial.initial_games_2v2 ?? 0);
     const games3v3 = current3v3 - (initial.initial_games_3v3 ?? 0);
 
-    console.log(`Iniciais para ${brawlhallaId} - Total: ${initial.games}, 1v1: ${initial.initial_games_1v1}, 2v2: ${initial.initial_games_2v2}, 3v3: ${initial.initial_games_3v3}`);
-    console.log(`Jogos semanais atuais ${brawlhallaId} - Total: ${currentGames}, 1v1: ${current1v1}, 2v2: ${current2v2}, 3v3: ${current3v3}`);
-
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
       .setTitle(`🎮 Jogos semanais - ${stats.name}`)
@@ -431,9 +429,86 @@ export async function handleGames(message, args) {
       )
       .setFooter({
         text: `Dados contabilizados a partir de: ${formatCreatedAtBR(initial.created_at)}`
-      })
+      });
 
-    await sendCleanMessage(loadingMsg, { embeds: [embed] });
+    let components = [];
+
+    if (isUserAdmin) {
+      components = [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`prev_week`)
+            .setLabel('Semana passada')
+            .setStyle(ButtonStyle.Danger)
+        )
+      ];
+    }
+
+    const sentMessage = await sendCleanMessage(loadingMsg, {
+      embeds: [embed],
+      components
+    });
+
+    // Botão de semana passada (apenas para admins)
+    if (isUserAdmin) {
+      const filter = (i) => i.user.id === message.author.id;
+
+      const collector = sentMessage.createMessageComponentCollector({
+        filter,
+        time: 60000,
+        max: 1
+      });
+
+      collector.on('collect', async (interaction) => {
+        try {
+          await interaction.deferUpdate();
+
+          const prev = new Date(weekStart);
+          prev.setDate(prev.getDate() - 7);
+
+          // Usa a data atual -7 dias, mas com o horário de 06:00:00
+          const previousWeek = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}-${String(prev.getDate()).padStart(2, '0')} 06:00:00`;
+
+          const data = await getWeeklyInitial(brawlhallaId, previousWeek);
+
+          if (!data) {
+            return interaction.editReply({
+              embeds: [createErrorEmbed('Erro', 'Dados da semana passada não encontrados')],
+              components: []
+            });
+          }
+
+          // Usa os dados atuais - os dados da semana passada para calcular os jogos da semana anterior
+          const totalGamesPrev = (data.final_games ?? 0)   - (data.games ?? 0);
+          const games1v1Prev   = (data.final_games_1v1 ?? 0) - (data.initial_games_1v1 ?? 0);
+          const games2v2Prev   = (data.final_games_2v2 ?? 0) - (data.initial_games_2v2 ?? 0);
+          const games3v3Prev   = (data.final_games_3v3 ?? 0) - (data.initial_games_3v3 ?? 0);
+          const gainedXp       = (stats.clan?.personal_xp ?? 0) - (data.guild_xp ?? 0);
+
+          const prevEmbed = new EmbedBuilder()
+            .setColor(0xed4245)
+            .setTitle(`🕓 Semana passada - ${stats.name}`)
+            .addFields(
+              { name: 'Jogos totais (Casuais)', value: `\`${totalGamesPrev}\``, inline: false },
+              { name: 'Ranked 1v1', value: `\`${games1v1Prev}\``, inline: true },
+              { name: 'Ranked 2v2', value: `\`${games2v2Prev}\``, inline: true },
+              { name: 'Ranked 3v3', value: `\`${games3v3Prev}\``, inline: true },
+              { name: 'XP da guilda', value: `\`${gainedXp}\``, inline: false }
+            )
+            .setFooter({
+              text: `Semana iniciada em: ${formatCreatedAtBR(data.week_start)}`
+            });
+
+          await interaction.editReply({
+            embeds: [prevEmbed],
+            components: []
+          });
+
+        } catch (err) {
+          console.error('Erro no botão:', err);
+        }
+      });
+    }
 
   } catch (err) {
     console.error(err);

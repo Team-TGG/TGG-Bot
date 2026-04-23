@@ -36,10 +36,7 @@ export function formatDateTime(date) {
 export function formatCreatedAtBR(dateStr) {
   if (!dateStr) return 'N/A';
 
-  // transforma "YYYY-MM-DD HH:mm:ss" em ISO UTC válido
-  const iso = dateStr.replace(' ', 'T') + 'Z';
-
-  const date = new Date(iso);
+  const date = new Date(dateStr);
 
   return new Intl.DateTimeFormat('pt-BR', {
     timeZone: 'America/Sao_Paulo',
