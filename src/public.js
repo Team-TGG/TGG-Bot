@@ -1,6 +1,6 @@
 // public.js - Comandos públicos
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
-import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatDateBR } from './db.js';
+import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, getMissionWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId } from './db.js';
 
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createClanEmbed, getUserBrawlhallaId, getCached } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
@@ -330,6 +330,120 @@ export async function handleStats(message, args, client) {
       await sendCleanMessage(loadingMsg, { embeds: [errorEmbed] }).catch(() => { });
     } else {
       await message.reply({ embeds: [errorEmbed] }).catch(() => { });
+    }
+  }
+}
+
+// .games
+export async function handleGames(message, args) {
+  let loadingMsg = null;
+  try {
+    let targetUserId = message.author.id;
+    let requestedAnotherUser = false;
+
+    const isUserAdmin = await isAdmin(message.author.id);
+
+    if (args.length > 0) {
+      const mentionMatch = args[0].match(/^<@!?(\d+)>$/);
+      if (mentionMatch) {
+        targetUserId = mentionMatch[1];
+        requestedAnotherUser = true;
+      } else if (/^\d+$/.test(args[0])) {
+        targetUserId = args[0];
+        requestedAnotherUser = true;
+      }
+    }
+
+    if (requestedAnotherUser && !isUserAdmin) {
+      return await message.reply({
+        embeds: [
+          createErrorEmbed(
+            'Acesso negado',
+            'Você só pode ver seus próprios dados.'
+          )
+        ]
+      });
+    }
+
+    let brawlhallaId = await getUserBrawlhallaId(targetUserId);
+
+    // Garante que os aliases estão carregados
+    await loadAliases();
+
+    // Caso esteja com ID de algum alt, tenta resolver para o ID principal
+    if (brawlhallaId) {
+      brawlhallaId = resolveBrawlhallaId(String(brawlhallaId));
+    }
+
+    if (!brawlhallaId) {
+      return await message.reply({
+        embeds: [createErrorEmbed('Erro', 'Usuário sem Brawlhalla ID')]
+      });
+    }
+
+    const loadingEmbed = new EmbedBuilder()
+      .setColor(0xfaa61a)
+      .setTitle('Carregando...')
+      .setDescription('Buscando dados semanais...');
+
+    loadingMsg = await message.reply({ embeds: [loadingEmbed] });
+
+    const weekStart = getMissionWeekStartDateTime();
+    const initial = await getWeeklyInitial(brawlhallaId, weekStart);
+
+    if (!initial) {
+      return await message.reply({
+        embeds: [createErrorEmbed('Erro', 'Dados semanais não encontrados')]
+      });
+    }
+
+    const stats = await fetchPlayerStats(brawlhallaId);
+    const ranked = stats.ranked;
+
+    const currentGames = stats['games'] ?? 0;
+    const current1v1 = ranked['games'] ?? 0;
+
+    let current2v2 = 0;
+    if (ranked['2v2']) {
+      ranked['2v2'].forEach(t => {
+        current2v2 += t.games ?? 0;
+      });
+    }
+
+    const current3v3 = ranked['rotating_ranked']?.games ?? 0;
+
+    const totalGames = currentGames - (initial.games ?? 0);
+    const games1v1 = current1v1 - (initial.initial_games_1v1 ?? 0);
+    const games2v2 = current2v2 - (initial.initial_games_2v2 ?? 0);
+    const games3v3 = current3v3 - (initial.initial_games_3v3 ?? 0);
+
+    console.log(`Iniciais para ${brawlhallaId} - Total: ${initial.games}, 1v1: ${initial.initial_games_1v1}, 2v2: ${initial.initial_games_2v2}, 3v3: ${initial.initial_games_3v3}`);
+    console.log(`Jogos semanais atuais ${brawlhallaId} - Total: ${currentGames}, 1v1: ${current1v1}, 2v2: ${current2v2}, 3v3: ${current3v3}`);
+
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle(`🎮 Jogos semanais - ${stats.name}`)
+      .addFields(
+        { name: 'Jogos totais (Casuais)', value: `\`${totalGames}\``, inline: false },
+        { name: 'Ranked 1v1', value: `\`${games1v1}\``, inline: true },
+        { name: 'Ranked 2v2', value: `\`${games2v2}\``, inline: true },
+        { name: 'Ranked 3v3', value: `\`${games3v3}\``, inline: true }
+      )
+      .setFooter({
+        text: `Dados contabilizados a partir de: ${formatCreatedAtBR(initial.created_at)}`
+      })
+
+    await sendCleanMessage(loadingMsg, { embeds: [embed] });
+
+  } catch (err) {
+    console.error(err);
+
+    const errorEmbed = createErrorEmbed('Erro', err.message);
+
+    if (loadingMsg) {
+      await sendCleanMessage(loadingMsg, { embeds: [errorEmbed] });
+    } else {
+      await message.reply({ embeds: [errorEmbed] });
     }
   }
 }

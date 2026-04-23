@@ -94,6 +94,11 @@ export function hasPermission(member, requiredLevel) {
 
 // Verifica se o comando foi usado em um canal permitido
 export async function checkChannelPermission(message) {
+  const content = message.content?.trim();
+
+  // ignora mensagens só com "."
+  if (content === '.') return true;
+
   const channelId = message.channel.id;
   const categoryId = message.channel.parentId;
 

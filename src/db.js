@@ -32,6 +32,25 @@ export function formatDateTime(date) {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
+// Formatar data de criação do usuário para o formato brasileiro e horário local
+export function formatCreatedAtBR(dateStr) {
+  if (!dateStr) return 'N/A';
+
+  // transforma "YYYY-MM-DD HH:mm:ss" em ISO UTC válido
+  const iso = dateStr.replace(' ', 'T') + 'Z';
+
+  const date = new Date(iso);
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date).replace(',', ' às');
+}
+
 function getLastWednesdayReference() {
   const today = new Date();
   const dayOfWeek = today.getDay();
@@ -67,6 +86,32 @@ export function getMissionWeekStart() {
   const day = String(today.getDate()).padStart(2, '0');
 
   return `${year}-${month}-${day}`;
+}
+
+// Retorna a data/hora da semana atual de missões, que começa na quinta-feira às 06:00
+export function getMissionWeekStartDateTime() {
+  const now = new Date();
+
+  const thursday = new Date(now);
+  const day = thursday.getDay();
+
+  const diff = (day - 4 + 7) % 7;
+  thursday.setDate(thursday.getDate() - diff);
+
+  thursday.setHours(6, 0, 0, 0);
+
+  if (now < thursday) {
+    thursday.setDate(thursday.getDate() - 7);
+  }
+
+  const year = thursday.getFullYear();
+  const month = String(thursday.getMonth() + 1).padStart(2, '0');
+  const dayStr = String(thursday.getDate()).padStart(2, '0');
+  const hours = String(thursday.getHours()).padStart(2, '0');
+  const minutes = String(thursday.getMinutes()).padStart(2, '0');
+  const seconds = String(thursday.getSeconds()).padStart(2, '0');
+
+  return `${year}-${month}-${dayStr} ${hours}:${minutes}:${seconds}`;
 }
 
 export function getMissionWeekEnd() {
@@ -623,4 +668,19 @@ export async function getTodayBirthdays() {
     ...b,
     user_id: String(b.user_id)
   }));
+}
+
+// Função para pegar os dados iniciais da semana para um jogador específico
+export async function getWeeklyInitial(brawlhallaId, weekStart) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('player_weekly_info')
+    .select('*')
+    .eq('brawlhalla_id', brawlhallaId)
+    .eq('week_start', weekStart)
+    .single();
+
+  if (error) throw error;
+  return data;
 }

@@ -18,7 +18,7 @@ export const TGG_COINS_ROLES = {
 
 // Funções auxiliares
 
-// Função pra rodar o daily normalmente, também é chamada quando o usuário recupera a streak, para evitar duplicação de código
+// Função pra rodar o daily normalmente, também é chamada quando o usuário recupera a streak
 async function runDaily(target, member, discordId, streak, recovered) {
   let reward = 50;
   let streakMessage = '';
@@ -35,7 +35,7 @@ async function runDaily(target, member, discordId, streak, recovered) {
   }
 
   if (recovered) {
-    streakMessage += `\n💸 Streak recuperada por 200 moedas!`;
+    streakMessage += `\n💸 Streak recuperada por 300 moedas!`;
   }
 
   let multiplier = 1;
@@ -109,6 +109,19 @@ export async function handleDaily(message) {
 
     const now = new Date();
 
+    // Normalização para usar o daily às 00:00
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+
+    // Próximo reset (00:00 do próximo dia)
+    const nextReset = new Date(today);
+    nextReset.setDate(nextReset.getDate() + 1);
+
+    const remainingMs = nextReset - now;
+    const hoursLeft = Math.floor(remainingMs / (1000 * 60 * 60));
+    const minutesLeft = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+    const secondsLeft = Math.floor((remainingMs % (1000 * 60)) / 1000);
+
     let streak = 1;
     let recovered = false;
 
@@ -116,36 +129,32 @@ export async function handleDaily(message) {
 
     if (lastDaily) {
       const last = new Date(lastDaily.created_at);
-      const diffMs = now - last;
-      const diffHours = diffMs / (1000 * 60 * 60);
 
-      // Bloquear resgate se ainda não tiver passado 24h do último daily
-      if (diffMs < 24 * 60 * 60 * 1000) {
-        const remainingMs = (24 * 60 * 60 * 1000) - diffMs;
+      const lastDay = new Date(last);
+      lastDay.setHours(0, 0, 0, 0);
 
-        const hours = Math.floor(remainingMs / (1000 * 60 * 60));
-        const minutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((remainingMs % (1000 * 60)) / 1000);
+      const diffDays = Math.floor((today - lastDay) / (1000 * 60 * 60 * 24));
 
+      // Bloquear dailys no mesmo dia
+      if (diffDays === 0) {
         return loading.edit({
           embeds: [
             createErrorEmbed(
               'Daily já resgatado',
-              `Volte em ${hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m ${seconds}s`}.`
+              `Você já resgatou hoje.\n\n⏳ Reset em ${hoursLeft}h ${minutesLeft}m ${secondsLeft}s`
             )
           ]
         });
       }
 
-      if (diffHours <= 48) {
+      // Continua streak se tiver resgatado ontem, senão perde a streak
+      if (diffDays === 1) {
         streak = (streakData?.streak || 1) + 1;
       }
 
-      // Se perdeu streak em até 72h, pode recuperar
-      else {
-        const canRecover = diffHours <= 72;
-
-        if (canRecover && streakData?.streak > 0) {
+      // Se perdeu o streak (não resgatou ontem), dá opção de recuperar se a streak for maior que 0, senão começa do 1
+      else if (diffDays === 2) {
+        if (streakData?.streak > 0) {
           const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
               .setCustomId(`recover_${discordId}`)
@@ -162,7 +171,7 @@ export async function handleDaily(message) {
             embeds: [
               createErrorEmbed(
                 'Streak perdida!',
-                `Você perdeu sua streak de **${streakData.streak} dia(s)**.\n\nDeseja recuperar por **${RECOVERY_COST} moedas**?`
+                `Você perdeu sua streak de **${streakData.streak} dia(s)**.\n\nDeseja recuperar por **${RECOVERY_COST} moedas**?\n\n⏳ Reset em ${hoursLeft}h ${minutesLeft}m ${secondsLeft}s`
               )
             ],
             components: [row]
@@ -202,7 +211,12 @@ export async function handleDaily(message) {
           collector.on('end', async (collected) => {
             if (collected.size === 0) {
               await loading.edit({
-                embeds: [createErrorEmbed('Tempo esgotado', 'Você não respondeu a tempo.')],
+                embeds: [
+                  createErrorEmbed(
+                    'Tempo esgotado',
+                    `Você não respondeu a tempo.\n\n⏳ Reset em ${hoursLeft}h ${minutesLeft}m ${secondsLeft}s`
+                  )
+                ],
                 components: []
               });
             }
@@ -211,7 +225,11 @@ export async function handleDaily(message) {
           return;
         }
 
-        // Reset normal
+        streak = 1;
+      }
+
+      // Se perder mais de um dia, perde a streak normalmente
+      else {
         streak = 1;
       }
     }

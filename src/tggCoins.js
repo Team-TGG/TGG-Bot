@@ -475,8 +475,11 @@ export function checkMissionCompletion({type, initial_elo, initial_games, initia
   // Missões do tipo "elo"
   if (typeNormalized === 'elo') {
 
-    // SEMPRE faz validação pelo target real
-    const completed = final_elo >= target;
+    // SEMPRE faz validação pelo target real e quantidade de vitórias
+    const reachedElo = final_elo >= target;
+    const wonMatch = final_wins > initial_wins;
+
+    const completed = reachedElo && wonMatch;
 
     // Dica separada da lógica de conclusão
     let tip = '';

@@ -20,7 +20,7 @@ import { restoreMutes } from './src/services/muteManager.js';
 
 // Handlers
 import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleMute, handleUnmute, handleBan, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou } from './src/admin.js';
-import { handleHelp, handleStats, handleClan, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday } from './src/public.js';
+import { handleHelp, handleStats, handleClan, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames } from './src/public.js';
 import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins } from './src/tggCoinsCommands.js';
 
 async function main() {
@@ -109,6 +109,8 @@ async function main() {
     'birthday': 'birthday',
     'aniversario': 'birthday',
     'aniversário': 'birthday',
+    'games': 'games',
+    'jogos': 'games',
     'addprovider': 'addprovider',
     'removeprovider': 'removeprovider',
     'addcoins': 'addcoins',
@@ -125,6 +127,7 @@ async function main() {
     missoes: handleMissoes,
     active: handleActive,
     birthday: handleBirthday,
+    games: handleGames,
 
     // Admin
     sync: handleSync,
