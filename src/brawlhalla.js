@@ -586,6 +586,51 @@ export function createLegendsStatsEmbed(playerData) {
   return embed;
 }
 
+export function createWeaponsStatsEmbed(playerData) {
+  const stats = playerData || {};
+  const legends = stats.legends || [];
+
+  const weaponTimes = {};
+  legends.forEach(l => {
+    const mapping = legendsDataCache?.[l.legend_name_key];
+    if (mapping) {
+      const w1 = mapping.weapon_one;
+      const w2 = mapping.weapon_two;
+      const t1 = parseInt(l.timeheldweaponone || 0);
+      const t2 = parseInt(l.timeheldweapontwo || 0);
+      if (w1) weaponTimes[w1] = (weaponTimes[w1] || 0) + t1;
+      if (w2) weaponTimes[w2] = (weaponTimes[w2] || 0) + t2;
+    }
+  });
+
+  // Ordena por tempo decrescente
+  const topWeapons = Object.entries(weaponTimes)
+    .map(([weapon, time]) => ({ weapon, time }))
+    .sort((a, b) => b.time - a.time);
+
+  const embed = new EmbedBuilder()
+    .setColor(0x00ff00)
+    .setTitle(`🗡️ ${stats.name || 'Player'} — Weapon Playtime`)
+    .setFooter({ text: 'Brawlhalla Stats • Weapons' })
+    .setTimestamp();
+
+  if (topWeapons.length === 0) {
+    embed.setDescription('Nenhum dado de arma encontrado.');
+    return embed;
+  }
+
+  const weaponList = topWeapons.map((w, i) => {
+    const weaponName = normalizeWeapon(w.weapon);
+    const icon = WEAPON_ICONS[weaponName.toLowerCase().replace(/\s+/g, '')] || '❓';
+    const timeFormatted = formatTime(w.time);
+    
+    return `**${i + 1}.** ${icon} **${weaponName}**\n╰ \`${timeFormatted}\``;
+  }).join('\n\n');
+
+  embed.setDescription(weaponList);
+  return embed;
+}
+
 export function createRankedEmbed(playerData) {
   const stats = playerData || {};
   const ranked = stats.ranked || {};
@@ -598,7 +643,7 @@ export function createRankedEmbed(playerData) {
   // 2v2 Solo (brawlhalla_id_two === 0)
   const solo2v2 = teams2v2.find(t => t.brawlhalla_id_two === 0);
 
-  // 2v2 Team (melhor time que não seja solo)
+  // 2v2 Team
   const bestTeam = teams2v2.length > 0
     ? teams2v2
         .filter(t => t.brawlhalla_id_two !== 0)
@@ -609,7 +654,6 @@ export function createRankedEmbed(playerData) {
     : null;
 
   // 3v3 (rotating_ranked)
-  // rotating_ranked pode ser um array ou um objeto único
   let rotatingStats = null;
   if (rotating) {
     if (Array.isArray(rotating)) {

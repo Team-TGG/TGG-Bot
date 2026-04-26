@@ -1,6 +1,6 @@
 // public.js - Comandos públicos
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
-import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, getMissionWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId } from './db.js';
+import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId } from './db.js';
 
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createClanEmbed, getUserBrawlhallaId, getCached } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
@@ -291,11 +291,13 @@ export async function handleStats(message, args, client) {
     const mainEmbed = createStatsEmbed(playerData);
     const rankedEmbed = createRankedEmbed(playerData);
     const legendsEmbed = (await import('./brawlhalla.js')).createLegendsStatsEmbed(playerData);
+    const weaponsEmbed = (await import('./brawlhalla.js')).createWeaponsStatsEmbed(playerData);
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('stats_main').setLabel('Geral').setStyle(1),
       new ButtonBuilder().setCustomId('stats_ranked').setLabel('Ranked').setStyle(1),
-      new ButtonBuilder().setCustomId('stats_legends').setLabel('Legends').setStyle(1)
+      new ButtonBuilder().setCustomId('stats_legends').setLabel('Legends').setStyle(1),
+      new ButtonBuilder().setCustomId('stats_weapons').setLabel('Weapons').setStyle(1)
     );
 
     const statsMsg = await sendCleanMessage(loadingMsg, { embeds: [mainEmbed], components: [row] });
@@ -314,6 +316,8 @@ export async function handleStats(message, args, client) {
           await i.update({ embeds: [rankedEmbed], components: [row] }).catch(() => { });
         } else if (i.customId === 'stats_legends') {
           await i.update({ embeds: [legendsEmbed], components: [row] }).catch(() => { });
+        } else if (i.customId === 'stats_weapons') {
+          await i.update({ embeds: [weaponsEmbed], components: [row] }).catch(() => { });
         }
       } catch (err) {
         console.error('[Interaction] Error handled in collector:', err.message);
