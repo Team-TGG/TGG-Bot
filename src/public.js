@@ -779,7 +779,12 @@ export async function handleBirthday(message, args) {
     await addBirthday(message.author.id, birthdayISO);
 
     return message.reply({
-      embeds: [createSuccessEmbed(`Seu aniversário foi registrado: **${dateInput}**`)]
+      embeds: [
+        createSuccessEmbed(
+          'Aniversário registrado',
+          `Seu aniversário foi registrado: **${dateInput}**`
+        )
+      ]
     });
 
   } catch (err) {
