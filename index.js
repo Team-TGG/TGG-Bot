@@ -187,10 +187,6 @@ async function main() {
     if (message.author.bot) return;
     if (!message.content.startsWith(PREFIX)) return;
 
-    // Verificar permissão de canal antes de processar o comando
-    const allowed = await checkChannelPermission(message);
-    if (!allowed) return;
-
     const content = message.content.slice(PREFIX.length).trim();
     if (!content) return;
 
@@ -199,6 +195,10 @@ async function main() {
     const command = COMMAND_ALIASES[rawCommand];
 
     if (!command) return;
+
+    // Verificar permissão de canal antes de processar o comando
+    const allowed = await checkChannelPermission(message);
+    if (!allowed) return;
 
     // Verificação de rate limit para todos os comandos
     const now = Date.now();
