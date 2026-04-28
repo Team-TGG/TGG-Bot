@@ -29,7 +29,7 @@ const ALLOWED_CATEGORIES = [
 export async function isAdmin(userId) {
   try {
     const user = await getUserByDiscordId(userId);
-    return user && user.active && user.role?.toLowerCase() === 'admin';
+    return (user && user.active && (user.role?.toLowerCase() === 'admin' || user.role?.toLowerCase() === 'officer'));
   } catch {
     return false;
   }
@@ -98,6 +98,11 @@ export async function checkChannelPermission(message) {
 
   // ignora mensagens só com "."
   if (content === '.') return true;
+
+  // admins e officers podem usar em qualquer canal
+  if (await isAdmin(message.author.id)) {
+    return true;
+  }
 
   const channelId = message.channel.id;
   const categoryId = message.channel.parentId;

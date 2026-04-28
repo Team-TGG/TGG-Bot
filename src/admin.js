@@ -889,3 +889,146 @@ export const handleEntrou = adminOnly(async (message, args, client) => {
     });
   }
 });
+
+// .escrever {json com https://discohook.org}
+export const handleEscrever = adminOnly(async (message, args) => {
+  try {
+
+    const raw = args.join(" ").trim();
+
+    if (!raw) {
+      return message.channel.send({
+        embeds: [
+          createErrorEmbed(
+            "Uso incorreto",
+            "Envie um JSON após .escrever (use o https://discohook.org para criar o JSON de forma fácil)."
+          )
+        ]
+      });
+    }
+
+    let data;
+
+    try {
+      data = JSON.parse(raw);
+    } catch (e) {
+      return message.channel.send({
+        embeds: [
+          createErrorEmbed(
+            "JSON inválido",
+            e.message
+          )
+        ]
+      });
+    }
+
+    // Canal opcional
+    let targetChannel = message.channel;
+
+    if (data.channel_id) {
+      const channel = await message.client.channels
+        .fetch(String(data.channel_id))
+        .catch(() => null);
+
+      if (!channel || !channel.isTextBased()) {
+        return message.channel.send({
+          embeds: [
+            createErrorEmbed(
+              "Canal inválido",
+              "channel_id não encontrado."
+            )
+          ]
+        });
+      }
+
+      targetChannel = channel;
+    }
+
+    // Converter embeds JSON para EmbedBuilder
+    let embeds = [];
+
+    if (Array.isArray(data.embeds)) {
+      embeds = data.embeds.map(embed => {
+
+        const e = new EmbedBuilder();
+
+        if (embed.title) e.setTitle(embed.title); // Título
+        if (embed.description) e.setDescription(embed.description); // Descrição
+        if (embed.url) e.setURL(embed.url); // URL do título
+        if (embed.color) e.setColor(embed.color); // Cor da borda
+
+        // Timestamp opcional
+        if (embed.timestamp)
+          e.setTimestamp(
+            embed.timestamp === true ? new Date() : new Date(embed.timestamp)
+          );
+
+        // Autor opcional
+        if (embed.author) {
+          e.setAuthor({
+            name: embed.author.name,
+            iconURL: embed.author.icon_url,
+            url: embed.author.url
+          });
+        }
+
+        // Footer opcional
+        if (embed.footer) {
+          e.setFooter({
+            text: embed.footer.text,
+            iconURL: embed.footer.icon_url
+          });
+        }
+
+        // Imagens opcionais
+        if (embed.thumbnail?.url) {
+          e.setThumbnail(embed.thumbnail.url);
+        }
+
+        // Imagem principal opcional
+        if (embed.image?.url) {
+          e.setImage(embed.image.url);
+        }
+
+        // Campos opcionais
+        if (Array.isArray(embed.fields)) {
+          e.addFields(
+            embed.fields.map(f => ({
+              name: f.name,
+              value: f.value,
+              inline: !!f.inline
+            }))
+          );
+        }
+
+        return e;
+      });
+    }
+
+    // Payload completo estilo webhook
+    const payload = {
+      content: data.content || undefined,
+      embeds
+    };
+
+    // Attachments opcionais
+    if (
+      Array.isArray(data.attachments) &&
+      data.attachments.length
+    ) {
+      payload.files = data.attachments;
+    }
+
+    await targetChannel.send(payload);
+
+  } catch (err) {
+    await message.channel.send({
+      embeds: [
+        createErrorEmbed(
+          "Erro ao enviar embed",
+          err.message
+        )
+      ]
+    });
+  }
+});
