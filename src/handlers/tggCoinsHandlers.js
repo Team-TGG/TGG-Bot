@@ -492,8 +492,12 @@ export const typeConfig = {
 };
 
 // Gera o header da missão com base no índice, modo e recompensa
-export function buildHeader(index, mode, reward) {
-  return `**${index}. ${mode} (${reward}${EMOJIS.TGGcoin})**\n`;
+export function buildHeader(index, mode, reward, hasEvent = false) {
+  const rewardText = hasEvent
+    ? `${reward} TGG Coins ${EMOJIS.TGGcoin} + ${reward} Tickets ${EMOJIS.tickets}`
+    : `${reward} TGG Coins ${EMOJIS.TGGcoin}`;
+
+  return `**${index}. ${mode} (${rewardText})**\n`;
 }
 
 // Gera o texto completo da missão, verificando progresso e conclusão
@@ -506,6 +510,8 @@ export async function buildMissionText({tierMissions, mode, type, stats, user, d
 
   const { week_start } = tierMissions[0];
   if (!week_start) return '';
+
+  const activeEvent = await tggCoins.getActiveEvent();
 
   const progress = await tggCoins.getPlayerMissionProgress(
     user.brawlhalla_id,
@@ -527,7 +533,7 @@ export async function buildMissionText({tierMissions, mode, type, stats, user, d
   if (tierMissions.length === 1) {
     const m = tierMissions[0];
 
-    let text = buildHeader(groupIndex, mode, m.reward);
+    let text = buildHeader(groupIndex, mode, m.reward, !!activeEvent);
     text += `${config.icon} ${config.format(m.target, extraHint)}\n`;
 
     const result = tggCoins.checkMissionCompletion({
@@ -544,7 +550,11 @@ export async function buildMissionText({tierMissions, mode, type, stats, user, d
     if (result.completed) {
       if (!done) {
         await tggCoins.completeMission(discordId, m);
-        text += `✅ Concluído (+${m.reward} coins)\n\n`;
+
+        text += activeEvent
+          ? `✅ Concluído (+${m.reward} coins | +${m.reward} tickets)\n\n`
+          : `✅ Concluído (+${m.reward} coins)\n\n`;
+
       } else {
         text += `✅ Concluído\n\n`;
       }
@@ -589,7 +599,7 @@ export async function buildMissionText({tierMissions, mode, type, stats, user, d
     tierMissions[currentTier] ||
     tierMissions[tierMissions.length - 1];
 
-  let text = buildHeader(groupIndex, mode, currentMission.reward);
+  let text = buildHeader(groupIndex, mode, currentMission.reward, !!activeEvent);
   text += `${config.icon} ${config.format(currentMission.target, extraHint)}\n`;
 
   text += `Progresso: ${progressValue} / ${currentMission.target}\n`;
@@ -597,6 +607,10 @@ export async function buildMissionText({tierMissions, mode, type, stats, user, d
 
   if (rewards.length) {
     text += `💰 +${rewards.join(' +')} coins\n`;
+
+    if (activeEvent) {
+      text += `${EMOJIS.tickets} +${rewards.join(' +')} tickets\n`;
+    }
   }
 
   text +=
@@ -605,4 +619,28 @@ export async function buildMissionText({tierMissions, mode, type, stats, user, d
       : `⏳ Em progresso\n\n`;
 
   return text;
+}
+
+
+// Hanldlers para Daily
+
+export function getDailyReward(streak) {
+  if (streak >= 7) {
+    return {
+      reward: 100,
+      message: `🔥 Streak de ${streak} dias! Recompensa máxima!`
+    };
+  }
+
+  if (streak >= 3) {
+    return {
+      reward: 75,
+      message: `🔥 Streak de ${streak} dias! Continue assim!`
+    };
+  }
+
+  return {
+    reward: 50,
+    message: `📅 Streak de ${streak} dia${streak > 1 ? 's' : ''}`
+  };
 }

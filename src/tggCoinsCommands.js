@@ -7,7 +7,7 @@ import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils
 import { adminOnly, leaderOnly, ROLE_HIERARCHY } from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
 import { STAFF_ROLE_IDS } from '../config/index.js';
-import { buyHandlers, typeConfig, buildHeader, buildMissionText } from './handlers/tggCoinsHandlers.js';
+import { buyHandlers, typeConfig, buildHeader, buildMissionText, getDailyReward } from './handlers/tggCoinsHandlers.js';
 
 // Cargos relacionados às TGG-Coins (IDs dos cargos no Discord)
 export const TGG_COINS_ROLES = {
@@ -19,20 +19,13 @@ export const TGG_COINS_ROLES = {
 // Funções auxiliares
 
 // Função pra rodar o daily normalmente, também é chamada quando o usuário recupera a streak
-async function runDaily(target, member, discordId, streak, recovered) {
-  let reward = 50;
-  let streakMessage = '';
+async function runDaily(target, member, discordId, streak, eventStreak, recovered) {
+  const activeEvent = await tggCoins.getActiveEvent();
 
-  if (streak >= 7) {
-    reward = 100;
-    streakMessage = `🔥 Streak de ${streak} dias! Recompensa máxima!`;
-  } else if (streak >= 3) {
-    reward = 75;
-    streakMessage = `🔥 Streak de ${streak} dias! Continue assim!`;
-  } else {
-    reward = 50;
-    streakMessage = `📅 Streak de ${streak} dia${streak > 1 ? 's' : ''}`;
-  }
+  const {reward: baseReward, message: streakMessageBase} = getDailyReward(streak);
+
+  let reward = baseReward;
+  let streakMessage = streakMessageBase;
 
   if (recovered) {
     streakMessage += `\n💸 Streak recuperada por 300 moedas!`;
@@ -61,18 +54,64 @@ async function runDaily(target, member, discordId, streak, recovered) {
   }
 
   await tggCoins.upsertUserStreak(discordId, streak);
+
+  let ticketBalance = null;
+  let ticketReward = 0;
+
+  // Se tiver evento, mexe no streak do evento
+  if (activeEvent && eventStreak) {
+    await tggCoins.upsertEventUserStreak(discordId, eventStreak);
+
+    ticketReward = getDailyReward(eventStreak).reward;
+
+    // VIP NÃO multiplica tickets
+    if (member.roles.cache.has(TGG_COINS_ROLES.MVP_SEMANAL)) {
+      ticketReward = Math.floor(ticketReward * 1.4);
+    }
+  }
+
   await tggCoins.addTransaction(discordId, reward, 'DAILY', 'Recompensa diária');
   const newBalance = await tggCoins.updateBalance(discordId, reward);
 
-  const replyMethod = typeof target.update === 'function'
-    ? target.update.bind(target)
-    : target.edit.bind(target);
+  // Verifica se tem algum evento ativo, caso tenha, adiciona os tickets para o usuário
+  if (activeEvent) {
+    await tggCoins.addTicketTransaction(discordId, activeEvent.id, ticketReward, 'DAILY', 'Tickets do evento (daily)');
+    ticketBalance = await tggCoins.updateTicketBalance(discordId, ticketReward);
+  }
 
+  const replyMethod = typeof target.update === 'function'
+      ? target.update.bind(target)
+      : target.edit.bind(target);
+
+  // Embed caso não tenha evento ativo
+  if (!activeEvent) {
+    return replyMethod({
+      embeds: [
+        createSuccessEmbed(
+          'TGG Coins recebidas!', 
+          `+${reward} TGG-Coins ${EMOJIS.TGGcoin}\n${streakMessage}${bonusMessage}\n\nSaldo atual: **${newBalance.toLocaleString('pt-BR')}**`
+        )
+      ],
+      components: []
+    });
+  }
+
+  // Embed caso tenha evento ativo
   return replyMethod({
     embeds: [
       createSuccessEmbed(
-        'TGG Coins recebidas!',
-        `+${reward} TGG-Coins ${EMOJIS.TGGcoin}\n${streakMessage}${bonusMessage}\n\nSaldo atual: **${newBalance.toLocaleString('pt-BR')}**`
+        'Recompensas recebidas!',
+        `💰 Ganhos de hoje
+        +${reward} TGG-Coins ${EMOJIS.TGGcoin}
+        +${ticketReward} Tickets ${EMOJIS.tickets}
+
+        ${streakMessage}
+        ${EMOJIS.tickets} Streak do Evento: ${eventStreak} dias
+        ${bonusMessage}
+
+        📦 Saldos atuais
+        ${EMOJIS.TGGcoin} TGG-Coins: **${newBalance.toLocaleString('pt-BR')}**
+        ${EMOJIS.tickets} Tickets: **${ticketBalance.toLocaleString('pt-BR')}**`
       )
     ],
     components: []
@@ -105,7 +144,10 @@ export async function handleDaily(message) {
 
     // Pega o horário do último daily
     const lastDaily = await tggCoins.getLastDaily(discordId);
-    const streakData = await tggCoins.getUserStreak(discordId); // Pega a streak atual do usuário
+    const streakData = await tggCoins.getUserStreak(discordId);
+
+    const activeEvent = await tggCoins.getActiveEvent();
+    const eventStreakData = activeEvent ? await tggCoins.getEventUserStreak(discordId) : null;
 
     const now = new Date();
 
@@ -123,6 +165,7 @@ export async function handleDaily(message) {
     const secondsLeft = Math.floor((remainingMs % (1000 * 60)) / 1000);
 
     let streak = 1;
+    let eventStreak = activeEvent ? 1 : null;
     let recovered = false;
 
     const RECOVERY_COST = 300;
@@ -149,7 +192,11 @@ export async function handleDaily(message) {
 
       // Continua streak se tiver resgatado ontem, senão perde a streak
       if (diffDays === 1) {
-        streak = (streakData?.streak || 1) + 1;
+        streak = (streakData?.streak || 0) + 1;
+
+        if (activeEvent) {
+          eventStreak = (eventStreakData?.streak || 0) + 1;
+        }
       }
 
       // Se perdeu o streak (não resgatou ontem), dá opção de recuperar se a streak for maior que 0, senão começa do 1
@@ -200,12 +247,12 @@ export async function handleDaily(message) {
 
                 await tggCoins.updateBalance(discordId, -RECOVERY_COST);
 
-                finalStreak = (streakData?.streak || 1) + 1;
+                finalStreak = (streakData?.streak || 0) + 1;
                 recovered = true;
               }
             }
 
-            await runDaily(interaction, message.member, discordId, finalStreak, recovered);
+            await runDaily(interaction, message.member, discordId, finalStreak, finalEventStreak, recovered);
           });
 
           collector.on('end', async (collected) => {
@@ -226,16 +273,24 @@ export async function handleDaily(message) {
         }
 
         streak = 1;
+
+        if(activeEvent){
+          eventStreak = 1;
+        }
       }
 
       // Se perder mais de um dia, perde a streak normalmente
       else {
         streak = 1;
+
+        if(activeEvent){
+          eventStreak = 1;
+        }
       }
     }
 
     // Fluxo normal da função
-    return runDaily(loading, message.member, discordId, streak, recovered);
+    return runDaily(loading, message.member, discordId, streak, eventStreak, recovered);
 
   } catch (err) {
     return loading.edit({
@@ -257,13 +312,21 @@ export async function handleBalance(message) {
     }
 
     const balance = await tggCoins.getBalance(discordId);
+    const activeEvent = await tggCoins.getActiveEvent();
+
+    let description = `${EMOJIS.TGGcoin} Você possui **${balance.toLocaleString('pt-BR')} TGG-Coins**`;
+
+    if (activeEvent) {
+      const ticketBalance = await tggCoins.getEventBalance(discordId);
+      description += `\n${EMOJIS.tickets} Você possui **${ticketBalance.toLocaleString('pt-BR')} Tickets**`;
+    }
 
     return message.reply({
       embeds: [
         new EmbedBuilder()
           .setColor(0x5865f2)
           .setTitle(`${EMOJIS.TGGcoin} Seu saldo`)
-          .setDescription(`Você possui **${balance.toLocaleString('pt-BR')} TGG-Coins**`)
+          .setDescription(description)
           .setTimestamp()
       ]
     });
@@ -276,11 +339,22 @@ export async function handleBalance(message) {
 }
 
 // ---- .historico ----
-export async function handleHistorico(message) {
+export async function handleHistorico(message, args) {
   try {
-    const discordId = message.author.id;
+    let targetId = message.author.id;
 
-    const user = await getUserByDiscordId(discordId);
+    // Permite mencionar usuário ou passar ID
+    if (args?.length) {
+      const mention = message.mentions.users.first();
+
+      if (mention) {
+        targetId = mention.id;
+      } else if (/^\d+$/.test(args[0])) {
+        targetId = args[0];
+      }
+    }
+
+    const user = await getUserByDiscordId(targetId);
     if (!user || !user.active) {
       return message.reply({
         embeds: [createErrorEmbed('Acesso Negado', 'Você não está na guilda.')]
@@ -291,7 +365,7 @@ export async function handleHistorico(message) {
     const limit = 5;
 
     async function generateEmbed(page) {
-      const { data, total } = await tggCoins.getTransactions(discordId, page, limit);
+      const { data, total } = await tggCoins.getTransactions(targetId, page, limit);
 
       const totalPages = Math.ceil(total / limit) || 1;
 
@@ -299,7 +373,7 @@ export async function handleHistorico(message) {
         return new EmbedBuilder()
           .setColor(0xed4245)
           .setTitle('📜 Histórico vazio')
-          .setDescription('Você não possui transações.');
+          .setDescription('Nenhuma transação encontrada.');
       }
 
       const description = data.map(t => {
@@ -312,27 +386,27 @@ export async function handleHistorico(message) {
 
       return new EmbedBuilder()
         .setColor(0x5865f2)
-        .setTitle('📜 Seu histórico')
+        .setTitle(targetId === message.author.id ? '📜 Seu histórico' : '📜 Histórico do usuário')
         .setDescription(description)
         .setFooter({ text: `Página ${page}/${totalPages}` })
         .setTimestamp();
     }
 
     const row = (page, totalPages) => new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('prev')
-        .setLabel('⬅️')
-        .setStyle(1)
-        .setDisabled(page <= 1),
+        new ButtonBuilder()
+          .setCustomId('prev')
+          .setLabel('⬅️')
+          .setStyle(1)
+          .setDisabled(page <= 1),
 
-      new ButtonBuilder()
-        .setCustomId('next')
-        .setLabel('➡️')
-        .setStyle(1)
-        .setDisabled(page >= totalPages)
-    );
+        new ButtonBuilder()
+          .setCustomId('next')
+          .setLabel('➡️')
+          .setStyle(1)
+          .setDisabled(page >= totalPages)
+      );
 
-    let { total } = await tggCoins.getTransactions(discordId, page, limit);
+    let { total } = await tggCoins.getTransactions(targetId, page, limit);
     let totalPages = Math.ceil(total / limit) || 1;
 
     const msg = await message.reply({
@@ -341,8 +415,8 @@ export async function handleHistorico(message) {
     });
 
     const collector = msg.createMessageComponentCollector({
-      time: 60000
-    });
+        time: 60000
+      });
 
     collector.on('collect', async (interaction) => {
       if (interaction.user.id !== message.author.id) {
@@ -355,7 +429,7 @@ export async function handleHistorico(message) {
       if (interaction.customId === 'prev') page--;
       if (interaction.customId === 'next') page++;
 
-      let { total } = await tggCoins.getTransactions(discordId, page, limit);
+      let { total } = await tggCoins.getTransactions(targetId, page, limit);
       let totalPages = Math.ceil(total / limit) || 1;
 
       await interaction.update({
@@ -568,7 +642,10 @@ export async function handleShop(message, args) {
 
         let priceText;
 
-        if (finalPrice === 0) {
+        // Se for um item de evento, mostra o preço em tickets ao invés de coins, e não mostra desconto de booster (desconto não se aplica a itens de evento)
+        if (item.type === 'EVENT') {
+          priceText = `${EMOJIS.tickets} **${item.price.toLocaleString('pt-BR')} Tickets**`;
+        } else if (finalPrice === 0) {
           priceText = `🆓 **Grátis para Booster**`;
         } else {
           priceText = `${EMOJIS.TGGcoin} **${finalPrice.toLocaleString('pt-BR')} TGG-Coins**`;
@@ -633,37 +710,37 @@ export async function handleShop(message, args) {
     const collector = msg.createMessageComponentCollector({ time: 60000 });
 
     collector.on('collect', async (interaction) => {
-      try {
-        if (interaction.user.id !== discordId) {
-          return interaction.reply({
-            content: 'Você não pode usar isso.',
-            ephemeral: true
+        try {
+          if (interaction.user.id !== discordId) {
+            return interaction.reply({
+              content: 'Você não pode usar isso.',
+              ephemeral: true
+            });
+          }
+
+          if (interaction.customId === 'shop_category') {
+            category = interaction.values[0];
+            page = 1;
+          }
+
+          if (interaction.customId === 'shop_prev') {
+            page--;
+          }
+
+          if (interaction.customId === 'shop_next') {
+            page++;
+          }
+
+          const filtered = getFiltered();
+
+          await interaction.update({
+            embeds: [await generateEmbed()],
+            components: getComponents(filtered.length)
           });
+
+        } catch (err) {
+          console.error(err);
         }
-
-        if (interaction.customId === 'shop_category') {
-          category = interaction.values[0];
-          page = 1;
-        }
-
-        if (interaction.customId === 'shop_prev') {
-          page--;
-        }
-
-        if (interaction.customId === 'shop_next') {
-          page++;
-        }
-
-        const filtered = getFiltered();
-
-        await interaction.update({
-          embeds: [await generateEmbed()],
-          components: getComponents(filtered.length)
-        });
-
-      } catch (err) {
-        console.error(err);
-      }
     });
 
   } catch (err) {
@@ -720,6 +797,17 @@ export async function handleBuy(message, args) {
       });
     }
 
+
+    // Verifica se é um item de evento e se o evento ainda está ativo
+    const activeEvent = await tggCoins.getActiveEvent();
+    const isEventItem = item.type === 'EVENT';
+
+    if (isEventItem && !activeEvent) {
+      return message.reply({
+        embeds: [createErrorEmbed('Evento encerrado', 'Esse item não pode mais ser comprado.')]
+      });
+    }
+
     // Preço final (verifica se o usuario tem desconto (booster) e aplica o desconto)
     const finalPrice = tggCoins.getDiscountedPrice(member, item);
 
@@ -740,13 +828,18 @@ export async function handleBuy(message, args) {
       });
     }
 
-    // Ver o saldo do usuário
-    const balance = await tggCoins.getBalance(discordId);
+    // Ver o saldo do usuário (Se for item de evento, verifica o saldo de tickets, senão verifica o saldo de coins)
+    const balance = isEventItem ? await tggCoins.getEventBalance(discordId) : await tggCoins.getBalance(discordId);
 
     // Se não tiver saldo suficiente, trava
     if (balance < finalPrice) {
       return message.reply({
-        embeds: [createErrorEmbed('Saldo insuficiente', `Você precisa de ${finalPrice.toLocaleString('pt-BR')} TGG-Coins.`)]
+        embeds: [createErrorEmbed('Saldo insuficiente', 
+              isEventItem
+              ? `Você precisa de ${finalPrice.toLocaleString('pt-BR')} Tickets.`
+              : `Você precisa de ${finalPrice.toLocaleString('pt-BR')} TGG-Coins.`
+          )
+        ]
       });
     }
 
@@ -771,11 +864,20 @@ export async function handleBuy(message, args) {
       }
     }
 
-    // Adiciona a transação
-    await tggCoins.addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Compra: ${item.name}`);
+    let newBalance;
 
-    // Atualizar o saldo
-    const newBalance = await tggCoins.updateBalance(discordId, -finalPrice);
+    // Se for um item de evento, registra a transação de tickets e atualiza o saldo de tickets
+    if (isEventItem) {
+      await tggCoins.addTicketTransaction(discordId, activeEvent.id, -finalPrice, 'SHOP_PURCHASE', `Compra: ${item.name}`);
+      newBalance = await tggCoins.updateTicketBalance(discordId, -finalPrice);
+    } else {
+
+      // Adiciona a transação
+      await tggCoins.addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Compra: ${item.name}`);
+
+      // Atualizar o saldo
+      newBalance = await tggCoins.updateBalance(discordId, -finalPrice);
+    }
 
     // Registrar a compra
     await tggCoins.createPurchase(discordId, item);
@@ -783,18 +885,29 @@ export async function handleBuy(message, args) {
     // Diminuir estoque (Se tiver estoque)
     await tggCoins.decreaseStock(item.id, item.stock);
 
-    let priceText = `**${finalPrice.toLocaleString('pt-BR')} TGG-Coins**`;
-    
-    // Mensagem extra para quem comprou com desconto
-    if (finalPrice < item.price) {
-      priceText = `~~${item.price.toLocaleString('pt-BR')}~~ → ${priceText} 🔥 (desconto de Booster aplicado)`;
+    // Verifica, após diminuir o estoque, se o item é de evento, para ver se o evento acabou
+    if (item.type === 'EVENT') {
+      await tggCoins.checkAndFinishEvent(message.guild);
+    }
+
+    let priceText;
+
+    if (isEventItem) {
+      priceText = `**${finalPrice.toLocaleString('pt-BR')} Tickets**`;
+    } else {
+      priceText = `**${finalPrice.toLocaleString('pt-BR')} TGG-Coins**`;
+
+      // Mensagem extra para quem comprou com desconto
+      if (finalPrice < item.price) {
+        priceText = `~~${item.price.toLocaleString('pt-BR')}~~ → ${priceText} 🔥 (desconto de Booster aplicado)`;
+      }
     }
 
     return message.reply({
       embeds: [
         createSuccessEmbed(
           'Compra realizada!',
-          `Você comprou **${item.name}** por ${priceText}.\nSaldo atual: **${newBalance}**`
+          `Você comprou **${item.name}** por ${priceText}.\nSaldo atual: **${newBalance.toLocaleString('pt-BR')} ${isEventItem ? 'Tickets' : 'TGG-Coins'}**`
         )
       ]
     });
@@ -994,6 +1107,7 @@ export async function handleStreak(message) {
 
     const streakData = await tggCoins.getUserStreak(discordId);
     const streak = streakData?.streak || 0;
+    const activeEvent = await tggCoins.getActiveEvent();
 
     let nextBonus = null;
     let daysLeft = null;
@@ -1009,18 +1123,38 @@ export async function handleStreak(message) {
     let description = `Você está com **${streak} dia(s)** de streak.`;
 
     if (nextBonus !== null) {
-      description += `\n\n⏳ Faltam **${daysLeft} dia(s)${daysLeft > 1 ? 's' : ''}** para o próximo bônus de **${nextBonus} moedas**.`;
+      description += `\n\n⏳ Faltam **${daysLeft} dia(s)** para o próximo bônus de **${nextBonus} moedas**.`;
     } else {
       description += `\n\n🏆 Você já atingiu o bônus máximo de **100 moedas**!`;
     }
 
+    // Se tiver algum evento ativo, mostra a streak do evento também, e os bônus relacionados à streak do evento
+    if (activeEvent) {
+      const eventStreakData = await tggCoins.getEventUserStreak(discordId);
+      const eventStreak = eventStreakData?.streak || 0;
+
+      let eventBonus = null;
+      let eventDaysLeft = null;
+
+      if (eventStreak < 3) {
+        eventBonus = 75;
+        eventDaysLeft = 3 - eventStreak;
+      } else if (eventStreak < 7) {
+        eventBonus = 100;
+        eventDaysLeft = 7 - eventStreak;
+      }
+
+      description += `\n\n${EMOJIS.tickets} **Streak do Evento:** ${eventStreak} dia(s)`;
+
+      if (eventBonus !== null) {
+        description += `\n⏳ Faltam **${eventDaysLeft} dia(s)** para o próximo bônus de **${eventBonus} tickets**.`;
+      } else {
+        description += `\n🏆 Você já atingiu o bônus máximo de **100 tickets**!`;
+      }
+    }
+
     return message.reply({
-      embeds: [
-        createSuccessEmbed(
-          '🔥 Sua Streak',
-          description
-        )
-      ]
+      embeds: [createSuccessEmbed('🔥 Sua Streak', description)]
     });
 
   } catch (err) {

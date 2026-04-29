@@ -51,3 +51,7 @@ export const birthdays = {
   roleId: '1478478167961370845',
   channelId: '1437416350183325727',
 };
+
+export const tggCoinsEvents = {
+  anunciosChannelId: '1437415122837573695', // Canal de anúncios
+};

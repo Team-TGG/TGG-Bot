@@ -1,5 +1,7 @@
 import { getClient, formatDateTime } from './db.js';
 import { TGG_COINS_ROLES } from './tggCoinsCommands.js';
+import { tggCoinsEvents } from '../config/index.js';
+import { SYSTEM_ROLES} from './discord.js';
 
 /**
  * Adiciona transação
@@ -19,6 +21,29 @@ export async function addTransaction(discordId, amount, type, description) {
     .select();
 
   if (error) throw error;
+  return data?.[0] || null;
+}
+
+/**
+ * Adicionar transação para os tickets
+ */
+export async function addTicketTransaction(discordId, eventId, amount, type, description ) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('tgg_coins_event_transactions')
+    .insert({
+      discord_id: String(discordId),
+      event_id: eventId,
+      amount,
+      type,
+      description,
+      created_at: new Date().toISOString()
+    })
+    .select();
+
+  if (error) throw error;
+
   return data?.[0] || null;
 }
 
@@ -69,6 +94,44 @@ export async function updateBalance(discordId, amount) {
 
 
 /**
+ * Atualiza saldo dos tickets
+ */
+export async function updateTicketBalance(discordId, amount) {
+  const supabase = getClient();
+
+  const { data: existing, error: fetchError } =
+    await supabase
+      .from('tgg_coins_event_wallet')
+      .select('balance')
+      .eq('discord_id', String(discordId))
+      .maybeSingle();
+
+  if (fetchError) throw fetchError;
+
+  const newBalance =
+    (existing?.balance || 0) + amount;
+
+  const { error } =
+    await supabase
+      .from('tgg_coins_event_wallet')
+      .upsert(
+        {
+          discord_id: String(discordId),
+          balance: newBalance,
+          updated_at: new Date().toISOString()
+        },
+        {
+          onConflict: 'discord_id'
+        }
+      );
+
+  if (error) throw error;
+
+  return newBalance;
+}
+
+
+/**
  * Pega o horário do último daily
  */
 export async function getLastDaily(discordId) {
@@ -105,6 +168,23 @@ export async function getUserStreak(discordId) {
 }
 
 /**
+ * Pega a streak (DE EVENTOS) do usuário
+ */
+export async function getEventUserStreak(discordId) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('tgg_coins_event_daily_streak')
+    .select('*')
+    .eq('discord_id', String(discordId))
+    .maybeSingle();
+
+  if (error) throw error;
+
+  return data;
+}
+
+/**
  * Atualiza ou cria a streak do usuário (usado no daily)
  */
 export async function upsertUserStreak(discordId, streak) {
@@ -122,6 +202,23 @@ export async function upsertUserStreak(discordId, streak) {
 }
 
 /**
+ * Atualiza ou cria a streak do usuário (PARA EVENTOS)
+ */
+export async function upsertEventUserStreak(discordId, streak) {
+  const supabase = getClient();
+
+  const { error } = await supabase
+    .from('tgg_coins_event_daily_streak')
+    .upsert({
+      discord_id: String(discordId),
+      streak,
+      last_daily: new Date().toISOString()
+    });
+
+  if (error) throw error;
+}
+
+/**
  * Pega saldo atual
  */
 export async function getBalance(discordId) {
@@ -129,6 +226,23 @@ export async function getBalance(discordId) {
 
   const { data, error } = await supabase
     .from('tgg_coins_wallet')
+    .select('balance')
+    .eq('discord_id', String(discordId))
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error;
+
+  return data?.balance || 0;
+}
+
+/**
+ * Pega saldo dos tickets
+ */
+export async function getEventBalance(discordId) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('tgg_coins_event_wallet')
     .select('balance')
     .eq('discord_id', String(discordId))
     .single();
@@ -649,6 +763,14 @@ export async function completeMission(discordId, mission) {
   // Paga as moedas quando completa a missão
   await addTransaction(discordId, mission.reward, 'MISSION', `Missão ${mission.mode} concluída`);
   await updateBalance(discordId, mission.reward);
+
+  // Se houver evento ativo, paga tickets também
+  const activeEvent = await getActiveEvent();
+
+  if (activeEvent) {
+    await addTicketTransaction(discordId, activeEvent.id, mission.reward, 'MISSION', `Tickets por missão ${mission.mode}`);
+    await updateTicketBalance(discordId, mission.reward);
+  }
 }
 
 /**
@@ -665,4 +787,105 @@ export async function getUserAchievements(discordId) {
   if (error) throw error;
 
   return data;
+}
+
+/**
+ * Ver se tem algum evento ativo
+ */
+export async function getActiveEvent() {
+  const supabase = getClient();
+
+  const now = new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from('tgg_coins_events')
+    .select('*')
+    .is('finished_at', null)
+    .lte('started_at', now)
+    .order('started_at', {ascending: false})
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data || null;
+}
+
+/**
+ * Verifica se o evento acabou e encerra automaticamente
+ */
+export async function checkAndFinishEvent(guild) {
+  const supabase = getClient();
+
+  const activeEvent = await getActiveEvent();
+
+  if (!activeEvent) return false;
+
+  // Se existir qualquer item com estoque > 0, evento continua
+  const { data: remainingItems, error } = await supabase
+    .from('tgg_coins_shop')
+    .select('id')
+    .eq('type', 'EVENT')
+    .gt('stock', 0)
+    .limit(1);
+
+  if (error) throw error;
+
+  if (remainingItems?.length) {
+    return false;
+  }
+
+  // Fecha só se ainda estiver aberto (evita rodar duas vezes)
+  const { data: ended, error: finishError } =
+    await supabase
+      .from('tgg_coins_events')
+      .update({finished_at: new Date().toISOString()})
+      .eq('id', activeEvent.id)
+      .is('finished_at', null)
+      .select();
+
+  if (finishError) throw finishError;
+
+  if (!ended?.length) {
+    return false;
+  }
+
+  // Zera tickets
+  const { error: walletError } =
+    await supabase
+      .from('tgg_coins_event_wallet')
+      .update({
+        balance: 0,
+        updated_at: new Date().toISOString()
+      })
+      .gt('balance', 0);
+
+  if (walletError) throw walletError;
+
+  // Zera streaks
+  const { error: streakError } =
+    await supabase
+      .from('tgg_coins_event_daily_streak')
+      .update({
+        streak: 0,
+        last_daily: null
+      })
+      .gt('streak', 0);
+
+  if (streakError) throw streakError;
+
+  const channel = await guild.channels.fetch(
+    tggCoinsEvents.anunciosChannelId
+  );
+
+  if (channel) {
+    await channel.send({
+      content:
+        `<@&${SYSTEM_ROLES.TGG}>\n🎉 O evento acabou!\nTodos os itens foram adquiridos.`
+    });
+  }
+
+  return true;
 }

@@ -19,4 +19,5 @@ export const EMOJIS = {
   crossedSwords: '⚔️',
   hourglass: '⏳',
   scroll: '📜',
+  tickets: '🎟️',
 };
