@@ -1032,3 +1032,79 @@ export const handleEscrever = adminOnly(async (message, args) => {
     });
   }
 });
+
+// .organize-tickets (Organiza os tickets dentro da categoria de tickets, renomeando e reordenando baseado no número no final do nome do canal)
+export const handleOrganizeTickets = adminOnly(async (message, args, client) => {
+  const loading = await message.reply({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(0xfaa61a)
+        .setTitle(`${EMOJIS.loading} Organizando tickets...`)
+        .setDescription('Reordenando e renomeando canais...')
+    ]
+  });
+
+  try {
+    const guild = client.guilds.cache.get(discordConfig.guildId);
+    if (!guild) throw new Error('Guild não encontrada');
+
+    const categoryId = '1460768037518180352'; // ID da categoria de tickets
+    const category = guild.channels.cache.get(categoryId);
+
+    if (!category) throw new Error('Categoria não encontrada');
+
+    // pega apenas canais de texto dentro da categoria
+    let channels = guild.channels.cache
+      .filter(c => c.parentId === categoryId && c.isTextBased());
+
+    // transforma em array
+    channels = Array.from(channels.values());
+
+    // ordena baseado no número no final do nome
+    channels.sort((a, b) => {
+      const getNumber = (name) => {
+        const match = name.match(/-(\d+)$/);
+        return match ? parseInt(match[1]) : 9999;
+      };
+      return getNumber(a.name) - getNumber(b.name);
+    });
+
+    let position = 0;
+
+    for (let i = 0; i < channels.length; i++) {
+      const channel = channels[i];
+
+      // extrai base do nome (sem o número final)
+      const baseName = channel.name.replace(/-\d+$/, '');
+
+      const newName = `${baseName}-${i + 1}`;
+
+      // renomeia se necessário
+      if (channel.name !== newName) {
+        await channel.setName(newName).catch(() => {});
+      }
+
+      // reposiciona
+      await channel.setPosition(position++).catch(() => {});
+
+      // envia mensagem no ticket
+      await channel.send({
+        content: `Prioridade ajustada, consulte a sua posição na fila de espera no nome do seu ticket\nLembrando que conforme a sua interação no servidor, seja por calls ou mensagens, sua prioridade será maior`
+      }).catch(() => {});
+    }
+
+    await sendCleanMessage(loading, {
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x57f287)
+          .setTitle(`${EMOJIS.check} Tickets organizados`)
+          .setDescription(`${channels.length} canais atualizados.`)
+      ]
+    });
+
+  } catch (err) {
+    await sendCleanMessage(loading, {
+      embeds: [createErrorEmbed('Erro ao organizar tickets', err.message)]
+    }).catch(() => {});
+  }
+});
