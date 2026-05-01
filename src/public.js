@@ -5,7 +5,7 @@ import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, ge
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createClanEmbed, getUserBrawlhallaId, getCached } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
-import { isAdmin, adminOnly} from '../utils/permissions.js';
+import { isAdmin, adminOnly } from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
 
 // .help
@@ -40,7 +40,7 @@ export async function handleHelp(message, args, client) {
     .addFields(
       { name: `${EMOJIS.arrowRight} .regras`, value: 'Mostrar regras da guild', inline: false },
       { name: `${EMOJIS.arrowRight} .motd <mensagem>`, value: 'Salvar uma mensagem para ser sorteada no site (1x por semana)', inline: false },
-      { name: `${EMOJIS.arrowRight} .birthday DD/MM/AAAA`, value: 'Registrar seu aniversário para receber parabéns no dia!', inline: false },
+      { name: `${EMOJIS.arrowRight} .birthday DD/MM`, value: 'Registrar seu aniversário para receber parabéns no dia!', inline: false },
       { name: `${EMOJIS.arrowRight} .help`, value: 'Mostrar esta mensagem', inline: false }
     )
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
@@ -485,11 +485,11 @@ export async function handleGames(message, args) {
           }
 
           // Usa os dados atuais - os dados da semana passada para calcular os jogos da semana anterior
-          const totalGamesPrev = (data.final_games ?? 0)   - (data.games ?? 0);
-          const games1v1Prev   = (data.final_games_1v1 ?? 0) - (data.initial_games_1v1 ?? 0);
-          const games2v2Prev   = (data.final_games_2v2 ?? 0) - (data.initial_games_2v2 ?? 0);
-          const games3v3Prev   = (data.final_games_3v3 ?? 0) - (data.initial_games_3v3 ?? 0);
-          const gainedXp       = (stats.clan?.personal_xp ?? 0) - (data.guild_xp ?? 0);
+          const totalGamesPrev = (data.final_games ?? 0) - (data.games ?? 0);
+          const games1v1Prev = (data.final_games_1v1 ?? 0) - (data.initial_games_1v1 ?? 0);
+          const games2v2Prev = (data.final_games_2v2 ?? 0) - (data.initial_games_2v2 ?? 0);
+          const games3v3Prev = (data.final_games_3v3 ?? 0) - (data.initial_games_3v3 ?? 0);
+          const gainedXp = (stats.clan?.personal_xp ?? 0) - (data.guild_xp ?? 0);
 
           const prevEmbed = new EmbedBuilder()
             .setColor(0xed4245)
@@ -738,25 +738,27 @@ export async function handleActive(message, args, client) {
   }
 }
 
-// .birthday <DD/MM/YYYY>
+// .birthday <DD/MM>
 export async function handleBirthday(message, args) {
   if (args.length === 0) {
     return message.reply({
-      embeds: [createErrorEmbed('Uso incorreto', 'Use: `.birthday DD/MM/YYYY`')]
+      embeds: [createErrorEmbed('Uso incorreto', 'Use: `.birthday DD/MM`')]
     });
   }
 
   const dateInput = args[0];
-  const dateRegex = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+  const dateRegex = /^(\d{2})\/(\d{2})$/;
   const match = dateInput.match(dateRegex);
 
   if (!match) {
     return message.reply({
-      embeds: [createErrorEmbed('Formato inválido', 'Use o formato: `DD/MM/YYYY` (exemplo: 25/12/2000)')]
+      embeds: [createErrorEmbed('Formato inválido', 'Use o formato: `DD/MM` (exemplo: 25/12)')]
     });
   }
 
-  const [, day, month, year] = match;
+  const day = match[1];
+  const month = match[2];
+  const year = '2000'; // Usado só pra validar na DB(não sei se precisaria mudar lá também)
   const birthdayISO = `${year}-${month}-${day}`;
 
   // Validar data
@@ -772,8 +774,9 @@ export async function handleBirthday(message, args) {
     const existing = await getBirthdayByUserId(message.author.id);
 
     if (existing) {
+      const [, bMonth, bDay] = existing.birthday.split('-');
       return message.reply({
-        embeds: [createErrorEmbed('Aniversário já registrado', `Seu aniversário já está registrado para ${formatDateBR(existing.birthday)}.`)]
+        embeds: [createErrorEmbed('Aniversário já registrado', `Seu aniversário já está registrado para ${bDay}/${bMonth}.`)]
       });
     }
 
@@ -784,7 +787,7 @@ export async function handleBirthday(message, args) {
       embeds: [
         createSuccessEmbed(
           'Aniversário registrado',
-          `Seu aniversário foi registrado: **${dateInput}**`
+          `Seu aniversário foi registrado: **${day}/${month}**`
         )
       ]
     });
