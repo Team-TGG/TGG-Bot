@@ -4,12 +4,12 @@ import { birthdays as birthdayConfig, discord as discordConfig } from '../../con
 
 export function createBirthdayEmbed(userId) {
   return new EmbedBuilder()
-    .setColor(0xff69b4) 
+    .setColor(0xff69b4)
     .setTitle('🎉 Feliz Aniversário! 🎂')
     .setDescription(`Parabéns, <@${userId}>! Que você celebre seu aniversário com muita alegria e tenha um dia incrível cheio de felicidades!`)
     .setImage('https://i.imgur.com/R5cODcM.gif')
     .setTimestamp()
-    .setFooter({ text: 'Team TGG' });
+    .setFooter({ text: 'Use .birthday DD/MM para registrar o seu!' });
 }
 
 export async function processBirthdays(client) {
@@ -44,7 +44,7 @@ export async function processBirthdays(client) {
           console.log(`[Birthday] Cargo atribuído a ${member.user.tag}`);
         }
 
-      
+
         const embed = createBirthdayEmbed(birthday.user_id);
         await birthdayChannel.send({ embeds: [embed] });
 

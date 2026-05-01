@@ -39,6 +39,8 @@ export async function handleHelp(message, args, client) {
     .setTitle(`${EMOJIS.clipboard} Informações`)
     .addFields(
       { name: `${EMOJIS.arrowRight} .regras`, value: 'Mostrar regras da guild', inline: false },
+      { name: `${EMOJIS.arrowRight} .motd <mensagem>`, value: 'Salvar uma mensagem para ser sorteada no site (1x por semana)', inline: false },
+      { name: `${EMOJIS.arrowRight} .birthday DD/MM/AAAA`, value: 'Registrar seu aniversário para receber parabéns no dia!', inline: false },
       { name: `${EMOJIS.arrowRight} .help`, value: 'Mostrar esta mensagem', inline: false }
     )
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
