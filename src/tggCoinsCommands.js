@@ -233,6 +233,7 @@ export async function handleDaily(message) {
 
           collector.on('collect', async (interaction) => {
             let finalStreak = 1;
+            let finalEventStreak = activeEvent ? 1 : null;
 
             if (interaction.customId.startsWith('recover')) {
               const balance = await tggCoins.getBalance(discordId);
@@ -249,6 +250,10 @@ export async function handleDaily(message) {
 
                 finalStreak = (streakData?.streak || 0) + 1;
                 recovered = true;
+
+                if (activeEvent) {
+                  finalEventStreak = (eventStreakData?.streak || 0) + 1;
+                }
               }
             }
 
