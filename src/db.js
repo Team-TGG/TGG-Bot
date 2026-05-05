@@ -302,7 +302,11 @@ export async function getAllUsersWithElo() {
 
     const highest = Math.max(peak1, peak2, peak3);
 
-    eloByBrawlhalla.set(id, highest);
+    const current = eloByBrawlhalla.get(id) ?? 0;
+
+    if (highest > current) {
+      eloByBrawlhalla.set(id, highest);
+    }
   }
 
   const result = [];
@@ -679,5 +683,50 @@ export async function getWeeklyInitial(brawlhallaId, weekStart) {
     .single();
 
   if (error) throw error;
+  return data;
+}
+
+// Função para inserir o id correto na base de dados
+export async function corrigirID(discord_id, main_id) {
+  const supabase = getClient();
+
+  // Busca usuário atual pelo Discord
+  const user = await getUserByDiscordId(discord_id);
+  if (!user) {
+    throw new Error(`Usuário com Discord ID ${discord_id} não encontrado`);
+  }
+
+  const alt_id = user.brawlhalla_id;
+
+  if (!main_id) {
+    throw new Error('Você precisa informar o main_id');
+  }
+
+  // Evita duplicidade
+  const { data: existing, error: checkError } = await supabase
+    .from('alt_ids')
+    .select('id')
+    .eq('alt_id', alt_id)
+    .single();
+
+  if (checkError && checkError.code !== 'PGRST116') throw checkError;
+
+  if (existing) {
+    throw new Error('Este alt_id já está vinculado a um main.');
+  }
+
+  // Inserção
+  const { data, error } = await supabase
+    .from('alt_ids')
+    .insert([
+      {
+        alt_id: alt_id,
+        main_id: main_id,
+        discord_id: discord_id
+      }
+    ]);
+
+  if (error) throw error;
+
   return data;
 }

@@ -456,27 +456,55 @@ export async function handleLeaderboard(message) {
     let page = 1;
     const limit = 10;
 
-    async function generateEmbed(page) {
-      const { data, total } = await tggCoins.getLeaderboard(page, limit);
+    // Ver se algum evento está ativo para colocar o leaderboard de tickets
+    const activeEvent = await tggCoins.getActiveEvent();
+    const hasEvent = !!activeEvent;
 
+    // Carregar membros no cache uma vez
+    await message.guild.members.fetch();
+
+    let mode = 'COINS';
+
+    // Guarda informação em um cache
+    const cache = { coins: null, tickets: null };
+
+    // Carrega o leaderboard inteiro de uma vez
+    cache.coins = await tggCoins.getLeaderboard(1, 9999);
+
+    // Carrega o leaderboard de tickets apenas se tiver evento
+    if (hasEvent) {
+      cache.tickets = await tggCoins.getEventLeaderboard(1, 9999);
+    }
+
+    async function generateEmbed(page) {
+      const source = mode === 'TICKETS' ? cache.tickets : cache.coins;
+
+      const total = source.total;
       const totalPages = Math.ceil(total / limit) || 1;
 
-      if (data.length === 0) {
+      if (page > totalPages) page = totalPages;
+
+      const start = (page - 1) * limit;
+      const pageData = source.data.slice(start, start + limit);
+
+      if (pageData.length === 0) {
         return new EmbedBuilder()
           .setColor(0xed4245)
           .setTitle('🏆 Leaderboard vazio');
       }
 
       const description = await Promise.all(
-        data.map(async (user, index) => {
+        pageData.map(async (user, index) => {
           const position = (page - 1) * limit + index + 1;
 
           let username = `ID: ${user.discord_id}`;
 
-          try {
-            const member = await message.guild.members.fetch(user.discord_id);
-            username = member.user.username;
-          } catch (e) {}
+          // Usa cache primeiro
+          const member = message.guild.members.cache.get(user.discord_id);
+
+          if (member) {
+            username = member.displayName;
+          }
 
           const medal =
             position === 1 ? '🥇' :
@@ -484,13 +512,20 @@ export async function handleLeaderboard(message) {
             position === 3 ? '🥉' :
             `#${position}`;
 
-          return `${medal} **${username}** — ${user.balance.toLocaleString('pt-BR')} TGG-Coins`;
+          const tickets = user.balance ?? 0;
+          const coins = user.balance ?? 0;
+
+          const value = mode === 'TICKETS'
+            ? `${tickets.toLocaleString('pt-BR')} Tickets`
+            : `${coins.toLocaleString('pt-BR')} TGG-Coins`;
+
+          return `${medal} **${username}** — ${value}`;
         })
       );
 
       return new EmbedBuilder()
         .setColor(0x5865f2)
-        .setTitle('🏆 Leaderboard')
+        .setTitle(mode === 'TICKETS' ? '🎟️ Leaderboard de Tickets' : '🏆 Leaderboard')
         .setDescription(description.join('\n'))
         .setFooter({ text: `Página ${page}/${totalPages}` })
         .setTimestamp();
@@ -507,10 +542,18 @@ export async function handleLeaderboard(message) {
         .setCustomId('next_lb')
         .setLabel('➡️')
         .setStyle(1)
-        .setDisabled(page >= totalPages)
+        .setDisabled(page >= totalPages),
+
+      ...(hasEvent ? [
+        new ButtonBuilder()
+          .setCustomId('toggle_mode')
+          .setLabel(mode === 'COINS' ? 'Ver Tickets' : 'Ver Coins')
+          .setEmoji(mode === 'COINS' ? EMOJIS.tickets : EMOJIS.TGGcoin)
+          .setStyle(2)
+      ] : [])
     );
 
-    let { total } = await tggCoins.getLeaderboard(page, limit);
+    let total = cache.coins.total;
     let totalPages = Math.ceil(total / limit) || 1;
 
     const msg = await message.reply({
@@ -523,23 +566,36 @@ export async function handleLeaderboard(message) {
     });
 
     collector.on('collect', async (interaction) => {
-      if (interaction.user.id !== message.author.id) {
-        return interaction.reply({
-          content: 'Você não pode usar isso.',
-          ephemeral: true
+      try {
+        if (interaction.user.id !== message.author.id) {
+          return interaction.reply({
+            content: 'Você não pode usar isso.',
+            ephemeral: true
+          });
+        }
+
+        await interaction.deferUpdate(); // Evitar timeout
+
+        if (interaction.customId === 'prev_lb') page--;
+        if (interaction.customId === 'next_lb') page++;
+
+        if (interaction.customId === 'toggle_mode') {
+          mode = mode === 'COINS' ? 'TICKETS' : 'COINS';
+          page = 1;
+        }
+
+        const source = mode === 'TICKETS' ? cache.tickets : cache.coins;
+        let total = source.total;
+        let totalPages = Math.ceil(total / limit) || 1;
+
+        await interaction.editReply({
+          embeds: [await generateEmbed(page)],
+          components: [row(page, totalPages)]
         });
+
+      } catch (err) {
+        console.error('[LEADERBOARD ERROR]', err);
       }
-
-      if (interaction.customId === 'prev_lb') page--;
-      if (interaction.customId === 'next_lb') page++;
-
-      let { total } = await tggCoins.getLeaderboard(page, limit);
-      let totalPages = Math.ceil(total / limit) || 1;
-
-      await interaction.update({
-        embeds: [await generateEmbed(page)],
-        components: [row(page, totalPages)]
-      });
     });
 
   } catch (err) {
@@ -613,6 +669,17 @@ export async function handleShop(message, args) {
 
       const pageItems = getPageItems();
 
+      const hasEvent = allItems.data.some(item => item.type === 'EVENT');
+
+      const balance = await tggCoins.getBalance(discordId);
+      const eventBalance = hasEvent ? await tggCoins.getEventBalance(discordId) : null;
+
+      let balanceText = `${EMOJIS.TGGcoin} **${balance.toLocaleString('pt-BR')}**`;
+
+      if (hasEvent) {
+        balanceText += ` • ${EMOJIS.tickets} **${eventBalance.toLocaleString('pt-BR')}**`;
+      }
+
       shopState.set(discordId, {
         category,
         items: filtered,
@@ -622,8 +689,10 @@ export async function handleShop(message, args) {
       const embed = new EmbedBuilder()
         .setColor(0x5865f2)
         .setTitle(`🛒 Loja • ${categoryNames[category]}`)
-        .setFooter({ text: `Página ${page}/${totalPages}` })
-        .setTimestamp();
+        .setFooter({ text: `• Para comprar um item, digite .buy <número do item>\nPágina ${page}/${totalPages}` });
+
+      // Saldo no topo da loja
+      embed.setDescription(`💰 Seus saldos: ${balanceText}`);
 
       // Aviso de booster na loja
       if (member.roles.cache.has(TGG_COINS_ROLES.BOOSTER)) {

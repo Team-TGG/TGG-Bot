@@ -1,6 +1,6 @@
 // public.js - Comandos públicos
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
-import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId } from './db.js';
+import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID } from './db.js';
 
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createClanEmbed, getUserBrawlhallaId, getCached } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
@@ -18,6 +18,7 @@ export async function handleHelp(message, args, client) {
       { name: `${EMOJIS.arrowRight} .stats`, value: 'Trazer seus status atualizados do jogo', inline: false },
       { name: `${EMOJIS.arrowRight} .games`, value: 'Mostra a quantidade de jogos jogados durante a SEMANA', inline: false },
       { name: `${EMOJIS.arrowRight} .clan`, value: 'Ver informações do clã Team TGG', inline: false },
+      { name: `${EMOJIS.arrowRight} .corrigir-id`, value: 'Caso esteja na guilda com alguma alt, pode vincular o id da sua conta principal', inline: false },
     )
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
     .setTimestamp();
@@ -796,6 +797,42 @@ export async function handleBirthday(message, args) {
     console.error('[Birthday Error]', err);
     return message.reply({
       embeds: [createErrorEmbed('Erro ao registrar', 'Ocorreu um erro ao registrar seu aniversário. Tente novamente.')]
+    });
+  }
+}
+
+// .corrigirID <main_id>
+export async function handleCorrigirID(message, args) {
+  try {
+    const main_id = args[0];
+
+    if (!main_id || !/^\d+$/.test(main_id)) {
+      return message.reply({
+        embeds: [
+          createErrorEmbed(
+            'ID inválido',
+            'Use: `.corrigir-id 123456`'
+          )
+        ]
+      });
+    }
+
+    await corrigirID(message.author.id, main_id);
+
+    return message.reply({
+      embeds: [
+        createSuccessEmbed(
+          'ID ajustado',
+          `Seu alt foi vinculado ao main ID ${main_id}.`
+        )
+      ]
+    });
+
+  } catch (err) {
+    return message.reply({
+      embeds: [
+        createErrorEmbed('Erro ao ajustar ID', err.message)
+      ]
     });
   }
 }

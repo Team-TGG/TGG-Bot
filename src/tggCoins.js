@@ -301,6 +301,29 @@ export async function getLeaderboard(page = 1, limit = 10) {
 }
 
 /**
+ * Pega leaderboard dos eventos (ordenado por Tickets)
+ */
+export async function getEventLeaderboard(page = 1, limit = 10) {
+  const supabase = getClient();
+
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+
+  const { data, error, count } = await supabase
+    .from('tgg_coins_event_wallet')
+    .select('discord_id, balance', { count: 'exact' })
+    .order('balance', { ascending: false })
+    .range(from, to);
+
+  if (error) throw error;
+
+  return {
+    data: data ?? [],
+    total: count ?? 0
+  };
+}
+
+/**
  * Pega os itens ativos da loja
  */
 export async function getShopItems(page = 1, limit = 1) {
