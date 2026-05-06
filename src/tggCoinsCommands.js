@@ -692,12 +692,14 @@ export async function handleShop(message, args) {
         .setFooter({ text: `• Para comprar um item, digite .buy <número do item>\nPágina ${page}/${totalPages}` });
 
       // Saldo no topo da loja
-      embed.setDescription(`💰 Seus saldos: ${balanceText}`);
+      let description = `💰 Seus saldos: ${balanceText}`;
 
       // Aviso de booster na loja
       if (member.roles.cache.has(TGG_COINS_ROLES.BOOSTER)) {
-        embed.setDescription('🔥 Você possui **desconto de Booster (5%)** ativo!');
+        description += `\n🔥 Você possui **desconto de Booster (5%)** ativo!`;
       }
+
+      embed.setDescription(description);
 
       // Se não tiver itens, mostra mensagem de loja vazia
       if (!pageItems.length) {

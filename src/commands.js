@@ -99,6 +99,8 @@ export const COMMAND_ALIASES = {
   'vincularconta': 'add-account',
   'adicionarconta': 'add-account',
   'adicionar-conta': 'add-account',
+  'add-acc': 'add-account',
+  'addacc': 'add-account',
 };
 
 // Lista de comandos

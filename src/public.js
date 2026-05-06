@@ -91,7 +91,7 @@ export async function handleHelp(message, args, client) {
       { name: `${EMOJIS.arrowRight} .daily`, value: 'Receber as moedas diárias (+0.4x para MVP Semanal e +0.2x pra VIP)', inline: false },
       { name: `${EMOJIS.arrowRight} .streak`, value: 'Ver sua sequência atual de daily/diárias', inline: false },
       { name: `${EMOJIS.arrowRight} .conquistas`, value: 'Ver as conquistas cadastradas da semana, complete para ganhar TGG Coins', inline: false },
-      { name: `${EMOJIS.arrowRight} .add-account`, value: 'Cadastrar uma alt para trackear as conquistas entre elas', inline: false },
+      { name: `${EMOJIS.arrowRight} .add-account <id>`, value: 'Cadastrar uma alt para trackear as conquistas entre elas', inline: false },
       { name: `${EMOJIS.arrowRight} .balance (.bal)`, value: 'Ver a quantidade atual de moedas que você tem', inline: false },
       { name: `${EMOJIS.arrowRight} .historico (.hist)`, value: 'Ver seu histórico de gastos', inline: false },
       { name: `${EMOJIS.arrowRight} .leaderboard (.lb)`, value: 'Ver um leaderboard com as pessoas que mais tem TGG-Coins', inline: false },
@@ -425,12 +425,15 @@ export async function handleGames(message, args) {
     const games1v1 = current1v1 - (initial.initial_games_1v1 ?? 0);
     const games2v2 = current2v2 - (initial.initial_games_2v2 ?? 0);
     const games3v3 = current3v3 - (initial.initial_games_3v3 ?? 0);
+    const casualGames = totalGames - games1v1 - games2v2 - games3v3;
 
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
       .setTitle(`🎮 Jogos semanais - ${stats.name}`)
       .addFields(
-        { name: 'Jogos totais (Casuais)', value: `\`${totalGames}\``, inline: false },
+        { name: 'Jogos Totais', value: `\`${totalGames}\``, inline: true }, 
+        { name: 'Jogos Casuais', value: `\`${casualGames}\``, inline: true }, 
+        { name: '\u200B', value: '\u200B', inline: true }, // espaço pra fechar a linha
         { name: 'Ranked 1v1', value: `\`${games1v1}\``, inline: true },
         { name: 'Ranked 2v2', value: `\`${games2v2}\``, inline: true },
         { name: 'Ranked 3v3', value: `\`${games3v3}\``, inline: true }

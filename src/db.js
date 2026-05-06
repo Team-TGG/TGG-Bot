@@ -72,17 +72,23 @@ function getLastWednesdayReference() {
 
 
 export function getMissionWeekStart() {
-  const today = new Date();
-  const dayOfWeek = today.getDay();
-  const diff = (dayOfWeek - 4 + 7) % 7;
+  const now = new Date();
+  const start = new Date(now);
 
-  today.setDate(today.getDate() - diff);
+  const dayOfWeek = now.getDay();
 
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, '0');
-  const day = String(today.getDate()).padStart(2, '0');
+  // quinta = 4
+  let diff = (dayOfWeek - 4 + 7) % 7;
 
-  return `${year}-${month}-${day}`;
+  start.setDate(now.getDate() - diff);
+  start.setHours(6, 0, 0, 0);
+
+  // Se hoje é quinta mas ainda não chegou 06:00
+  if (diff === 0 && now < start) {
+    start.setDate(start.getDate() - 7);
+  }
+
+  return formatDateTime(start);
 }
 
 // Retorna a data/hora da semana atual de missões, que começa na quinta-feira às 06:00
@@ -112,35 +118,14 @@ export function getMissionWeekStartDateTime() {
 }
 
 export function getMissionWeekEnd() {
-  const now = new Date();
+  const start = new Date(getMissionWeekStart());
+  const end = new Date(start);
 
-  const dayOfWeek = now.getDay();
+  // soma 6 dias → quarta
+  end.setDate(start.getDate() + 6);
+  end.setHours(6, 0, 0, 0);
 
-  // Quarta-feira
-  let diff = (3 - dayOfWeek + 7) % 7;
-
-  // Se hoje já é quarta mas ainda não passou das 06:00
-  if (diff === 0) {
-    const quartaHoje = new Date(now);
-    quartaHoje.setHours(6, 0, 0, 0);
-
-    if (now >= quartaHoje) {
-      diff = 7; // vai pra próxima quarta
-    }
-  }
-
-  const nextWednesday = new Date(now);
-  nextWednesday.setDate(now.getDate() + diff);
-  nextWednesday.setHours(6, 0, 0, 0);
-
-  const year = nextWednesday.getFullYear();
-  const month = String(nextWednesday.getMonth() + 1).padStart(2, '0');
-  const day = String(nextWednesday.getDate()).padStart(2, '0');
-  const hours = String(nextWednesday.getHours()).padStart(2, '0');
-  const minutes = String(nextWednesday.getMinutes()).padStart(2, '0');
-  const seconds = String(nextWednesday.getSeconds()).padStart(2, '0');
-
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  return formatDateTime(end);
 }
 
 
