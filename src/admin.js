@@ -1,6 +1,5 @@
 // admin.js - Comandos apenas para administradores
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
-
 import { createClient, runSync, runEloSync } from './discord.js';
 import { addWarning, getUserWarnings, removeWarning, removeLastWarning, parseTime, formatTime as formatModTime, safeSetTimeout } from './moderation.js';
 import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes, getMissionWeekStart, getActiveUser } from './db.js';
@@ -557,6 +556,7 @@ export const handleBan = adminOnly(async (message, args, client) => {
 });
 
 // .inac-all
+import pLimit from 'p-limit'; // Controle de concorrência para evitar rate limits do Discord
 export const handleInacAll = adminOnly(async (message, args, client) => {
   try {
     const guild = client.guilds.cache.get(discordConfig.guildId);
@@ -575,32 +575,48 @@ export const handleInacAll = adminOnly(async (message, args, client) => {
     let applied = 0;
     let failed = 0;
 
-    for (const player of inactivePlayers) {
-      try {
-        const member = await guild.members.fetch(player.discord_id).catch(() => null);
-        if (!member) {
+    // 🔹 Preenche o cache de membros (evita vários fetch individuais)
+    // ⚠️ Pode ser pesado em guilds MUITO grandes, mas geralmente vale a pena
+    await guild.members.fetch();
+
+    // 🔹 Controle de concorrência (evita rate limit do Discord)
+    const limit = pLimit(5); // pode ajustar pra 3–10 dependendo do comportamento
+
+    const tasks = inactivePlayers.map((player) =>
+      limit(async () => {
+        try {
+          // 🔹 Agora usa cache primeiro, fallback pro fetch
+          const member =
+            guild.members.cache.get(player.discord_id) ||
+            await guild.members.fetch(player.discord_id).catch(() => null);
+
+          if (!member) {
+            failed++;
+            return;
+          }
+
+          if (!member.roles.cache.has(inactiveRoleId)) {
+            await member.roles.add(inactiveRoleId);
+          }
+
+          // Notificação por DM
+          await member.send({
+            embeds: [new EmbedBuilder()
+              .setColor(0xed4245)
+              .setTitle('⚠️ Aviso de Inatividade')
+              .setDescription(`Você está inativo. Para mostrar que está ativo, use o comando \`.active <justificativa>\` no canal <#1468600851290521692>.`)
+              .setTimestamp()]
+          }).catch(() => console.log(`Could not send DM to ${player.discord_id}`));
+
+          applied++;
+        } catch {
           failed++;
-          continue;
         }
+      })
+    );
 
-        if (!member.roles.cache.has(inactiveRoleId)) {
-          await member.roles.add(inactiveRoleId);
-        }
-
-        // Notificação por DM
-        await member.send({
-          embeds: [new EmbedBuilder()
-            .setColor(0xed4245)
-            .setTitle('⚠️ Aviso de Inatividade')
-            .setDescription(`Você está inativo. Para mostrar que está ativo, use o comando \`.active <justificativa>\` no canal <#1468600851290521692>.`)
-            .setTimestamp()]
-        }).catch(() => console.log(`Could not send DM to ${player.discord_id}`));
-
-        applied++;
-      } catch {
-        failed++;
-      }
-    }
+    // 🔹 Executa tudo com concorrência controlada
+    await Promise.all(tasks);
 
     const embed = createSuccessEmbed(
       'Inativos Aplicados',

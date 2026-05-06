@@ -463,9 +463,14 @@ export async function getInactivePlayers() {
     .in('brawlhalla_id', brawlhallaIds);
   
   if (usersError) throw usersError;
+
+  // Mapa evita O(n²)
+  const inactiveMap = new Map(
+    inactivePlayers.map(p => [String(p.brawlhalla_id), p])
+  );
   
   const result = (users ?? []).map(user => {
-    const inactiveRecord = inactivePlayers.find(p => String(p.brawlhalla_id) === String(user.brawlhalla_id));
+    const inactiveRecord = inactiveMap.get(String(user.brawlhalla_id));
     return {
       ...user,
       created_at: inactiveRecord?.created_at || new Date().toISOString(),

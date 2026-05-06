@@ -501,7 +501,7 @@ export function buildHeader(index, mode, reward, hasEvent = false) {
 }
 
 // Gera o texto completo da missão, verificando progresso e conclusão
-export async function buildMissionText({tierMissions, mode, type, stats, user, discordId, groupIndex }) {
+export async function buildMissionText({tierMissions, mode, type, allStats, user, discordId, groupIndex }) {
   const config = typeConfig[type];
   const fields = tggCoins.getModeFields(mode);
 
@@ -513,20 +513,46 @@ export async function buildMissionText({tierMissions, mode, type, stats, user, d
 
   const activeEvent = await tggCoins.getActiveEvent();
 
-  const progress = await tggCoins.getPlayerMissionProgress(
-    user.brawlhalla_id,
-    week_start
-  );
+  const accountIds = await tggCoins.getAllAccounts(user.brawlhalla_id);
+  const progressRows = await tggCoins.getPlayerMissionProgress(accountIds, week_start );
 
-  const row = progress[0] || {};
+  const row = progressRows[0] || {};
 
-  const initial = {
-    initial_elo: row?.[fields.elo] || 0,
-    initial_games: row?.[fields.games] || 0,
-    initial_wins: row?.[fields.wins] || 0
-  };
+  let initial_elo = 0;
+  let initial_games = 0;
+  let initial_wins = 0;
 
-  const current = tggCoins.extractModeData(stats, mode);
+  for (const row of progressRows) {
+    const elo = row?.[fields.elo] || 0;
+    const games = row?.[fields.games] || 0;
+    const wins = row?.[fields.wins] || 0;
+
+    if (elo > initial_elo) {
+      initial_elo = elo;
+    }
+
+    initial_games += games;
+    initial_wins += wins;
+  }
+
+  const initial = { initial_elo, initial_games, initial_wins };
+
+  let current_elo = 0;
+  let current_games = 0;
+  let current_wins = 0;
+
+  for (const stats of allStats) {
+    const data = tggCoins.extractModeData(stats, mode);
+
+    if (data.elo > current_elo) {
+      current_elo = data.elo;
+    }
+
+    current_games += data.games;
+    current_wins += data.wins;
+  }
+
+  const current = { elo: current_elo, games: current_games, wins: current_wins };
   const progressValue = config.getProgress(current, initial);
 
   // Missões de 1 tier

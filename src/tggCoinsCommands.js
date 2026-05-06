@@ -1015,6 +1015,9 @@ export async function handleConquistas(message) {
       user.brawlhalla_id = resolveBrawlhallaId(String(user.brawlhalla_id));
     }
 
+    // Pega todas as contas do usuário (caso ele tenha mais de uma conta vinculada) para mostrar as missões de todas as contas
+    const accountIds = await tggCoins.getAllAccounts(user.brawlhalla_id);
+
     if (!user) {
       return loading.edit({
         embeds: [
@@ -1039,7 +1042,10 @@ export async function handleConquistas(message) {
       });
     }
 
-    const stats = await fetchPlayerStats(user.brawlhalla_id);
+    // Pega as estatísticas de todas as contas do usuário em paralelo para otimizar o tempo de resposta
+    const allStats = await Promise.all(
+      accountIds.map(id => fetchPlayerStats(id))
+    );
 
     // Agrupa por modo e tipo, criando tiers
     const grouped = {};
@@ -1056,7 +1062,7 @@ export async function handleConquistas(message) {
       const tierMissions = grouped[key].sort((a, b) => a.target - b.target);
       const { mode, type } = tierMissions[0];
 
-      activeText += await buildMissionText({tierMissions, mode, type, stats, user, discordId, groupIndex: index++ });
+      activeText += await buildMissionText({tierMissions, mode, type, allStats, user, discordId, groupIndex: index++ });
     }
 
     // Mostrar as conquistas concluídas do usuário (histórico)
@@ -1169,6 +1175,88 @@ export async function handleConquistas(message) {
     return loading.edit({
       embeds: [
         createErrorEmbed('Erro ao carregar conquistas', err.message)
+      ]
+    });
+  }
+}
+
+// --- .addaccount <brawlhalla_id> ---
+export async function handleAddAccount(message, args) {
+  const loading = await message.reply({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(0xfaa61a)
+        .setDescription('🔄 Vinculando conta...')
+    ]
+  });
+
+  try {
+    const discordId = message.author.id;
+    const user = await getUserByDiscordId(discordId);
+
+    if (!user || !user.active) {
+      return message.reply({
+        embeds: [createErrorEmbed('Acesso Negado', 'Você não está na guilda.')]
+      });
+    }
+
+    const altId = args[0];
+
+    if (!altId) {
+      return loading.edit({
+        embeds: [
+          createErrorEmbed(
+            'Entrada inválida',
+            'Informe o ID da conta que deseja adicionar.'
+          )
+        ]
+      });
+    }
+
+    const result = await tggCoins.addAltAccount({ mainId: user.brawlhalla_id, altId });
+
+    if (!result.success) {
+      let title = 'Erro ao vincular conta';
+      let description = '';
+
+      switch (result.error) {
+        case 'SELF':
+          description = 'Você não pode adicionar sua própria conta como alt.';
+          break;
+        case 'ALREADY_OWNED':
+          description = 'Essa conta já está vinculada a você.';
+          break;
+        case 'ALREADY_LINKED':
+          description = 'Essa conta já está vinculada a outro usuário.';
+          break;
+        case 'INVALID':
+          description = 'Conta inválida ou não encontrada.';
+          break;
+        case 'DB_ERROR':
+          description = result.message;
+          break;
+        default:
+          description = 'Erro desconhecido.';
+      }
+
+      return loading.edit({
+        embeds: [createErrorEmbed(title, description)]
+      });
+    }
+
+    return loading.edit({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x00ff99)
+          .setTitle('✅ Conta vinculada')
+          .setDescription(`A conta **${result.name} (${altId})** foi vinculada com sucesso.`)
+      ]
+    });
+
+  } catch (err) {
+    return loading.edit({
+      embeds: [
+        createErrorEmbed('Erro inesperado', err.message)
       ]
     });
   }

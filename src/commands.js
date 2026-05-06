@@ -1,7 +1,7 @@
 // Handlers
 import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleMute, handleUnmute, handleBan, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets } from './admin.js';
 import { handleHelp, handleStats, handleClan, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID } from './public.js';
-import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins } from './tggCoinsCommands.js';
+import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins, handleAddAccount } from './tggCoinsCommands.js';
 
 // Command Aliases
 export const COMMAND_ALIASES = {
@@ -92,7 +92,13 @@ export const COMMAND_ALIASES = {
   'organizar-tickets': 'organize-tickets',
   'arrumar-tickets': 'organize-tickets',
   'corrigirid': 'corrigir-id',
-  'corrigir-id': 'corrigir-id'
+  'corrigir-id': 'corrigir-id',
+  'addaccount': 'add-account',
+  'add-account': 'add-account',
+  'vincular-conta': 'add-account',
+  'vincularconta': 'add-account',
+  'adicionarconta': 'add-account',
+  'adicionar-conta': 'add-account',
 };
 
 // Lista de comandos
@@ -139,5 +145,6 @@ export const commands = {
   streak: handleStreak,
   addprovider: handleAddProvider,
   removeprovider: handleRemoveProvider,
-  addcoins: handleAddCoins
+  addcoins: handleAddCoins,
+  'add-account': handleAddAccount
 };

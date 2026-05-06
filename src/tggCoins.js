@@ -2,6 +2,7 @@ import { getClient, formatDateTime } from './db.js';
 import { TGG_COINS_ROLES } from './tggCoinsCommands.js';
 import { tggCoinsEvents } from '../config/index.js';
 import { SYSTEM_ROLES} from './discord.js';
+import { fetchPlayerStats} from './brawlhalla.js';
 
 /**
  * Adiciona transação
@@ -604,6 +605,27 @@ export async function getWeeklyMissions(weekStart, weekEnd) {
 }
 
 /**
+ * Pegar todas as contas associadas a um main_id (usado para as conquistas, para verificar o progresso mesmo que o usuário tenha alt)
+ */
+export async function getAllAccounts(mainId) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('tgg_coins_achievements_alts')
+    .select('alt_id')
+    .eq('main_id', mainId);
+
+  if (error) throw error;
+
+  const altIds = data?.map(a => String(a.alt_id)) || [];
+
+  return [...new Set([
+    String(mainId),
+    ...altIds
+  ])];
+}
+
+/**
  * Verificar o progresso do usuário em uma missão específica (usado para as conquistas)
  */
 export function checkMissionCompletion({type, initial_elo, initial_games, initial_wins, final_elo, final_games, final_wins, target}) {
@@ -661,11 +683,19 @@ export function checkMissionCompletion({type, initial_elo, initial_games, initia
 export async function getPlayerMissionProgress(brawlhallaID, week_start) {
   const supabase = getClient();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('player_weekly_info')
     .select('*')
-    .eq('brawlhalla_id', brawlhallaID)
     .eq('week_start', week_start);
+
+  // Se for array → usa IN
+  if (Array.isArray(brawlhallaID)) {
+    query = query.in('brawlhalla_id', brawlhallaID);
+  } else {
+    query = query.eq('brawlhalla_id', brawlhallaID);
+  }
+
+  const { data, error } = await query;
 
   if (error && error.code !== 'PGRST116') throw error;
 
@@ -794,6 +824,69 @@ export async function completeMission(discordId, mission) {
     await addTicketTransaction(discordId, activeEvent.id, mission.reward, 'MISSION', `Tickets por missão ${mission.mode}`);
     await updateTicketBalance(discordId, mission.reward);
   }
+}
+
+/**
+ * Adicionar conta alt para o usuário, usado para as conquistas semanais, para que ele possa progredir mesmo que jogue em outra conta.
+ */
+export async function addAltAccount({ mainId, altId }) {
+  const supabase = getClient();
+
+  mainId = String(mainId);
+  altId = String(altId);
+
+  if (mainId === altId) {
+    return { success: false, error: 'SELF' };
+  }
+
+  // Verificar se o alt já está vinculado a esse main
+  const { data: existing } = await supabase
+    .from('tgg_coins_achievements_alts')
+    .select('id')
+    .eq('main_id', mainId)
+    .eq('alt_id', altId)
+    .maybeSingle();
+
+  if (existing) {
+    return { success: false, error: 'ALREADY_OWNED' };
+  }
+
+  // Verificar se o alt já está vinculado a outro main
+  const { data: alreadyLinked } = await supabase
+    .from('tgg_coins_achievements_alts')
+    .select('id')
+    .eq('alt_id', altId)
+    .maybeSingle();
+
+  if (alreadyLinked) {
+    return { success: false, error: 'ALREADY_LINKED' };
+  }
+
+  // Ver se a conta existe e é válida
+  let stats;
+  try {
+    stats = await fetchPlayerStats(altId);
+
+    if (!stats || !stats.name) {
+      return { success: false, error: 'INVALID' };
+    }
+  } catch {
+    return { success: false, error: 'INVALID' };
+  }
+
+  // Vincular alt ao main
+  const { error } = await supabase
+    .from('tgg_coins_achievements_alts')
+    .insert({
+      main_id: mainId,
+      alt_id: altId
+    });
+
+  if (error) {
+    return { success: false, error: 'DB_ERROR', message: error.message };
+  }
+
+  return { success: true, name: stats.name, altId };
 }
 
 /**
