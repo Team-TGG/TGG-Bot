@@ -2,7 +2,7 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder, ButtonStyle } from 'discord.js';
 import * as tggCoins from './tggCoins.js';
 import { getUserByDiscordId, getMissionWeekStart, formatDateBR, getMissionWeekEnd, resolveBrawlhallaId, loadAliases } from './db.js';
-import { fetchPlayerStats } from './brawlhalla.js';
+import { fetchPlayerStats, fetchPlayerStatsNoResolve } from './brawlhalla.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
 import { adminOnly, leaderOnly, ROLE_HIERARCHY } from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
@@ -1046,7 +1046,7 @@ export async function handleConquistas(message) {
 
     // Pega as estatísticas de todas as contas do usuário em paralelo para otimizar o tempo de resposta
     const allStats = await Promise.all(
-      accountIds.map(id => fetchPlayerStats(id))
+      accountIds.map(id => fetchPlayerStatsNoResolve(id))
     );
 
     // Agrupa por modo e tipo, criando tiers

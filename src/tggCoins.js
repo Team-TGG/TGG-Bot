@@ -610,6 +610,23 @@ export async function getWeeklyMissions(weekStart, weekEnd) {
 export async function getAllAccounts(mainId) {
   const supabase = getClient();
 
+  mainId = String(mainId);
+
+  // Verifica se essa conta é uma alt de outra conta e envia também o dado dela
+  const { data: mainData, error: mainError } = await supabase
+    .from('tgg_coins_achievements_alts')
+    .select('main_id')
+    .eq('alt_id', mainId)
+    .maybeSingle();
+
+  if (mainError) throw mainError;
+
+  // Se encontrou uma main, substitui
+  if (mainData?.main_id) {
+    mainId = String(mainData.main_id);
+  }
+
+  // Buscar todas as alts dessa main
   const { data, error } = await supabase
     .from('tgg_coins_achievements_alts')
     .select('alt_id')

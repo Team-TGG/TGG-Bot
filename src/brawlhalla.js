@@ -395,6 +395,54 @@ export async function fetchPlayerStats(brawlhallaId) {
   }
 }
 
+export async function fetchPlayerStatsNoResolve(brawlhallaId) {
+
+  const key = `player:${brawlhallaId}`;
+  const hit = getCached(key);
+
+  if (hit) {
+    console.log(`[Brawlhalla] Cache hit for player ${brawlhallaId}`);
+    return hit;
+  }
+
+  if (!legendsDataCache) await fetchLegends();
+
+  try {
+    const [statsData, rankedData] = await Promise.all([
+      apiFetch(`https://api.brawlhalla.com/player/${brawlhallaId}/stats?api_key=${process.env.BRAWLHALLA_API_KEY}`),
+      apiFetch(`https://api.brawlhalla.com/player/${brawlhallaId}/ranked?api_key=${process.env.BRAWLHALLA_API_KEY}`)
+    ]);
+
+    if (statsData.name) statsData.name = normalizeUnicode(statsData.name);
+    if (statsData.clan?.clan_name) statsData.clan.clan_name = normalizeUnicode(statsData.clan.clan_name);
+
+    if (rankedData.name) rankedData.name = normalizeUnicode(rankedData.name);
+    if (Array.isArray(rankedData['2v2'])) {
+      rankedData['2v2'] = rankedData['2v2'].map(t => ({ ...t, teamname: normalizeUnicode(t.teamname) }));
+    }
+    if (rankedData.rotating_ranked) {
+      if (Array.isArray(rankedData.rotating_ranked)) {
+        rankedData.rotating_ranked = rankedData.rotating_ranked.map(t => ({
+          ...t,
+          teamname: normalizeUnicode(t.teamname || t.name)
+        }));
+      } else if (typeof rankedData.rotating_ranked === 'object') {
+        const t = rankedData.rotating_ranked;
+        t.teamname = normalizeUnicode(t.teamname || t.name);
+      }
+    }
+
+    const combined = { ...statsData, ranked: rankedData };
+    
+    setCached(key, combined);
+    return combined;
+  } catch (err) {
+    const stale = getCached(key, true);
+    if (stale) return stale;
+    throw err;
+  }
+}
+
 export async function fetchClanStats(clanId = process.env.BRAWLHALLA_CLAN_ID || '396943') {
   const key = `clan:${clanId}`;
   const hit = getCached(key);
