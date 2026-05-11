@@ -54,7 +54,7 @@ export async function sendInactivePlayersReminder(client) {
       const dmEmbed = new EmbedBuilder()
         .setColor(0xed4245)
         .setTitle('⚠️ Aviso de Inatividade')
-        .setDescription(`Você está inativo. Para mostrar que está ativo, use o comando \`.active <justificativa>\` no canal <#1468600851290521692>.`)
+        .setDescription(`Você fez menos de 1.000 de contribuição e ficou inativo. Por favor, vá para o canal <#1468600851290521692> e leia o lembrete do TGG-Bot para mais informações, evite ser removido da guilda.`)
         .setTimestamp();
 
       for (const player of inactivePlayers) {

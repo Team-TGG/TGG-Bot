@@ -575,17 +575,16 @@ export const handleInacAll = adminOnly(async (message, args, client) => {
     let applied = 0;
     let failed = 0;
 
-    // 🔹 Preenche o cache de membros (evita vários fetch individuais)
-    // ⚠️ Pode ser pesado em guilds MUITO grandes, mas geralmente vale a pena
+    // Preenche o cache de membros (evita vários fetch individuais)
     await guild.members.fetch();
 
-    // 🔹 Controle de concorrência (evita rate limit do Discord)
-    const limit = pLimit(5); // pode ajustar pra 3–10 dependendo do comportamento
+    // Controle de concorrência (evita rate limit do Discord)
+    const limit = pLimit(5);
 
     const tasks = inactivePlayers.map((player) =>
       limit(async () => {
         try {
-          // 🔹 Agora usa cache primeiro, fallback pro fetch
+          // Usa cache primeiro, fallback pro fetch
           const member =
             guild.members.cache.get(player.discord_id) ||
             await guild.members.fetch(player.discord_id).catch(() => null);
@@ -604,7 +603,7 @@ export const handleInacAll = adminOnly(async (message, args, client) => {
             embeds: [new EmbedBuilder()
               .setColor(0xed4245)
               .setTitle('⚠️ Aviso de Inatividade')
-              .setDescription(`Você está inativo. Para mostrar que está ativo, use o comando \`.active <justificativa>\` no canal <#1468600851290521692>.`)
+              .setDescription(`Você fez menos de 1.000 de contribuição e ficou inativo. Por favor, vá para o canal <#1468600851290521692> e leia o lembrete do TGG-Bot para mais informações, evite ser removido da guilda.`)
               .setTimestamp()]
           }).catch(() => console.log(`Could not send DM to ${player.discord_id}`));
 
@@ -615,7 +614,7 @@ export const handleInacAll = adminOnly(async (message, args, client) => {
       })
     );
 
-    // 🔹 Executa tudo com concorrência controlada
+    // Executa tudo com concorrência controlada
     await Promise.all(tasks);
 
     const embed = createSuccessEmbed(

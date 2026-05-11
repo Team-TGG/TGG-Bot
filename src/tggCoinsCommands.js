@@ -7,7 +7,7 @@ import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils
 import { adminOnly, leaderOnly, ROLE_HIERARCHY } from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
 import { STAFF_ROLE_IDS } from '../config/index.js';
-import { buyHandlers, typeConfig, buildHeader, buildMissionText, getDailyReward } from './handlers/tggCoinsHandlers.js';
+import { buyHandlers, typeConfig, buildHeader, buildMissionText, getDailyReward, QUIZ_REWARD, quizQuestions, shuffleArray, OPTION_LETTERS } from './handlers/tggCoinsHandlers.js';
 
 // Cargos relacionados às TGG-Coins (IDs dos cargos no Discord)
 export const TGG_COINS_ROLES = {
@@ -1324,6 +1324,182 @@ export async function handleStreak(message) {
   } catch (err) {
     return message.reply({
       embeds: [createErrorEmbed('Erro', err.message)]
+    });
+  }
+}
+
+// --- .quiz ---
+const activeQuizzes = new Set();
+export async function handleQuiz(message) {
+  const discordId = message.author.id;
+
+  try {
+
+    // Bloquear múltiplos quizzes ao mesmo tempo por usuário
+    if (activeQuizzes.has(discordId)) {
+      return message.reply({
+        embeds: [
+          createErrorEmbed(
+            'Quiz em andamento',
+            'Você já possui um quiz ativo.'
+          )
+        ]
+      });
+    }
+
+    activeQuizzes.add(discordId);
+
+    // Vê se já completou o quiz
+    const alreadyCompleted = await tggCoins.hasCompletedQuiz(discordId);
+
+    let currentQuestion = 0;
+
+    let currentShuffledOptions = shuffleArray(
+      quizQuestions[currentQuestion].options
+    );
+
+    // Monta o embed da pergunta atual e as opções
+    const buildQuestionEmbed = () => {
+      const q = quizQuestions[currentQuestion];
+
+      const formattedOptions =
+        currentShuffledOptions
+          .map((option, index) =>
+            `**${OPTION_LETTERS[index]})** ${option.text}`
+          )
+          .join('\n');
+
+      return new EmbedBuilder()
+        .setColor(0xfaa61a)
+        .setTitle(`🧠 Quiz TGG (${currentQuestion + 1}/${quizQuestions.length})`)
+        .setDescription(`## ${q.question}\n\n${formattedOptions}`);
+    };
+
+    // Botões de opções (A, B, C)
+    const buildButtons = () => {
+      return [
+        new ActionRowBuilder().addComponents(
+          currentShuffledOptions.map((_, index) =>
+            new ButtonBuilder()
+              .setCustomId(`quiz_${index}`)
+              .setLabel(`Opção ${OPTION_LETTERS[index]}`)
+              .setStyle(ButtonStyle.Primary)
+          )
+        )
+      ];
+    };
+
+    const quizMessage = await message.reply({
+      embeds: [buildQuestionEmbed()],
+      components: buildButtons()
+    });
+
+    // Collector
+    const collector =
+      quizMessage.createMessageComponentCollector({
+        filter: i => i.user.id === discordId,
+        time: 120000
+      });
+
+    // Tratar as respostas
+    collector.on('collect', async (interaction) => {
+
+      const answerIndex = Number(
+        interaction.customId.replace('quiz_', '')
+      );
+      const selectedOption = currentShuffledOptions[answerIndex];
+
+      // Caso ele o usuário erre, encerra o quiz e mostra mensagem de erro
+      if (!selectedOption.correct) {
+        activeQuizzes.delete(discordId);
+
+        collector.stop();
+
+        return interaction.update({
+          embeds: [
+            createErrorEmbed(
+              'Resposta incorreta!',
+              '❌ Você errou.\n\nUse `.quiz` para tentar novamente.'
+            )
+          ],
+          components: []
+        });
+      }
+
+      currentQuestion++;
+
+      // Quando encerra o quiz
+      if (currentQuestion >= quizQuestions.length) {
+        activeQuizzes.delete(discordId);
+        collector.stop();
+
+        let rewardMessage = '';
+
+        // Primeira vez completando
+        if (!alreadyCompleted) {
+
+          // Premia com coins, marca o quiz como completo e mostra o saldo atualizado
+          await tggCoins.markQuizCompleted(discordId);
+          await tggCoins.addTransaction(discordId, QUIZ_REWARD, 'QUIZ', 'Recompensa do quiz');
+          const newBalance = await tggCoins.updateBalance(discordId, QUIZ_REWARD);
+
+          rewardMessage = `💰 +${QUIZ_REWARD} TGG Coins\n` + `💳 Saldo atual: ${newBalance.toLocaleString('pt-BR')}`;
+        }
+
+        // Já recebeu antes
+        else {
+          rewardMessage = '🔒 Você já recebeu a recompensa deste quiz anteriormente.';
+        }
+
+        return interaction.update({
+          embeds: [
+            createSuccessEmbed(
+              'Quiz concluído!',
+              `✅ Você acertou todas as perguntas!\n\n${rewardMessage}`
+            )
+          ],
+          components: []
+        });
+      }
+
+      // Randomiza as opções da próxima pergunta para evitar que o usuário memorize a posição das respostas
+      currentShuffledOptions = shuffleArray(
+        quizQuestions[currentQuestion].options
+      );
+
+      return interaction.update({
+        embeds: [buildQuestionEmbed()],
+        components: buildButtons()
+      });
+    });
+
+    // Quando o quiz expira por tempo, remove o quiz ativo e mostra mensagem de erro
+    collector.on('end', async (_, reason) => {
+      activeQuizzes.delete(discordId);
+
+      if (reason === 'time') {
+        await quizMessage.edit({
+          embeds: [
+            createErrorEmbed(
+              'Tempo esgotado',
+              '⏰ Você demorou para responder.\n\nUse `.quiz` para tentar novamente.'
+            )
+          ],
+          components: []
+        });
+      }
+    });
+
+  } catch (err) {
+    activeQuizzes.delete(discordId);
+
+    return message.reply({
+      embeds: [
+        createErrorEmbed(
+          'Erro no quiz',
+          err.message
+        )
+      ]
     });
   }
 }

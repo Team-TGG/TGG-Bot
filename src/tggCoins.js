@@ -1022,3 +1022,32 @@ export async function checkAndFinishEvent(guild) {
 
   return true;
 }
+
+/**
+ *  Verifica se já completou o quiz
+ */
+export async function hasCompletedQuiz(discordId) {
+  const supabase = getClient();
+
+  const { data } = await supabase
+    .from('tgg_quiz_completed')
+    .select('*')
+    .eq('discord_id', discordId)
+    .single();
+
+  return !!data;
+}
+
+/*
+ *  Marca quiz como completo
+*/
+export async function markQuizCompleted(discordId) {
+  const supabase = getClient();
+  
+  return supabase
+    .from('tgg_quiz_completed')
+    .insert({
+      discord_id: discordId,
+      completed_at: new Date()
+    });
+}

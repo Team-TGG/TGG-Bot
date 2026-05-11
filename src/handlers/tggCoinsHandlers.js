@@ -648,7 +648,7 @@ export async function buildMissionText({tierMissions, mode, type, allStats, user
 }
 
 
-// Hanldlers para Daily
+// Handlers para Daily
 
 export function getDailyReward(streak) {
   if (streak >= 7) {
@@ -669,4 +669,221 @@ export function getDailyReward(streak) {
     reward: 50,
     message: `📅 Streak de ${streak} dia${streak > 1 ? 's' : ''}`
   };
+}
+
+
+// Handlers pro quiz
+
+// Premiação em TGG Coins
+export const QUIZ_REWARD = 150;
+
+// Letras para as opções do quiz
+export const OPTION_LETTERS = ['A', 'B', 'C'];
+
+// Perguntas do quiz
+export const quizQuestions = [
+  {
+    question: 'Como você ajuda a guilda?',
+    options: [
+      {
+        text: 'Fazendo missões e jogando com membros da guilda',
+        correct: true
+      },
+
+      {
+        text: 'Jogando partidas casuais sozinho',
+        correct: false
+      },
+
+      {
+        text: 'Jogando modos competitivos sozinho',
+        correct: false
+      }
+    ]
+  },
+
+  {
+    question: 'Qual o mínimo de contribuição semanal?',
+    options: [
+      {
+        text: '100',
+        correct: false
+      },
+
+      {
+        text: '5.000',
+        correct: false
+      },
+
+      {
+        text: '1.000',
+        correct: true
+      }
+    ]
+  },
+
+  {
+    question: 'Como funcionam as Guild Battles?',
+    options: [
+      {
+        text: 'Quando enfrento outro jogador de outra guilda',
+        correct: false
+      },
+
+      {
+        text: 'Com um membro da TGG, enfrentamos dois jogadores de outra guilda',
+        correct: true
+      },
+
+      {
+        text: 'Com um membro de outra guilda, enfrentamos dois jogadores de outra guilda',
+        correct: false
+      }
+    ]
+  },
+
+  {
+    question: 'O que fazer quando estiver com dúvidas?',
+    options: [
+      {
+        text: 'Abrir um ticket no canal <#1461132037908856964>',
+        correct: true
+      },
+
+      {
+        text: 'Marcar a staff no canal <#1437416481343406122>',
+        correct: false
+      },
+
+      {
+        text: 'Perguntar para outros membros no canal <#1437416481343406122>',
+        correct: false
+      }
+    ]
+  },
+
+  {
+    question: 'Qual a diferença entre XP e Contribuição?',
+    options: [
+      {
+        text: 'Ambos são a mesma coisa, ganho contribuição jogando partidas',
+        correct: false
+      },
+
+      {
+        text: 'XP é ganho com as missões e contribuição é ganho jogando partidas',
+        correct: false
+      },
+
+      {
+        text: 'XP se ganha jogando partidas, contribuição se ganha com missões e guild battles',
+        correct: true
+      }
+    ]
+  },
+
+  {
+    question: 'Qual o período das missões semanais?',
+    options: [
+      {
+        text: 'Segunda-feira 6am até Domingo 6am',
+        correct: false
+      },
+
+      {
+        text: 'Domingo 6am até Sábado 6am',
+        correct: false
+      },
+
+      {
+        text: 'Quinta-feira 6am até Quarta-feira 6am',
+        correct: true
+      }
+    ]
+  },
+
+  {
+    question: 'Como você se torna membro (Patente prateada) da guilda?',
+    options: [
+      {
+        text: 'Pegando 40k de contribuição total',
+        correct: true
+      },
+
+      {
+        text: 'Pegando 20k de contribuição total',
+        correct: false
+      },
+
+      {
+        text: 'Pegando 10k de contribuição semanal',
+        correct: false
+      }
+    ]
+  },
+
+  {
+    question: 'O que são Guild Tokens?',
+    options: [
+      {
+        text: 'Moeda da guilda que permite comprar itens na loja da guilda in-game',
+        correct: true
+      },
+
+      {
+        text: 'Total de contribuição que um membro tem na guilda',
+        correct: false
+      },
+
+      {
+        text: 'Quantidade de duelos vencidos em Guild Battles',
+        correct: false
+      }
+    ]
+  },
+
+  {
+    question: 'Como conseguir Guild Tokens?',
+    options: [
+      {
+        text: 'Fazendo as missões da guilda e participando das Guild Battles',
+        correct: true
+      },
+
+      {
+        text: 'Enfrentar algum membro da guilda rival em partidas ranqueadas',
+        correct: false
+      },
+
+      {
+        text: 'Pegando 1.000 de contribuição semanal',
+        correct: false
+      }
+    ]
+  },
+
+  {
+    question: 'Como fazer para virar MVP Semanal?',
+    options: [
+      {
+        text: 'Ficar entre os 14 melhores membros em contribuição semanal (Sem contar officers)',
+        correct: true
+      },
+
+      {
+        text: 'Pegar 5.000 de contribuição semanal',
+        correct: false
+      },
+
+      {
+        text: 'Conversar no server e ajudar os outros membros',
+        correct: false
+      }
+    ]
+  }
+];
+
+// Função para embaralhar as opções do quiz
+export function shuffleArray(array) {
+  return [...array].sort(() => Math.random() - 0.5);
 }

@@ -95,6 +95,7 @@ export async function handleHelp(message, args, client) {
       { name: `${EMOJIS.arrowRight} .balance (.bal)`, value: 'Ver a quantidade atual de moedas que você tem', inline: false },
       { name: `${EMOJIS.arrowRight} .historico (.hist)`, value: 'Ver seu histórico de gastos', inline: false },
       { name: `${EMOJIS.arrowRight} .leaderboard (.lb)`, value: 'Ver um leaderboard com as pessoas que mais tem TGG-Coins', inline: false },
+      { name: `${EMOJIS.arrowRight} .quiz`, value: 'Responder um quiz sobre como funcionam as coisas na guilda', inline: false },
       { name: `${EMOJIS.arrowRight} .shop`, value: 'Ver a loja de itens', inline: false },
       { name: `${EMOJIS.arrowRight} .buy <número do item>`, value: 'Fazer uma compra de um item da loja (usar o número que aparece ao lado do item)', inline: false },
     )
