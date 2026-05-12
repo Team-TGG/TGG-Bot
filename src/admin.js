@@ -234,6 +234,14 @@ export const handleWarn = adminOnly(async (message, args, client) => {
 // .unwarn
 export const handleUnwarn = adminOnly(async (message, args, client) => {
   try {
+
+    // Apenas moderadores ou superiores podem usar esse comando
+    if (!hasPermission(message.member, 2)) {
+      return message.reply({
+        embeds: [createErrorEmbed('Acesso Negado', 'Apenas moderadores ou superiores podem dar avisos.')]
+      });
+    }
+
     const guild = client.guilds.cache.get(discordConfig.guildId);
     if (!guild) throw new Error('Guild não encontrada');
 
@@ -264,58 +272,248 @@ export const handleUnwarn = adminOnly(async (message, args, client) => {
 });
 
 // .warns
-export const handleWarns = adminOnly(async (message, args, client) => {
+export const handleWarns = async (message, args, client) => {
   try {
-    const page = parseInt(args[0]) || 1;
-    const pageSize = 10;
-    const dbClient = getClient();
-    const { data: allWarnings, error } = await dbClient.from('warnings').select('*').order('created_at', { ascending: false });
-    if (error) throw error;
-    if (!allWarnings || allWarnings.length === 0) return message.reply({ embeds: [createErrorEmbed('Sem Avisos', 'Nenhum aviso encontrado no sistema.')] });
 
-    const byUser = {};
-    allWarnings.forEach(w => {
-      if (!byUser[w.user_id]) byUser[w.user_id] = { user_id: w.user_id, warnings: [], latest: w.created_at };
-      byUser[w.user_id].warnings.push(w);
-      if (new Date(w.created_at) > new Date(byUser[w.user_id].latest)) byUser[w.user_id].latest = w.created_at;
-    });
-    const sorted = Object.values(byUser).sort((a, b) => new Date(b.latest) - new Date(a.latest));
-    const totalPages = Math.ceil(sorted.length / pageSize);
-    const pageData = sorted.slice((page - 1) * pageSize, page * pageSize);
-    if (pageData.length === 0) return message.reply({ embeds: [createErrorEmbed('Página Inválida', `Apenas ${totalPages} página(s) disponíveis.`)] });
+    const admin = await isAdmin(message.author.id);
 
-    const embed = new EmbedBuilder().setColor(0xfaa61a).setTitle(`⚠️ Lista de Avisos (${page}/${totalPages})`).setDescription(`${sorted.length} usuários com avisos`).setTimestamp();
-    for (const ud of pageData) {
-      const user = await client.users.fetch(ud.user_id).catch(() => null);
-      embed.addFields({ name: `${ud.warnings.length} avisos — ${user?.tag || ud.user_id}`, value: `Último: ${new Date(ud.latest).toLocaleDateString('pt-BR')}\n${ud.warnings.slice(0, 2).map(w => `• ${w.reason}`).join('\n')}`, inline: false });
+    let targetUser = message.author;
+
+    // Admin pode consultar outro usuário por menção ou ID
+    if (args[0]) {
+
+      const possibleUser = message.mentions.users.first() || await client.users.fetch(args[0]).catch(() => null);
+
+      if (possibleUser) {
+
+        if (!admin && possibleUser.id !== message.author.id) {
+          return message.reply({
+            embeds: [
+              createErrorEmbed(
+                'Sem Permissão',
+                'Você só pode visualizar seus próprios avisos.'
+              )
+            ]
+          });
+        }
+
+        targetUser = possibleUser;
+      }
     }
 
-    const navRow = new ActionRowBuilder();
-    if (page > 1) navRow.addComponents(new ButtonBuilder().setCustomId(`warns_${page - 1}`).setLabel('⬅️').setStyle(2));
-    navRow.addComponents(new ButtonBuilder().setLabel(`${page}/${totalPages}`).setStyle(2).setDisabled(true).setCustomId('page_label'));
-    if (page < totalPages) navRow.addComponents(new ButtonBuilder().setCustomId(`warns_${page + 1}`).setLabel('➡️').setStyle(2));
+    const viewingOthers = targetUser.id !== message.author.id;
 
-    const reply = await message.reply({ embeds: [embed], components: navRow.components.length > 1 ? [navRow] : [] });
-    const col = reply.createMessageComponentCollector({ filter: i => i.user.id === message.author.id, time: 60000 });
-    col.on('collect', async i => {
-      const np = parseInt(i.customId.split('_')[1]);
-      const nd = sorted.slice((np - 1) * pageSize, np * pageSize);
-      const ne = new EmbedBuilder().setColor(0xfaa61a).setTitle(`⚠️ Lista de Avisos (${np}/${totalPages})`).setDescription(`${sorted.length} usuários com avisos`).setTimestamp();
-      for (const ud of nd) {
-        const user = await client.users.fetch(ud.user_id).catch(() => null);
-        ne.addFields({ name: `${ud.warnings.length} avisos — ${user?.tag || ud.user_id}`, value: `Último: ${new Date(ud.latest).toLocaleDateString('pt-BR')}\n${ud.warnings.slice(0, 2).map(w => `• ${w.reason}`).join('\n')}`, inline: false });
+    const dbClient = getClient();
+
+    let query = dbClient
+      .from('warnings')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    // Usuário comum vê apenas os próprios warns
+    if (!admin || viewingOthers) {
+      query = query.eq('user_id', targetUser.id);
+    }
+
+    const { data: allWarnings, error } = await query;
+
+    if (error) {
+      throw error;
+    }
+
+    if (!allWarnings || allWarnings.length === 0) {
+      return message.reply({
+        embeds: [
+          createErrorEmbed(
+            'Sem Avisos',
+            viewingOthers
+              ? 'Este usuário não possui avisos.'
+              : 'Você não possui avisos.'
+          )
+        ]
+      });
+    }
+
+    // Agrupar por usuário
+    const byUser = {};
+
+    for (const w of allWarnings) {
+
+      const guildMember = await message.guild.members
+        .fetch(w.user_id)
+        .catch(() => null);
+
+      // Ignora usuários fora do servidor
+      if (!guildMember) {
+        continue;
       }
-      const nr = new ActionRowBuilder();
-      if (np > 1) nr.addComponents(new ButtonBuilder().setCustomId(`warns_${np - 1}`).setLabel('⬅️').setStyle(2));
-      nr.addComponents(new ButtonBuilder().setLabel(`${np}/${totalPages}`).setStyle(2).setDisabled(true).setCustomId('page_label'));
-      if (np < totalPages) nr.addComponents(new ButtonBuilder().setCustomId(`warns_${np + 1}`).setLabel('➡️').setStyle(2));
-      await i.update({ embeds: [ne], components: nr.components.length > 1 ? [nr] : [] });
+
+      // Ignora banidos
+      if (guildMember.bannable === false && !guildMember.manageable) {
+        continue;
+      }
+
+      if (!byUser[w.user_id]) {
+        byUser[w.user_id] = {
+          user_id: w.user_id,
+          member: guildMember,
+          warnings: [],
+          latest: w.created_at
+        };
+      }
+
+      byUser[w.user_id].warnings.push(w);
+
+      if (
+        new Date(w.created_at) >
+        new Date(byUser[w.user_id].latest)
+      ) {
+        byUser[w.user_id].latest = w.created_at;
+      }
+    }
+
+    const sorted = Object.values(byUser).sort(
+      (a, b) => new Date(b.latest) - new Date(a.latest)
+    );
+
+    if (sorted.length === 0) {
+      return message.reply({
+        embeds: [
+          createErrorEmbed(
+            'Sem Avisos',
+            'Nenhum aviso válido encontrado.'
+          )
+        ]
+      });
+    }
+
+    const pageSize = 5;
+    let currentPage = 1;
+
+    const generateEmbed = (page) => {
+
+      const totalPages = Math.ceil(sorted.length / pageSize);
+
+      const pageData = sorted.slice(
+        (page - 1) * pageSize,
+        page * pageSize
+      );
+
+      const description = pageData.map(ud => {
+
+        const warns = ud.warnings.map((w, i) => {
+          return [
+            `> **${i + 1}.** ${w.reason || 'Sem motivo especificado'}`,
+            `> ${new Date(w.created_at).toLocaleDateString('pt-BR')}`
+          ].join('\n');
+        }).join('\n> \n');
+
+        return [
+          `<@${ud.user_id}> (${ud.member.displayName}) - ${ud.warnings.length} aviso(s)`,
+          warns
+        ].join('\n');
+
+      }).join('\n\n');
+
+      return new EmbedBuilder()
+        .setColor(0xfaa61a)
+        .setTitle(
+          viewingOthers || !isAdmin
+            ? `⚠️ Avisos de ${targetUser.displayName || targetUser.username}`
+            : '⚠️ Sistema de Avisos'
+        )
+        .setDescription(
+          `${isAdmin && !viewingOthers
+            ? `👥 ${sorted.length} usuário(s) com avisos`
+            : `${allWarnings.length} aviso(s) encontrado(s)`}\n\n${description}`
+        )
+        .setFooter({
+          text: `Página ${page}/${totalPages}`
+        })
+        .setTimestamp();
+    };
+
+    const generateButtons = (page) => {
+
+      const totalPages = Math.ceil(sorted.length / pageSize);
+
+      const row = new ActionRowBuilder();
+
+      if (page > 1) {
+        row.addComponents(
+          new ButtonBuilder()
+            .setCustomId('warns_prev')
+            .setEmoji('⬅️')
+            .setStyle(2)
+        );
+      }
+
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId('warns_page')
+          .setLabel(`${page}/${totalPages}`)
+          .setDisabled(true)
+          .setStyle(2)
+      );
+
+      if (page < totalPages) {
+        row.addComponents(
+          new ButtonBuilder()
+            .setCustomId('warns_next')
+            .setEmoji('➡️')
+            .setStyle(2)
+        );
+      }
+
+      return totalPages > 1 ? [row] : [];
+    };
+
+    const reply = await message.reply({
+      embeds: [generateEmbed(currentPage)],
+      components: generateButtons(currentPage)
     });
-    col.on('end', () => reply.edit({ components: [] }).catch(() => { }));
+
+    const collector = reply.createMessageComponentCollector({
+      filter: i => i.user.id === message.author.id,
+      time: 60000
+    });
+
+    collector.on('collect', async interaction => {
+
+      if (interaction.customId === 'warns_prev') {
+        currentPage--;
+      }
+
+      if (interaction.customId === 'warns_next') {
+        currentPage++;
+      }
+
+      await interaction.update({
+        embeds: [generateEmbed(currentPage)],
+        components: generateButtons(currentPage)
+      });
+    });
+
+    collector.on('end', async () => {
+      await reply.edit({
+        components: []
+      }).catch(() => {});
+    });
+
   } catch (err) {
-    await message.reply({ embeds: [createErrorEmbed('Erro ao Listar Avisos', err.message)] });
+
+    console.error(err);
+
+    await message.reply({
+      embeds: [
+        createErrorEmbed(
+          'Erro ao Listar Avisos',
+          err.message
+        )
+      ]
+    });
   }
-});
+};
 
 // .mute
 export const handleMute = adminOnly(async (message, args, client) => {

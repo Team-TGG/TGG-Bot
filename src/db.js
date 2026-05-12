@@ -573,12 +573,13 @@ export async function getActiveMutes() {
  * MOTD (Message of the Day)
  */
 
-export async function addMotd(discordId, message) {
+export async function addMotd(discordId, name, message) {
   const supabase = getClient();
   const { data, error } = await supabase
     .from('motd')
     .insert({
       discord_id: String(discordId),
+      name: name,
       message: message,
       created_at: new Date().toISOString(),
       used: false

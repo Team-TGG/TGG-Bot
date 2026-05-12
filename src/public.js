@@ -245,7 +245,7 @@ export async function handleMotd(message, args, client) {
       }
     }
 
-    await addMotd(message.author.id, motdMessage);
+    await addMotd(message.author.id, message.member.displayName, motdMessage);
 
     const embed = new EmbedBuilder()
       .setColor(0x00ff00)

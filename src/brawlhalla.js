@@ -809,9 +809,15 @@ export function createClanEmbed(clanData) {
         name: '🏆 Top 10 Members',
         value: topMembers.length > 0
           ? topMembers.map((m, i) => {
-            const badge = m.rank === 'Leader' ? '👑' : m.rank === 'Officer' ? '⚔️' : '🗡️';
-            return `**${i + 1}.** ${badge} ${normalizeUnicode(m.name || 'Unknown')} — ${formatNumber(m.xp || 0)} XP`;
-          }).join('\n')
+              const badge =
+                m.rank === 'Leader' ? '👑' :
+                m.rank === 'Officer' ? '🥇' :
+                m.rank === 'Member' ? '🥈' :
+                m.rank === 'Recruit' ? '🥉' :
+                '🗡️';
+
+              return `${String(i + 1).padStart(2, ' ')}. ${badge} ${normalizeUnicode(m.name || 'Unknown')} — ${formatNumber(m.xp || 0)} XP`;
+            }).join('\n')
           : 'No members',
         inline: false
       }
