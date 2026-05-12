@@ -452,6 +452,73 @@ export async function handleBuyRole(ctx) {
   }
 }
 
+// Para itens tipo EXITLAG
+export async function handleBuyExitlag(ctx) {
+  const { message, item, discordId, finalPrice } = ctx;
+
+  try {
+    // Busca código disponível
+    const code = await tggCoins.getAvailableExitlagCode();
+
+    if (!code) {
+      return message.reply({
+        embeds: [
+          createErrorEmbed(
+            'Sem estoque',
+            'Não há códigos disponíveis no momento.'
+          )
+        ]
+      });
+    }
+
+    // Tenta enviar DM primeiro
+    try {
+      await message.author.send({
+        embeds: [
+          createSuccessEmbed(
+            'Seu código ExitLag',
+            `Aqui está seu código de **${item.name}**:\n\n\`${code.code}\`\n\nAproveite!`
+          )
+        ]
+      });
+
+    } catch (err) {
+      return message.reply({
+        embeds: [
+          createErrorEmbed(
+            'DM bloqueada',
+            'Não consegui enviar mensagem privada para você.\nAbra sua DM e tente novamente.'
+          )
+        ]
+      });
+    }
+
+    // Finaliza compra
+    await tggCoins.addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `ExitLag: ${item.name}`);
+    const newBalance = await tggCoins.updateBalance(discordId, -finalPrice);
+
+    await tggCoins.createPurchase(discordId, item);
+    await tggCoins.decreaseStock(item.id, item.stock);
+
+    // Marca código como usado
+    await tggCoins.markExitlagCodeAsUsed(code.id, discordId);
+
+    return message.reply({
+      embeds: [
+        createSuccessEmbed(
+          'Compra realizada!',
+          `Seu código foi enviado na DM.\nSaldo atual: **${newBalance}**`
+        )
+      ]
+    });
+
+  } catch (err) {
+    return message.reply({
+      embeds: [createErrorEmbed('Erro', err.message)]
+    });
+  }
+}
+
 // Mapa de handlers
 export const buyHandlers = {
     SERVICE: handleBuyService,
@@ -460,7 +527,8 @@ export const buyHandlers = {
     ROLE_REGULAR: handleBuyRoleColor,
     ROLE_VIP: handleBuyRoleColor,
     ROLE_TABLE_MASTER: handleBuyRoleTableMaster,
-    ROLE: handleBuyRole
+    ROLE: handleBuyRole,
+    EXITLAG: handleBuyExitlag
 };
 
 

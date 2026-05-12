@@ -919,74 +919,164 @@ export async function handleBuy(message, args) {
       });
     }
 
-    // Uso de Handlers para evitar uso de if/else gigante e facilitar manutenção e adição de novos tipos de item no futuro
-    const ctx = {message, item, member, discordId, finalPrice};
+    // Função para botão de executar a compra, usada tanto no fluxo normal quanto após a confirmação
+    async function executePurchase() {
+      // Uso de Handlers para evitar uso de if/else gigante e facilitar manutenção e adição de novos tipos de item no futuro
+      const ctx = {message, item, member, discordId, finalPrice};
 
-    // Executa o handle, caso exista
-    const handler = buyHandlers[item.type];
+      // Executa o handle, caso exista
+      const handler = buyHandlers[item.type];
 
-    if (handler) {
-      return handler(ctx);
-    }
-
-    // Fallback para itens simples que não precisam de um tratamento específico
-
-    // Para itens que são cargos simples
-    if (item.type === 'ROLE' && item.role_id) {
-      try {
-        await member.roles.add(item.role_id);
-      } catch (err) {
-        console.error('Erro ao adicionar cargo:', err);
+      if (handler) {
+        return handler(ctx);
       }
-    }
 
-    let newBalance;
+      // Fallback para itens simples que não precisam de um tratamento específico
 
-    // Se for um item de evento, registra a transação de tickets e atualiza o saldo de tickets
-    if (isEventItem) {
-      await tggCoins.addTicketTransaction(discordId, activeEvent.id, -finalPrice, 'SHOP_PURCHASE', `Compra: ${item.name}`);
-      newBalance = await tggCoins.updateTicketBalance(discordId, -finalPrice);
-    } else {
-
-      // Adiciona a transação
-      await tggCoins.addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Compra: ${item.name}`);
-
-      // Atualizar o saldo
-      newBalance = await tggCoins.updateBalance(discordId, -finalPrice);
-    }
-
-    // Registrar a compra
-    await tggCoins.createPurchase(discordId, item);
-
-    // Diminuir estoque (Se tiver estoque)
-    await tggCoins.decreaseStock(item.id, item.stock);
-
-    // Verifica, após diminuir o estoque, se o item é de evento, para ver se o evento acabou
-    if (item.type === 'EVENT') {
-      await tggCoins.checkAndFinishEvent(message.guild);
-    }
-
-    let priceText;
-
-    if (isEventItem) {
-      priceText = `**${finalPrice.toLocaleString('pt-BR')} Tickets**`;
-    } else {
-      priceText = `**${finalPrice.toLocaleString('pt-BR')} TGG-Coins**`;
-
-      // Mensagem extra para quem comprou com desconto
-      if (finalPrice < item.price) {
-        priceText = `~~${item.price.toLocaleString('pt-BR')}~~ → ${priceText} 🔥 (desconto de Booster aplicado)`;
+      // Para itens que são cargos simples
+      if (item.type === 'ROLE' && item.role_id) {
+        try {
+          await member.roles.add(item.role_id);
+        } catch (err) {
+          console.error('Erro ao adicionar cargo:', err);
+        }
       }
+
+      let newBalance;
+
+      // Se for um item de evento, registra a transação de tickets e atualiza o saldo de tickets
+      if (isEventItem) {
+        await tggCoins.addTicketTransaction(discordId, activeEvent.id, -finalPrice, 'SHOP_PURCHASE', `Compra: ${item.name}`);
+        newBalance = await tggCoins.updateTicketBalance(discordId, -finalPrice);
+      } else {
+
+        // Adiciona a transação
+        await tggCoins.addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Compra: ${item.name}`);
+
+        // Atualizar o saldo
+        newBalance = await tggCoins.updateBalance(discordId, -finalPrice);
+      }
+
+      // Registrar a compra
+      await tggCoins.createPurchase(discordId, item);
+
+      // Diminuir estoque (Se tiver estoque)
+      await tggCoins.decreaseStock(item.id, item.stock);
+
+      // Verifica, após diminuir o estoque, se o item é de evento, para ver se o evento acabou
+      if (item.type === 'EVENT') {
+        await tggCoins.checkAndFinishEvent(message.guild);
+      }
+
+      let priceText;
+
+      if (isEventItem) {
+        priceText = `**${finalPrice.toLocaleString('pt-BR')} Tickets**`;
+      } else {
+        priceText = `**${finalPrice.toLocaleString('pt-BR')} TGG-Coins**`;
+
+        // Mensagem extra para quem comprou com desconto
+        if (finalPrice < item.price) {
+          priceText = `~~${item.price.toLocaleString('pt-BR')}~~ → ${priceText} 🔥 (desconto de Booster aplicado)`;
+        }
+      }
+
+      return message.reply({
+        embeds: [
+          createSuccessEmbed(
+            'Compra realizada!',
+            `Você comprou **${item.name}** por ${priceText}.\nSaldo atual: **${newBalance.toLocaleString('pt-BR')} ${isEventItem ? 'Tickets' : 'TGG-Coins'}**`
+          )
+        ]
+      });
     }
 
-    return message.reply({
+    const confirmRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`buy_confirm_${discordId}`)
+        .setLabel('Confirmar')
+        .setEmoji('✅')
+        .setStyle(ButtonStyle.Success),
+
+      new ButtonBuilder()
+        .setCustomId(`buy_cancel_${discordId}`)
+        .setLabel('Cancelar')
+        .setEmoji('❌')
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    const confirmMsg = await message.reply({
       embeds: [
-        createSuccessEmbed(
-          'Compra realizada!',
-          `Você comprou **${item.name}** por ${priceText}.\nSaldo atual: **${newBalance.toLocaleString('pt-BR')} ${isEventItem ? 'Tickets' : 'TGG-Coins'}**`
-        )
-      ]
+        new EmbedBuilder()
+          .setColor(0x5865f2)
+          .setTitle('🛒 Confirmar compra')
+          .setDescription(
+            `Deseja comprar **${item.name}** por **${finalPrice.toLocaleString('pt-BR')} ${isEventItem ? 'Tickets' : 'TGG-Coins'}**?`
+          )
+      ],
+      components: [confirmRow]
     });
+
+    const collector = confirmMsg.createMessageComponentCollector({
+      time: 30000
+    });
+
+    collector.on('collect', async (interaction) => {
+      if (interaction.user.id !== discordId) {
+        return interaction.reply({
+          content: 'Você não pode usar isso.',
+          ephemeral: true
+        });
+      }
+
+      // Cancelar
+      if (interaction.customId === `buy_cancel_${discordId}`) {
+        collector.stop('cancelled');
+        return interaction.update({
+          embeds: [
+            createErrorEmbed(
+              'Compra cancelada',
+              'A compra foi cancelada.'
+            )
+          ],
+          components: []
+        });
+      }
+
+      // Confirmar
+      if (interaction.customId === `buy_confirm_${discordId}`) {
+        collector.stop('confirmed');
+        await interaction.update({
+          embeds: [
+            createSuccessEmbed(
+              'Compra confirmada!',
+              'Processando compra...'
+            )
+          ],
+          components: []
+        });
+
+        return executePurchase();
+      }
+    });
+
+    collector.on('end', async (_, reason) => {
+      if (reason === 'time') {
+        try {
+          await confirmMsg.edit({
+            embeds: [
+              createErrorEmbed(
+                'Tempo esgotado',
+                'A confirmação da compra expirou.'
+              )
+            ],
+            components: []
+          });
+        } catch (err) {}
+      }
+    });
+    
+    return;
 
   } catch (err) {
     return message.reply({

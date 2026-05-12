@@ -539,6 +539,43 @@ export async function canUseItem(discordId, itemId) {
 }
 
 /**
+ * Função para pegar um código disponível do Exitlag (usado para o item de Exitlag)
+ */
+export async function getAvailableExitlagCode() {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('tgg_coins_shop_exitlag')
+    .select('*')
+    .is('used_at', null)
+    .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+    .order('id', { ascending: true })
+    .limit(1);
+
+  if (error) throw error;
+
+  return data.length ? data[0] : null;
+}
+
+/**
+ * Função para marcar o código como usado e quem usou (usado para o item de Exitlag)
+ */
+export async function markExitlagCodeAsUsed(id, discordId) {
+  const supabase = getClient();
+
+  const { error } = await supabase
+    .from('tgg_coins_shop_exitlag')
+    .update({
+      discord_id: String(discordId),
+      used_at: new Date().toISOString()
+    })
+    .eq('id', id);
+
+  if (error) throw error;
+}
+
+
+/**
  * Função para calcular o preço com desconto (usado para boosters)
  */
 export function getDiscountedPrice(member, item) {
