@@ -302,6 +302,28 @@ export async function getLeaderboard(page = 1, limit = 10) {
 }
 
 /**
+ * Pega leaderboard total (ordenado pelo total de TGG_coins ganho)
+ */
+export async function getTotalCoinsLeaderboard(page = 1, limit = 10) {
+  const supabase = getClient();
+
+  const offset = (page - 1) * limit;
+
+  const { data, error, count } = await supabase
+    .from('vw_tgg_coins_wallet_total')
+    .select('*', { count: 'exact' })
+    .order('balance', { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) throw error;
+
+  return {
+    data: data || [],
+    total: count || 0
+  };
+}
+
+/**
  * Pega leaderboard dos eventos (ordenado por Tickets)
  */
 export async function getEventLeaderboard(page = 1, limit = 10) {

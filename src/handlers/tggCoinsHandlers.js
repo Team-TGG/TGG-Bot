@@ -177,6 +177,14 @@ export async function handleBuyMute(ctx) {
     }
 
     try {
+      // Verifica se o bot consegue mutar (hierarquia de cargos)
+      if (!target.moderatable) {
+        return message.reply({embeds: [createErrorEmbed('Erro ao mutar', 'Eu não tenho permissão para mutar esse usuário.')]});
+      }
+
+      // Aplica timeout de 30s
+      await target.timeout(30 * 1000, `Mutado por ${message.author.username}`);
+
       // Desconta saldo
       await tggCoins.addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Mute: ${target.user.username}`);
       const newBalance = await tggCoins.updateBalance(discordId, -finalPrice);
@@ -186,9 +194,6 @@ export async function handleBuyMute(ctx) {
 
       // Diminui estoque (se tiver)
       await tggCoins.decreaseStock(item.id, item.stock);
-
-      // Aplica timeout de 30s
-      await target.timeout(30 * 1000, `Mutado por ${message.author.username}`);
 
       return message.reply({
         embeds: [

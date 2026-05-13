@@ -466,10 +466,13 @@ export async function handleLeaderboard(message) {
     let mode = 'COINS';
 
     // Guarda informação em um cache
-    const cache = { coins: null, tickets: null };
+    const cache = {coins: null, totalCoins: null, tickets: null};
 
     // Carrega o leaderboard inteiro de uma vez
     cache.coins = await tggCoins.getLeaderboard(1, 9999);
+
+    // Carrega leaderboard de moedas totais
+    cache.totalCoins = await tggCoins.getTotalCoinsLeaderboard(1, 9999);
 
     // Carrega o leaderboard de tickets apenas se tiver evento
     if (hasEvent) {
@@ -477,7 +480,13 @@ export async function handleLeaderboard(message) {
     }
 
     async function generateEmbed(page) {
-      const source = mode === 'TICKETS' ? cache.tickets : cache.coins;
+
+      const source = 
+        mode === 'TICKETS'
+          ? cache.tickets
+          : mode === 'TOTAL'
+            ? cache.totalCoins
+            : cache.coins;
 
       const total = source.total;
       const totalPages = Math.ceil(total / limit) || 1;
@@ -525,9 +534,18 @@ export async function handleLeaderboard(message) {
 
       return new EmbedBuilder()
         .setColor(0x5865f2)
-        .setTitle(mode === 'TICKETS' ? '🎟️ Leaderboard de Tickets' : '🏆 Leaderboard')
+        .setTitle(
+          mode === 'TICKETS'
+            ? '🎟️ Leaderboard de Tickets'
+            : mode === 'TOTAL'
+              ? '🏆 Leaderboard de Coins Totais'
+              : '🏆 Leaderboard'
+        )
         .setDescription(description.join('\n'))
-        .setFooter({ text: `Página ${page}/${totalPages}` })
+        .setFooter({text: mode === 'TOTAL'
+              ? `Página ${page}/${totalPages} • Total de moedas já adquiridas`
+              : `Página ${page}/${totalPages}`
+        })
         .setTimestamp();
     }
 
@@ -544,11 +562,18 @@ export async function handleLeaderboard(message) {
         .setStyle(1)
         .setDisabled(page >= totalPages),
 
+      // Botão de moedas totais
+      new ButtonBuilder()
+        .setCustomId('toggle_total')
+        .setLabel(mode === 'TOTAL' ? 'Ver Atuais' : 'Ver Totais')
+        .setEmoji(EMOJIS.TGGcoin)
+        .setStyle(2),
+
       ...(hasEvent ? [
         new ButtonBuilder()
           .setCustomId('toggle_mode')
-          .setLabel(mode === 'COINS' ? 'Ver Tickets' : 'Ver Coins')
-          .setEmoji(mode === 'COINS' ? EMOJIS.tickets : EMOJIS.TGGcoin)
+          .setLabel(mode === 'TICKETS' ? 'Ver TGG Coins' : 'Ver Tickets')
+          .setEmoji(mode === 'TICKETS' ? EMOJIS.TGGcoin : EMOJIS.tickets)
           .setStyle(2)
       ] : [])
     );
@@ -579,12 +604,23 @@ export async function handleLeaderboard(message) {
         if (interaction.customId === 'prev_lb') page--;
         if (interaction.customId === 'next_lb') page++;
 
-        if (interaction.customId === 'toggle_mode') {
-          mode = mode === 'COINS' ? 'TICKETS' : 'COINS';
+        if (interaction.customId === 'toggle_total') {
+          mode = mode === 'TOTAL' ? 'COINS' : 'TOTAL';
           page = 1;
         }
 
-        const source = mode === 'TICKETS' ? cache.tickets : cache.coins;
+        if (interaction.customId === 'toggle_mode') {
+          mode = mode === 'TICKETS' ? 'COINS' : 'TICKETS';
+          page = 1;
+        }
+
+        const source =
+          mode === 'TICKETS'
+            ? cache.tickets
+            : mode === 'TOTAL'
+              ? cache.totalCoins
+              : cache.coins;
+
         let total = source.total;
         let totalPages = Math.ceil(total / limit) || 1;
 
