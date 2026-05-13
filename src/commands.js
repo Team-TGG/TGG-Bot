@@ -1,5 +1,5 @@
 // Handlers
-import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleMute, handleUnmute, handleBan, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets } from './admin.js';
+import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleMute, handleUnmute, handleBan, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleAbrirTickets, handleFecharTickets, handleWam } from './admin.js';
 import { handleHelp, handleStats, handleClan, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID } from './public.js';
 import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins, handleAddAccount, handleQuiz } from './tggCoinsCommands.js';
 
@@ -110,6 +110,12 @@ export const COMMAND_ALIASES = {
   'quiz': 'quiz',
   'quis': 'quiz',
   'cuiz': 'quiz',
+  'abrir-tickets': 'abrir-tickets',
+  'fechar-tickets': 'fechar-tickets',
+  'wam': 'wam',
+  'warm': 'wam',
+  'vvarn': 'wam',
+  'vvam': 'wam',
 };
 
 // Lista de comandos
@@ -132,6 +138,7 @@ export const commands = {
   'sync-nick': handleSyncNick,
   'refresh-cache': handleRefreshCache,
   warn: handleWarn,
+  wam: handleWam,
   unwarn: handleUnwarn,
   warns: handleWarns,
   mute: handleMute,
@@ -144,6 +151,8 @@ export const commands = {
   entrou: handleEntrou,
   escrever: handleEscrever,
   'organize-tickets': handleOrganizeTickets,
+  'abrir-tickets': handleAbrirTickets,
+  'fechar-tickets': handleFecharTickets,
 
   // TGG-Coins
   daily: handleDaily,

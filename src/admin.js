@@ -3,7 +3,7 @@ import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuil
 import { createClient, runSync, runEloSync } from './discord.js';
 import { addWarning, getUserWarnings, removeWarning, removeLastWarning, parseTime, formatTime as formatModTime, safeSetTimeout } from './moderation.js';
 import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes, getMissionWeekStart, getActiveUser } from './db.js';
-import { discord as discordConfig, STAFF_ROLE_IDS, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
+import { discord as discordConfig, STAFF_ROLE_IDS, inactivePlayers as inactivePlayersConfig, tickets as ticketsConfig } from '../config/index.js';
 import { loadCustomNicknames } from './customNicknames.js';
 import { syncNicknames, updateMemberNicknameDiscordPortion, parseNickname, buildNickname, fetchBrawlhallaClanData, loadClanCache } from './nicknameSync.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
@@ -228,6 +228,67 @@ export const handleWarn = adminOnly(async (message, args, client) => {
     }
   } catch (err) {
     await message.reply({ embeds: [createErrorEmbed('Erro ao Adicionar Aviso', err.message)] });
+  }
+});
+
+// .wam (warn falso, só para brincadeira)
+export const handleWam = adminOnly(async (message, args, client) => {
+  try {
+
+    // Apenas moderadores ou superiores podem usar esse comando
+    if (!hasPermission(message.member, 2)) {
+      return message.reply({
+        embeds: [createErrorEmbed('Acesso Negado', 'Apenas moderadores ou superiores podem dar avisos.')]
+      });
+    }
+
+    const guild = client.guilds.cache.get(discordConfig.guildId);
+    if (!guild) throw new Error('Guild não encontrada');
+
+    let targetId;
+    const mentionMatch = message.content.match(/<@!?(\d+)>/);
+
+    if (mentionMatch) {
+      targetId = mentionMatch[1];
+    } else {
+      const idMatch = args[0]?.match(/^\d+$/);
+      if (idMatch) targetId = args[0];
+    }
+
+    if (!targetId) {
+      return message.reply({
+        embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.wam <@user/ID> [motivo]`')]
+      });
+    }
+
+    const reason = message.content.includes('>')
+      ? message.content.split('>').slice(1).join('>').trim()
+      : args.slice(1).join(' ').trim() || 'Sem motivo especificado';
+
+    const member = await guild.members.fetch(targetId).catch(() => null);
+
+    if (!member) {
+      return message.reply({
+        embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')]
+      });
+    }
+
+    // Número fake de avisos
+    const fakeWarnings = Math.floor(Math.random() * 3) + 1;
+
+    await message.reply({
+      embeds: [
+        createSuccessEmbed(
+          'Aviso Adicionado',
+          `${member.user.tag} recebeu um aviso.\n**Motivo:** ${reason}\n**Total de avisos:** ${fakeWarnings}/3`
+        )
+      ]
+    });
+
+  } catch (err) {
+    await message.reply({
+      embeds: [createErrorEmbed('Erro ao Adicionar Aviso', err.message)]
+    });
   }
 });
 
@@ -1319,5 +1380,100 @@ export const handleOrganizeTickets = adminOnly(async (message, args, client) => 
     await sendCleanMessage(loading, {
       embeds: [createErrorEmbed('Erro ao organizar tickets', err.message)]
     }).catch(() => {});
+  }
+});
+
+// .abrir-tickets
+export const handleAbrirTickets = adminOnly(async (message) => {
+  try {
+    // Canal dos tickets
+    const ticketsChannelId = ticketsConfig.entrarNaGuildaChannelId;
+
+    // Canal de Fila guilda
+    const logChannelId = ticketsConfig.filaGuildaChannelId;
+
+    const guild = message.guild;
+
+    const ticketsChannel = guild.channels.cache.get(ticketsChannelId);
+    const logChannel = guild.channels.cache.get(logChannelId);
+
+    if (!ticketsChannel) {
+      return message.reply({
+        embeds: [createErrorEmbed('Erro', 'Canal de tickets não encontrado.')]
+      });
+    }
+
+    await ticketsChannel.permissionOverwrites.edit(guild.roles.everyone, {
+      ViewChannel: true
+    });
+
+    const embed = new EmbedBuilder()
+      .setColor(0x57f287)
+      .setTitle('🟢 Tickets Abertos')
+      .setDescription(`Usem o canal <#${ticketsChannelId}> para abrir um ticket e entrar na fila de espera!`)
+      .setFooter({text: `Aberto por ${message.author.displayName}`})
+      .setTimestamp();
+
+    const roleId = ticketsConfig.filaDeEsperaRoleId;
+
+    if (logChannel) {
+      await logChannel.send({
+        content: `<@&${roleId}>`,
+        embeds: [embed]
+      });
+    }
+    
+  } catch (err) {
+    return message.reply({
+      embeds: [createErrorEmbed('Erro ao abrir tickets', err.message)]
+    });
+  }
+});
+
+// .fechar-tickets
+export const handleFecharTickets = adminOnly(async (message) => {
+  try {
+    // Canal dos tickets
+    const ticketsChannelId = ticketsConfig.entrarNaGuildaChannelId;
+
+    // Canal de Fila guilda
+    const logChannelId = ticketsConfig.filaGuildaChannelId;
+
+    const guild = message.guild;
+
+    const ticketsChannel = guild.channels.cache.get(ticketsChannelId);
+    const logChannel = guild.channels.cache.get(logChannelId);
+
+    if (!ticketsChannel) {
+      return message.reply({
+        embeds: [createErrorEmbed('Erro', 'Canal de tickets não encontrado.')]
+      });
+    }
+
+    await ticketsChannel.permissionOverwrites.edit(guild.roles.everyone, {
+      ViewChannel: false
+    });
+
+    const embed = new EmbedBuilder()
+      .setColor(0xed4245)
+      .setTitle('🔴 Tickets Fechados')
+      .setDescription('Os tickets foram fechados temporariamente.')
+      .setFooter({
+        text: `Fechado por ${message.author.displayName}`
+      })
+      .setTimestamp();
+
+    const roleId = ticketsConfig.filaDeEsperaRoleId;
+
+    if (logChannel) {
+      await logChannel.send({
+        embeds: [embed]
+      });
+    }
+
+  } catch (err) {
+    return message.reply({
+      embeds: [createErrorEmbed('Erro ao fechar tickets', err.message)]
+    });
   }
 });

@@ -53,6 +53,7 @@ export async function handleHelp(message, args, client) {
     .addFields(
       { name: `${EMOJIS.arrowRight} .entrou <@user> <bhid>`, value: 'Adicionar novo usuário ou reativar existente no banco de dados', inline: false },
       { name: `${EMOJIS.arrowRight} .warn <@user> [motivo]`, value: 'Dar um aviso para um membro (3 é o limite)', inline: false },
+      { name: `${EMOJIS.arrowRight} .wam <@user> [motivo]`, value: 'Warn falso (só pra brincar)', inline: false },
       { name: `${EMOJIS.arrowRight} .unwarn <@user> [número]`, value: 'Tirar um warn de um membro', inline: false },
       { name: `${EMOJIS.arrowRight} .warns`, value: 'Mostrar a listagem de todos os warns', inline: false },
       { name: `${EMOJIS.arrowRight} .mute <@user> <duração> [motivo]`, value: 'Silenciar um usuário por certo tempo', inline: false },
@@ -102,6 +103,16 @@ export async function handleHelp(message, args, client) {
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
     .setTimestamp();
 
+  const page8 = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle(`${EMOJIS.ticketGuild} Tickets`)
+    .addFields(
+      { name: `${EMOJIS.arrowRight} .abrir-tickets`, value: 'Abrir os tickets para entrar na guilda e mandar mensagem', inline: false },
+      { name: `${EMOJIS.arrowRight} .fechar-tickets`, value: 'Fechar os tickets para entrar na guilda e mandar mensagem', inline: false }
+    )
+    .setFooter({ text: 'Selecione uma categoria no dropdown' })
+    .setTimestamp();
+
   const isUserAdmin = await isAdmin(message.author.id);
 
   const options = [
@@ -116,7 +127,8 @@ export async function handleHelp(message, args, client) {
       { label: 'Sincronização (admin).', value: 'sync', emoji: EMOJIS.hourglass, description: 'Comandos de sincronização' },
       { label: 'Gerenciamento (admin).', value: 'users', emoji: EMOJIS.success, description: 'Gerenciamento de usuários' },
       { label: 'Inativos (admin).', value: 'inac', emoji: EMOJIS.xis, description: 'Comandos de inatividade' },
-      { label: 'Missões (admin).', value: 'missions', emoji: EMOJIS.scroll, description: 'Comandos para missões' }
+      { label: 'Missões (admin).', value: 'missions', emoji: EMOJIS.scroll, description: 'Comandos para missões' },
+      { label: 'Tickets (admin).', value: 'tickets', emoji: EMOJIS.ticketGuild, description: 'Tickets para entrar na guilda' }
     );
   }
 
@@ -145,6 +157,7 @@ export async function handleHelp(message, args, client) {
       if (selected === 'inac') embedToShow = page5;
       if (selected === 'missions') embedToShow = page6;
       if (selected === 'tggcoins') embedToShow = page7;
+      if (selected === 'tickets') embedToShow = page8;
       await interaction.update({ embeds: [embedToShow], components: [row] });
     }
   });

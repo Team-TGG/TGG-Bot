@@ -20,4 +20,5 @@ export const EMOJIS = {
   hourglass: '⏳',
   scroll: '📜',
   tickets: '🎟️',
+  ticketGuild: '📨',
 };
