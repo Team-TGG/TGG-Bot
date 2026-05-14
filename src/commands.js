@@ -1,6 +1,6 @@
 // Handlers
 import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleMute, handleUnmute, handleBan, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleAbrirTickets, handleFecharTickets, handleWam } from './admin.js';
-import { handleHelp, handleStats, handleClan, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID } from './public.js';
+import { handleHelp, handleStats, handleClan, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes } from './public.js';
 import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins, handleAddAccount, handleQuiz } from './tggCoinsCommands.js';
 
 // Command Aliases
@@ -116,6 +116,22 @@ export const COMMAND_ALIASES = {
   'warm': 'wam',
   'vvarn': 'wam',
   'vvam': 'wam',
+  'redes': 'redes',
+  'rede': 'redes',
+  'redes-sociais': 'redes',
+  'redessociais': 'redes',
+  'redesociais': 'redes',
+  'socials': 'redes',
+  'sociais': 'redes',
+  'discord': 'redes',
+  'youtube': 'redes',
+  'yt': 'redes',
+  'tiktok': 'redes',
+  'twitch': 'redes',
+  'ttv': 'redes',
+  'spotify': 'redes',
+  'site': 'redes',
+  'exitlag': 'redes'
 };
 
 // Lista de comandos
@@ -131,6 +147,7 @@ export const commands = {
   birthday: handleBirthday,
   games: handleGames,
   'corrigir-id': handleCorrigirID,
+  redes: handleRedes,
 
   // Admin
   sync: handleSync,

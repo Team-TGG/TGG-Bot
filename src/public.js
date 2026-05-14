@@ -7,6 +7,7 @@ import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } fr
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
 import { isAdmin, adminOnly } from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
+import { SOCIALS } from '../config/socials.js';
 
 // .help
 export async function handleHelp(message, args, client) {
@@ -42,6 +43,7 @@ export async function handleHelp(message, args, client) {
       { name: `${EMOJIS.arrowRight} .regras`, value: 'Mostrar regras da guild', inline: false },
       { name: `${EMOJIS.arrowRight} .motd <mensagem>`, value: 'Salvar uma mensagem para ser sorteada no site (1x por semana)', inline: false },
       { name: `${EMOJIS.arrowRight} .birthday DD/MM`, value: 'Registrar seu aniversário para receber parabéns no dia!', inline: false },
+      { name: `${EMOJIS.arrowRight} .redes`, value: 'Verificar as redes sociais da TGG', inline: false },
       { name: `${EMOJIS.arrowRight} .help`, value: 'Mostrar esta mensagem', inline: false }
     )
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
@@ -853,4 +855,129 @@ export async function handleCorrigirID(message, args) {
       ]
     });
   }
+}
+
+// .redes
+export async function handleRedes(message) {
+  function buildEmbed(type = 'redes') {
+
+    if (type === 'spotify') {
+      return new EmbedBuilder()
+        .setColor(0x1db954)
+        .setTitle(`\n`)
+        .setDescription(`**${EMOJIS.spotify} Spotify da TGG**\n-# Playlist oficial da guilda\n## 🔗 • Playlist
+          ${SOCIALS.spotify}
+        `)
+        .setFooter({ text: 'TGG • Spotify Oficial' });
+    }
+
+    if (type === 'site') {
+      return new EmbedBuilder()
+        .setColor(0x693C85)
+        .setTitle('\n')
+        .setDescription(`**🌎 Site Oficial da TGG**\n-# Confira novidades, rankings e informações da guilda.\n## ${EMOJIS.TGGlogo} • Acesse: 
+          ${SOCIALS.site}
+
+          Mais **recursos** e **novidades** em breve!
+        `)
+        .setFooter({ text: 'TGG • Site Oficial' });
+    }
+
+    if (type === 'exitlag') {
+      return new EmbedBuilder()
+        .setColor(0xfaa61a)
+        .setTitle(`\n`)
+        .setDescription(`**${EMOJIS.exitlag} ExitLag**\n-# Reduza ping, perda de pacotes e melhore sua conexão.\n## 🔗 • Link Oficial: 
+          ${SOCIALS.exitlag}
+
+          Use o cupom **TEAMTGG** para ganhar desconto!
+          Recomendado para melhorar estabilidade na rede.
+        `)
+        .setFooter({ text: 'TGG • ExitLag Partner' });
+    }
+
+    // Padrão = redes sociais
+    return new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle('\n')
+      .setDescription(`**🌐 Redes da TGG**\n-# Acompanhe a guilda em todas as plataformas!\n## 🔗 • Links Oficiais
+
+          ${EMOJIS.discord} Discord: ${SOCIALS.discord}
+          ${EMOJIS.twitch} Twitch: ${SOCIALS.twitch}
+          ${EMOJIS.youtube} YouTube: ${SOCIALS.youtube}
+          ${EMOJIS.tiktok} TikTok: ${SOCIALS.tiktok}
+
+          **Entre, acompanhe e fortaleça a comunidade!**
+        `)
+      .setFooter({ text: 'TGG • Redes Oficiais' });
+  }
+
+  function buildButtons(selected = 'redes') {
+    return new ActionRowBuilder().addComponents(
+
+      new ButtonBuilder()
+        .setCustomId('redes_social')
+        .setLabel('Redes')
+        .setEmoji('🌐')
+        .setStyle(selected === 'redes' ? 1 : 2),
+
+      new ButtonBuilder()
+        .setCustomId('redes_spotify')
+        .setLabel('Spotify')
+        .setEmoji(`${EMOJIS.spotify}`)
+        .setStyle(selected === 'spotify' ? 1 : 2),
+
+      new ButtonBuilder()
+        .setCustomId('redes_site')
+        .setLabel('Site')
+        .setEmoji('🌎')
+        .setStyle(selected === 'site' ? 1 : 2),
+
+      new ButtonBuilder()
+        .setCustomId('redes_exitlag')
+        .setLabel('ExitLag')
+        .setEmoji(`${EMOJIS.exitlag}`)
+        .setStyle(selected === 'exitlag' ? 1 : 2)
+    );
+  }
+
+  const msg = await message.reply({
+    embeds: [buildEmbed('redes')],
+    components: [buildButtons('redes')]
+  });
+
+  const collector = msg.createMessageComponentCollector({
+    time: 120000
+  });
+
+  collector.on('collect', async (interaction) => {
+
+    if (interaction.user.id !== message.author.id) {
+      return interaction.reply({
+        content: 'Você não pode usar isso.',
+        ephemeral: true
+      });
+    }
+
+    await interaction.deferUpdate();
+
+    let type = 'redes';
+
+    if (interaction.customId === 'redes_spotify') {
+      type = 'spotify';
+    }
+
+    if (interaction.customId === 'redes_site') {
+      type = 'site';
+    }
+
+    if (interaction.customId === 'redes_exitlag') {
+      type = 'exitlag';
+    }
+
+    await interaction.editReply({
+      embeds: [buildEmbed(type)],
+      components: [buildButtons(type)]
+    });
+  });
 }
