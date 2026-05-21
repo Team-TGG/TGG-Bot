@@ -408,10 +408,9 @@ export async function fetchPlayerStatsNoResolve(brawlhallaId) {
   if (!legendsDataCache) await fetchLegends();
 
   try {
-    const [statsData, rankedData] = await Promise.all([
-      apiFetch(`https://api.brawlhalla.com/player/${brawlhallaId}/stats?api_key=${process.env.BRAWLHALLA_API_KEY}`),
-      apiFetch(`https://api.brawlhalla.com/player/${brawlhallaId}/ranked?api_key=${process.env.BRAWLHALLA_API_KEY}`)
-    ]);
+    const statsData = await apiFetch(`https://api.brawlhalla.com/player/${brawlhallaId}/stats?api_key=${process.env.BRAWLHALLA_API_KEY}`);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const rankedData = await apiFetch(`https://api.brawlhalla.com/player/${brawlhallaId}/ranked?api_key=${process.env.BRAWLHALLA_API_KEY}`);
 
     if (statsData.name) statsData.name = normalizeUnicode(statsData.name);
     if (statsData.clan?.clan_name) statsData.clan.clan_name = normalizeUnicode(statsData.clan.clan_name);

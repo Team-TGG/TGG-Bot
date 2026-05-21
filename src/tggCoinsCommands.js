@@ -1172,9 +1172,20 @@ export async function handleConquistas(message) {
     }
 
     // Pega as estatísticas de todas as contas do usuário em paralelo para otimizar o tempo de resposta
-    const allStats = await Promise.all(
-      accountIds.map(id => fetchPlayerStatsNoResolve(id))
-    );
+    const allStats = [];
+
+    for (const id of accountIds) {
+      try {
+        const stats = await fetchPlayerStatsNoResolve(id);
+        allStats.push(stats);
+
+      } catch (err) {
+        console.error(`Erro ao buscar ${id}:`, err);
+      }
+
+      // delay entre contas pra evitar 429
+      await new Promise(resolve => setTimeout(resolve, 600));
+    }
 
     // Agrupa por modo e tipo, criando tiers
     const grouped = {};

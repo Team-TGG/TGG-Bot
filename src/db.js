@@ -17,7 +17,8 @@ export function getClient() {
 }
 
 export function formatDateBR(dateString) {
-  const [year, month, day] = dateString.split('-');
+  const [datePart] = dateString.split(' ');
+  const [year, month, day] = datePart.split('-');
   return `${day}/${month}/${year}`;
 }
 

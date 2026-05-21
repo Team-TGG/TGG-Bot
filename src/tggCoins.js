@@ -763,8 +763,6 @@ export async function getPlayerMissionProgress(brawlhallaID, week_start) {
     .from('player_weekly_info')
     .select('*')
     .eq('week_start', week_start);
-  
-  console.log('Buscando progresso para Brawlhalla ID(s):', brawlhallaID, 'e semana começando em:', week_start);
 
   // Se for array → usa IN
   if (Array.isArray(brawlhallaID)) {
@@ -774,8 +772,6 @@ export async function getPlayerMissionProgress(brawlhallaID, week_start) {
   }
 
   const { data, error } = await query;
-
-  console.log('Progresso encontrado:', data);
 
   if (error && error.code !== 'PGRST116') throw error;
 
