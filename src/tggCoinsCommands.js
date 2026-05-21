@@ -1156,6 +1156,7 @@ export async function handleConquistas(message) {
 
     const weekStart = getMissionWeekStart();
     const weekEnd = getMissionWeekEnd();
+    console.log('Buscando missões para o período:', weekStart, 'até', weekEnd);
     const missions = await tggCoins.getWeeklyMissions(weekStart, weekEnd);
 
     // Se não tiver missões cadastradas, mostra mensagem de erro

@@ -49,6 +49,9 @@ export const COMMAND_ALIASES = {
   'cadastrarmissão': 'cadastrarmissao',
   'entrou': 'entrou',
   'daily': 'daily',
+  'daili': 'daily',
+  'dayly': 'daily',
+  'dayli': 'daily',
   'diario': 'daily',
   'diaria': 'daily',
   'diária': 'daily',
@@ -57,6 +60,9 @@ export const COMMAND_ALIASES = {
   'deily': 'daily',
   'deyly': 'daily',
   'deyli': 'daily',
+  'deiucu': 'daily', // Gameru
+  'deiocu': 'daily',
+  'dailhe': 'daily', // Violet
   'balance': 'balance',
   'bal': 'balance',
   'coins': 'balance',
