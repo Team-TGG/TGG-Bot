@@ -2,7 +2,7 @@
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
 import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID } from './db.js';
 
-import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createClanEmbed, getUserBrawlhallaId, getCached } from './brawlhalla.js';
+import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createClanEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
 import { isAdmin, adminOnly } from '../utils/permissions.js';
@@ -306,7 +306,7 @@ export async function handleStats(message, args, client) {
       .setDescription('Buscando dados do Brawlhalla...');
 
     const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
-    const playerData = await fetchPlayerStats(brawlhallaId);
+    const playerData = await fetchPlayerStatsNewAPI(brawlhallaId);
 
     const mainEmbed = createStatsEmbed(playerData);
     const rankedEmbed = createRankedEmbed(playerData);
@@ -422,7 +422,7 @@ export async function handleGames(message, args) {
       });
     }
 
-    const stats = await fetchPlayerStats(brawlhallaId);
+    const stats = await fetchPlayerStatsNewAPI(brawlhallaId);
     const ranked = stats.ranked;
 
     const currentGames = stats['games'] ?? 0;
@@ -435,7 +435,7 @@ export async function handleGames(message, args) {
       });
     }
 
-    const current3v3 = ranked['rotating_ranked']?.games ?? 0;
+    const current3v3 = ranked['3v3']?.games ?? 0;
 
     const totalGames = currentGames - (initial.games ?? 0);
     const games1v1 = current1v1 - (initial.initial_games_1v1 ?? 0);

@@ -17,6 +17,8 @@ export const COMMAND_ALIASES = {
   'estatisticas': 'stats',
   'clan': 'clan',
   'clã': 'clan',
+  'guilda': 'clan',
+  'guild': 'clan',
   'missoes': 'missoes',
   'missões': 'missoes',
   'missao': 'missoes',

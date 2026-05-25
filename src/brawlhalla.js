@@ -202,7 +202,6 @@ const LEGEND_EMOJIS = {
   'zariel': '<:Zariel:1480883560641728634>'
 };
 
-
 const WEAPON_ICONS = {
   'axe': '<:Axe:1480882487348428920>',
   'battleboots': '<:BattleBoots:1480882462769807423>',
@@ -280,6 +279,26 @@ const LEGEND_NAMES = {
   tezca: 'Tezca', thea: 'Thea', redraptor: 'Red Raptor', loki: 'Loki',
   seven: 'Seven', vivi: 'Vivi', imugi: 'Imugi', kingzuva: 'King Zuva',
   priya: 'Priya', ransom: 'Ransom', ladyvera: 'Lady Vera', rupture: 'Rupture'
+};
+
+const LEGEND_IDS = {
+  3: 'bodvar', 4: 'cassidy', 5: 'orion', 6: 'lordvraxx',
+  7: 'gnash', 8: 'queennai', 10: 'hattori', 11: 'sirroland', 
+  12: 'scarlet', 13: 'thatch', 14: 'ada',  15: 'sentinel', 
+  9: 'lucien', 16: 'teros', 19: 'brynn', 20: 'asuri',
+  21: 'barraza', 18: 'ember', 23: 'azoth', 24: 'koji',
+  22: 'ulgrim', 25: 'diana', 26: 'jhala', 28: 'kor',
+  29: 'wushang', 30: 'val', 31: 'ragnir', 32: 'cross',
+  33: 'mirage', 34: 'nix', 35: 'mordex', 36: 'yumiko',
+  37: 'artemis', 38: 'caspian', 39: 'sidra', 40: 'xull',
+  42: 'kaya', 41: 'isaiah', 43: 'jiro', 44: 'linfei',
+  45: 'zariel', 46: 'rayman', 47: 'dusk', 48: 'fait',
+  49: 'thor', 50: 'petra', 51: 'vector', 52: 'volkov',
+  53: 'onyx', 54: 'jaeyun', 55: 'mako', 56: 'magyar',
+  57: 'reno', 58: 'munin', 59: 'arcadia', 60: 'ezio',
+  63: 'tezca', 62: 'thea', 17: 'redraptor', 27: 'loki',
+  61: 'seven', 64: 'vivi', 65: 'imugi', 66: 'kingzuva',
+  67: 'priya', 68: 'ransom', 69: 'ladyvera', 70: 'rupture'
 };
 
 function normalizeWeapon(w) {
@@ -480,6 +499,111 @@ export async function getUserBrawlhallaId(discordId) {
   }
 }
 
+// NEW 1.0 API (Tests First)
+
+// NEW STATS
+export async function fetchPlayerStatsNewAPI(brawlhallaId) {
+  await loadAliases();
+
+  // Resolve o ID (caso seja alt)
+  const resolvedId = resolveBrawlhallaId(String(brawlhallaId));
+
+  const key = `player:${resolvedId}`;
+  const hit = getCached(key);
+
+  if (hit) {
+    console.log(`[Brawlhalla] Cache hit for player ${resolvedId}`);
+    return hit;
+  }
+
+  if (!legendsDataCache) {
+    await fetchLegends();
+  }
+
+  try {
+    const [statsData, ranked1v1Data, ranked2v2DataRaw, ranked3v3Data] = await Promise.all([
+
+      // Stats Geral
+      apiFetch(`https://api.brawlhalla.com/v1/player/stats?brawlhalla_id=${resolvedId}`),
+
+      // Ranked 1v1
+      apiFetch(`https://api.brawlhalla.com/v1/player/stats?brawlhalla_id=${resolvedId}&mode=ranked_1v1`),
+
+      // Legacy 2v2 (v0)
+      apiFetch(`https://api.brawlhalla.com/player/${resolvedId}/ranked?api_key=${process.env.BRAWLHALLA_API_KEY}`),
+
+      // Ranked 3v3
+      apiFetch(`https://api.brawlhalla.com/v1/player/stats?brawlhalla_id=${resolvedId}&mode=ranked_3v3`)
+    ]);
+
+    // Normalizar nomes com unicode estranho (ex: jogadores com emojis no nome)
+    if (statsData.name) {
+      statsData.name = normalizeUnicode(statsData.name);
+    }
+
+    if (statsData.clan?.clan_name) {
+      statsData.clan.clan_name = normalizeUnicode(statsData.clan.clan_name);
+    }
+
+    // Normalizar 1v1
+    if (ranked1v1Data.name) {
+      ranked1v1Data.name = normalizeUnicode(ranked1v1Data.name);
+    }
+
+    // Normalizar times na 2v2
+    const ranked2v2Data = {
+      ...(ranked2v2DataRaw || {})
+    };
+
+    if (Array.isArray(ranked2v2Data["2v2"])) {
+      ranked2v2Data["2v2"] = ranked2v2Data["2v2"].map(team => ({
+        ...team,
+        teamname: normalizeUnicode(team.teamname || team.team_name || "")
+      }));
+    }
+
+    // Normalizar 3v3
+    if (ranked3v3Data.name) {
+      ranked3v3Data.name = normalizeUnicode(ranked3v3Data.name);
+    }
+
+    // Estrutura semelhante ao que era usado na API antiga
+    const ranked = {
+
+      // 1v1
+      tier: ranked1v1Data.tier,
+      rating: ranked1v1Data.rating,
+      peak_rating: ranked1v1Data.peak_rating,
+      wins: ranked1v1Data.wins,
+      games: ranked1v1Data.games,
+      region: ranked1v1Data.region,
+      global_rank: ranked1v1Data.global_rank,
+      region_rank: ranked1v1Data.region_rank,
+      legends: ranked1v1Data.legends || [],
+
+      // Legacy 2v2 (Ainda não uso a nova por conta do erro 500)
+      "2v2": ranked2v2Data["2v2"] || [],
+
+      // Novo 3v3
+      "3v3": ranked3v3Data || {}
+    };
+
+    const combined = {...statsData, ranked};
+
+    setCached(key, combined);
+    return combined;
+
+  } catch (err) {
+    const stale = getCached(key, true);
+
+    if (stale) {
+      return stale;
+    }
+
+    throw err;
+  }
+}
+
 // builders de embed
 
 export function createStatsEmbed(playerData) {
@@ -490,28 +614,29 @@ export function createStatsEmbed(playerData) {
   const rankIcon = getRankIcon(ranked.tier);
 
   const mostPlayedLegend = legends.length
-    ? legends.reduce((a, b) => ((b.matchtime || 0) > (a.matchtime || 0) ? b : a))
+    ? legends.reduce((a, b) => ((b.match_time || 0) > (a.match_time || 0) ? b : a))
     : null;
 
   let displayLegendName = 'Unknown';
   let legendIcon = '❓';
   if (mostPlayedLegend) {
-    const key = cleanLegendName(mostPlayedLegend.legend_name_key);
+    const key = LEGEND_IDS[mostPlayedLegend.legend_id || l.id];
     displayLegendName = LEGEND_NAMES[key] || mostPlayedLegend.legend_name_key || 'Unknown';
     legendIcon = LEGEND_EMOJIS[key] || '❓';
   }
 
-  const totalPlaytime = legends.reduce((s, l) => s + parseInt(l.matchtime || 0), 0);
+  const totalPlaytime = legends.reduce((s, l) => s + parseInt(l.match_time || 0), 0);
 
   // logica para playtime de weapon
   const weaponTimes = {};
   legends.forEach(l => {
-    const mapping = legendsDataCache?.[l.legend_name_key];
+    const legendKey = LEGEND_IDS[l.legend_id || l.id];
+    const mapping = legendsDataCache?.[legendKey];
     if (mapping) {
       const w1 = mapping.weapon_one;
       const w2 = mapping.weapon_two;
-      const t1 = parseInt(l.timeheldweaponone || 0);
-      const t2 = parseInt(l.timeheldweapontwo || 0);
+      const t1 = parseInt(l.time_held_weapon_one || 0);
+      const t2 = parseInt(l.time_held_weapon_two || 0);
       if (w1) weaponTimes[w1] = (weaponTimes[w1] || 0) + t1;
       if (w2) weaponTimes[w2] = (weaponTimes[w2] || 0) + t2;
     }
@@ -531,9 +656,9 @@ export function createStatsEmbed(playerData) {
   const totalKos = legends.reduce((s, l) => s + parseInt(l.kos || 0), 0);
   const totalFalls = legends.reduce((s, l) => s + parseInt(l.falls || 0), 0);
   const totalSuicides = legends.reduce((s, l) => s + parseInt(l.suicides || 0), 0);
-  const totalTeamKos = legends.reduce((s, l) => s + parseInt(l.teamkos || 0), 0);
-  const totalDealt = legends.reduce((s, l) => s + parseInt(l.damagedealt || 0), 0);
-  const totalTaken = legends.reduce((s, l) => s + parseInt(l.damagetaken || 0), 0);
+  const totalTeamKos = legends.reduce((s, l) => s + parseInt(l.team_kos || 0), 0);
+  const totalDealt = legends.reduce((s, l) => s + parseInt(l.damage_dealt || 0), 0);
+  const totalTaken = legends.reduce((s, l) => s + parseInt(l.damage_taken || 0), 0);
 
   const events = totalKos + totalFalls;
   const koRate = events > 0 ? ((totalKos / events) * 100).toFixed(1) : 0;
@@ -548,7 +673,7 @@ export function createStatsEmbed(playerData) {
   const winRatio = games > 0 ? ((wins / games) * 100).toFixed(1) : '0.0';
   const rating = ranked.rating || 'Unranked';
   const tier = ranked.tier || 'N/A';
-  const mostLegendTime = mostPlayedLegend ? parseInt(mostPlayedLegend.matchtime || 0) : 0;
+  const mostLegendTime = mostPlayedLegend ? parseInt(mostPlayedLegend.match_time || 0) : 0;
 
   const embedFields = [
     {
@@ -620,8 +745,8 @@ export function createLegendsStatsEmbed(playerData) {
   }
 
   const legendList = topLegends.map((l, i) => {
-    const key = cleanLegendName(l.legend_name_key);
-    const name = LEGEND_NAMES[key] || l.legend_name_key || 'Unknown';
+    const key = LEGEND_IDS[l.legend_id || l.id];
+    const name = LEGEND_NAMES[key] || key || 'Unknown';
     const icon = LEGEND_EMOJIS[key] || '❓';
     const level = l.level;
     const xpFormatted = formatNumber(l.xp || 0);
@@ -639,12 +764,13 @@ export function createWeaponsStatsEmbed(playerData) {
 
   const weaponTimes = {};
   legends.forEach(l => {
-    const mapping = legendsDataCache?.[l.legend_name_key];
+    const legendKey = LEGEND_IDS[l.legend_id || l.id];
+    const mapping = legendsDataCache?.[legendKey];
     if (mapping) {
       const w1 = mapping.weapon_one;
       const w2 = mapping.weapon_two;
-      const t1 = parseInt(l.timeheldweaponone || 0);
-      const t2 = parseInt(l.timeheldweapontwo || 0);
+      const t1 = parseInt(l.time_held_weapon_one || 0);
+      const t2 = parseInt(l.time_held_weapon_two || 0);
       if (w1) weaponTimes[w1] = (weaponTimes[w1] || 0) + t1;
       if (w2) weaponTimes[w2] = (weaponTimes[w2] || 0) + t2;
     }
@@ -681,16 +807,15 @@ export function createWeaponsStatsEmbed(playerData) {
 export function createRankedEmbed(playerData) {
   const stats = playerData || {};
   const ranked = stats.ranked || {};
-  const legendsRanked = ranked.legends || [];
+  const ranked3v3 = ranked['3v3'] || {};
   const teams2v2 = ranked['2v2'] || [];
-  const rotating = ranked.rotating_ranked || null;
 
   const rankIcon = getRankIcon(ranked.tier);
 
   // 2v2 Solo (brawlhalla_id_two === 0)
   const solo2v2 = teams2v2.find(t => t.brawlhalla_id_two === 0);
 
-  // 2v2 Team
+  // Melhor team 2v2
   const bestTeam = teams2v2.length > 0
     ? teams2v2
         .filter(t => t.brawlhalla_id_two !== 0)
@@ -699,16 +824,6 @@ export function createRankedEmbed(playerData) {
           return (b.rating || 0) > (a.rating || 0) ? b : a;
         }, null)
     : null;
-
-  // 3v3 (rotating_ranked)
-  let rotatingStats = null;
-  if (rotating) {
-    if (Array.isArray(rotating)) {
-      rotatingStats = rotating.reduce((a, b) => ((b.rating || 0) > (a.rating || 0) ? b : a), null);
-    } else {
-      rotatingStats = rotating;
-    }
-  }
 
   const embed = new EmbedBuilder()
     .setColor(0x00ff00)
@@ -730,6 +845,7 @@ export function createRankedEmbed(playerData) {
     }
   ];
 
+  // 2v2 Solo
   if (solo2v2) {
     const w = solo2v2.wins || 0;
     const g = solo2v2.games || 0;
@@ -745,6 +861,7 @@ export function createRankedEmbed(playerData) {
     });
   }
 
+  // Melhor Team
   if (bestTeam) {
     const w = bestTeam.wins || 0;
     const g = bestTeam.games || 0;
@@ -761,16 +878,17 @@ export function createRankedEmbed(playerData) {
     });
   }
 
-  if (rotatingStats) {
-    const w = rotatingStats.wins || 0;
-    const g = rotatingStats.games || 0;
+  // 3v3
+  if (ranked3v3.rating || ranked3v3.games) {
+    const w = ranked3v3.wins || 0;
+    const g = ranked3v3.games || 0;
     const l = g - w;
     const pct = g > 0 ? ((w / g) * 100).toFixed(1) : '0.0';
     rankedFields.push({
       name: '🎨 3v3 Ranked',
       value:
-        `**Rating:** \`${formatNumber(rotatingStats.rating)}\` (Peak: \`${formatNumber(rotatingStats.peak_rating)}\`)\n` +
-        `**Tier:** \`${rotatingStats.tier}\`\n` +
+        `**Rating:** \`${formatNumber(ranked3v3.rating)}\` (Peak: \`${formatNumber(ranked3v3.peak_rating)}\`)\n` +
+        `**Tier:** \`${ranked3v3.tier}\`\n` +
         `**Wins:** \`${formatNumber(w)}\` · **Losses:** \`${formatNumber(l)}\` (\`${pct}%\`)`,
       inline: false
     });
