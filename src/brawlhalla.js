@@ -686,22 +686,17 @@ export async function fetchPlayerStatsNewAPI(brawlhallaId) {
 // NEW PLAYER GUILD STATS
 export async function fetchPlayerGuildStatsNewAPI(brawlhallaId) {
 
-  await loadAliases();
-
-  // Resolve o ID (caso seja alt)
-  const resolvedId = resolveBrawlhallaId(String(brawlhallaId));
-
-  const key = `player_guild:${resolvedId}`;
+  const key = `player_guild:${brawlhallaId}`;
   const hit = getCached(key);
 
   if (hit) {
-    console.log(`[Brawlhalla] Cache hit for player guild ${resolvedId}`);
+    console.log(`[Brawlhalla] Cache hit for player guild ${brawlhallaId}`);
     return hit;
   }
 
   try {
-    console.log(`[Brawlhalla] Fetching player guild stats for ${resolvedId}`);
-    const data = await apiFetch(`https://api.brawlhalla.com/v1/player/guild?brawlhalla_id=${resolvedId}`);
+    console.log(`[Brawlhalla] Fetching player guild stats for ${brawlhallaId}`);
+    const data = await apiFetch(`https://api.brawlhalla.com/v1/player/guild?brawlhalla_id=${brawlhallaId}`);
     console.log('[Brawlhalla] Raw player guild response:', data);
 
     // Validações
@@ -738,17 +733,17 @@ export async function fetchPlayerGuildStatsNewAPI(brawlhallaId) {
     };
 
     console.log('[Brawlhalla] Parsed player guild stats:', formattedData);
-    console.log(`[Brawlhalla] Caching player guild stats for ${resolvedId}`);
+    console.log(`[Brawlhalla] Caching player guild stats for ${brawlhallaId}`);
 
     setCached(key, formattedData);
     return formattedData;
   } catch (err) {
-    console.error(`[Brawlhalla] Failed to fetch player guild stats for ${resolvedId}`);
+    console.error(`[Brawlhalla] Failed to fetch player guild stats for ${brawlhallaId}`);
     console.error(err);
     const stale = getCached(key, true);
 
     if (stale) {
-      console.warn(`[Brawlhalla] Returning stale cache for player guild ${resolvedId}`);
+      console.warn(`[Brawlhalla] Returning stale cache for player guild ${brawlhallaId}`);
       return stale;
     }
 
