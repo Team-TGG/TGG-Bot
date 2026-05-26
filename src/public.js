@@ -2,7 +2,7 @@
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
 import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID } from './db.js';
 
-import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createClanEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI } from './brawlhalla.js';
+import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
 import { isAdmin, adminOnly } from '../utils/permissions.js';
@@ -18,7 +18,7 @@ export async function handleHelp(message, args, client) {
       { name: `${EMOJIS.arrowRight} .missoes`, value: 'Mostrar as missões da semana atual', inline: false },
       { name: `${EMOJIS.arrowRight} .stats`, value: 'Trazer seus status atualizados do jogo', inline: false },
       { name: `${EMOJIS.arrowRight} .games`, value: 'Mostra a quantidade de jogos jogados durante a SEMANA', inline: false },
-      { name: `${EMOJIS.arrowRight} .clan`, value: 'Ver informações do clã Team TGG', inline: false },
+      { name: `${EMOJIS.arrowRight} .guild`, value: 'Ver informações da guilda Team TGG', inline: false },
       { name: `${EMOJIS.arrowRight} .corrigir-id`, value: 'Caso esteja na guilda com alguma alt, pode vincular o id da sua conta principal', inline: false },
     )
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
@@ -31,7 +31,7 @@ export async function handleHelp(message, args, client) {
       { name: `${EMOJIS.arrowRight} .sync`, value: 'Sincronização dos membros que precisam ser atualizados (ranks + ELO)', inline: false },
       { name: `${EMOJIS.arrowRight} .sync-all`, value: 'Sincronização completa de todos os membros (ranks + ELO)', inline: false },
       { name: `${EMOJIS.arrowRight} .sync-nick`, value: 'Sincronizar apelidos Brawlhalla', inline: false },
-      { name: `${EMOJIS.arrowRight} .refresh-cache`, value: 'Atualizar cache do clan', inline: false }
+      { name: `${EMOJIS.arrowRight} .refresh-cache`, value: 'Atualizar cache da guilda', inline: false }
     )
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
     .setTimestamp();
@@ -306,7 +306,7 @@ export async function handleStats(message, args, client) {
       .setDescription('Buscando dados do Brawlhalla...');
 
     const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
-    const playerData = await fetchPlayerStatsNewAPI(brawlhallaId);
+    const playerData = await fetchPlayerStats(brawlhallaId);
 
     const mainEmbed = createStatsEmbed(playerData);
     const rankedEmbed = createRankedEmbed(playerData);
@@ -422,7 +422,7 @@ export async function handleGames(message, args) {
       });
     }
 
-    const stats = await fetchPlayerStatsNewAPI(brawlhallaId);
+    const stats = await fetchPlayerStats(brawlhallaId);
     const ranked = stats.ranked;
 
     const currentGames = stats['games'] ?? 0;
@@ -435,7 +435,7 @@ export async function handleGames(message, args) {
       });
     }
 
-    const current3v3 = ranked['3v3']?.games ?? 0;
+    const current3v3 = ranked['rotating_ranked']?.games ?? 0;
 
     const totalGames = currentGames - (initial.games ?? 0);
     const games1v1 = current1v1 - (initial.initial_games_1v1 ?? 0);
@@ -550,32 +550,32 @@ export async function handleGames(message, args) {
   }
 }
 
-// .clan
-export async function handleClan(message, args, client) {
+// .guild
+export async function handleGuild(message, args, client) {
   try {
-    let clanId = process.env.BRAWLHALLA_CLAN_ID || '396943';
+    let GuildId = process.env.BRAWLHALLA_CLAN_ID || '396943';
     if (args.length > 0 && /^\d+$/.test(args[0])) {
-      clanId = args[0];
+      GuildId = args[0];
     }
 
     // Checar cache primeiro (inclusive expirado)
-    const cachedData = getCached(`clan:${clanId}`, true);
+    const cachedData = getCached(`clan:${GuildId}`, true);
     if (cachedData) {
-      return await message.reply({ embeds: [createClanEmbed(cachedData)] });
+      return await message.reply({ embeds: [await createGuildEmbed(cachedData)] });
     }
 
     const loadingEmbed = new EmbedBuilder()
       .setColor(0xfaa61a)
-      .setTitle(`${EMOJIS.loading} Carregando informações do clã...`)
+      .setTitle(`${EMOJIS.loading} Carregando informações da guilda...`)
       .setDescription('Buscando dados do Brawlhalla...');
 
     const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
-    const clanData = await fetchClanStats(clanId);
-    await sendCleanMessage(loadingMsg, { embeds: [createClanEmbed(clanData)] });
+    const guildData = await fetchGuildStatsNewAPI(GuildId);
+    await sendCleanMessage(loadingMsg, { embeds: [await createGuildEmbed(guildData)] });
 
   } catch (err) {
-    console.error('Error fetching clan stats:', err);
-    const errorEmbed = createErrorEmbed('Erro ao Buscar Estatísticas do Clã', err.message);
+    console.error('Error fetching guild stats:', err);
+    const errorEmbed = createErrorEmbed('Erro ao Buscar Estatísticas da guilda', err.message);
     if (loadingMsg) {
       await sendCleanMessage(loadingMsg, { embeds: [errorEmbed] }).catch(() => { });
     } else {

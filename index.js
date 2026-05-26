@@ -8,7 +8,7 @@ if (process.env.IGNORE_SSL_ERRORS === 'true') {
 import { EmbedBuilder, Events } from 'discord.js';
 import { createClient, runSync, runEloSync } from './src/discord.js';
 import { syncNicknames, fetchBrawlhallaClanData } from './src/nicknameSync.js';
-import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from './config/index.js';
+import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, STAFF_ROLE_IDS } from './config/index.js';
 import { startCronJobs } from './src/scheduler/cron.js';
 import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo } from './src/db.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from './utils/discordUtils.js';
@@ -69,19 +69,28 @@ async function main() {
     const allowed = await checkChannelPermission(message);
     if (!allowed) return;
 
+    // Verifica se usuário possui cargo helper+
+    const isStaff = message.member?.roles?.cache?.some(
+      role => Object.values(STAFF_ROLE_IDS).includes(role.id)
+    );
+
     // Verificação de rate limit para todos os comandos
     const now = Date.now();
     const userId = message.author.id;
-    const lastCommand = rateLimitMap.get(userId);
 
-    if (lastCommand && now - lastCommand < RATE_LIMIT_MS) {
-      const remaining = Math.ceil((RATE_LIMIT_MS - (now - lastCommand)) / 1000);
-      return await message.reply({
-        embeds: [createErrorEmbed('Calma lá!', `Aguarde **${remaining}s** para usar outro comando.`)]
-      }).catch(() => {});
+    // Staffs estão isentos do rate limit
+    if (!isStaff) {
+      const lastCommand = rateLimitMap.get(userId);
+      
+      if (lastCommand && now - lastCommand < RATE_LIMIT_MS) {
+        const remaining = Math.ceil((RATE_LIMIT_MS - (now - lastCommand)) / 1000);
+        return await message.reply({
+          embeds: [createErrorEmbed('Calma lá!', `Aguarde **${remaining}s** para usar outro comando.`)]
+        }).catch(() => {});
+      }
+      
+      rateLimitMap.set(userId, now);
     }
-
-    rateLimitMap.set(userId, now);
 
     const cmd = commands[command];
     if (!cmd) return;

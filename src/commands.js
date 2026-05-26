@@ -1,6 +1,6 @@
 // Handlers
 import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleMute, handleUnmute, handleBan, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleAbrirTickets, handleFecharTickets, handleWam } from './admin.js';
-import { handleHelp, handleStats, handleClan, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes } from './public.js';
+import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes } from './public.js';
 import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins, handleAddAccount, handleQuiz } from './tggCoinsCommands.js';
 
 // Command Aliases
@@ -15,10 +15,10 @@ export const COMMAND_ALIASES = {
   'stats': 'stats',
   'status': 'stats',
   'estatisticas': 'stats',
-  'clan': 'clan',
-  'clã': 'clan',
-  'guilda': 'clan',
-  'guild': 'clan',
+  'guilda': 'guild',
+  'guild': 'guild',
+  'clan': 'guild',
+  'clã': 'guild',
   'missoes': 'missoes',
   'missões': 'missoes',
   'missao': 'missoes',
@@ -149,7 +149,7 @@ export const commands = {
   regras: handleRegras,
   motd: handleMotd,
   stats: handleStats,
-  clan: handleClan,
+  guild: handleGuild,
   missoes: handleMissoes,
   active: handleActive,
   birthday: handleBirthday,
