@@ -1,5 +1,5 @@
 import { EmbedBuilder } from 'discord.js';
-import { getGuildWeeklyGuildPoints } from './guild.js';
+import { getGuildWeeklyGuildPoints, getPlayerWeeklyGuildPoints } from './guild.js';
 import { getUserByDiscordId, resolveBrawlhallaId, loadAliases, getMissionWeekEnd, getMissionWeekStart } from './db.js';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs';
 import { resolve } from 'path';
@@ -532,7 +532,7 @@ function validateRankedResponse(data, label) {
   return true;
 }
 
-// NEW STATS
+// NEW PLAYER STATS
 export async function fetchPlayerStatsNewAPI(brawlhallaId) {
   await loadAliases();
 
@@ -683,7 +683,80 @@ export async function fetchPlayerStatsNewAPI(brawlhallaId) {
   }
 }
 
-// NEW GUILD
+// NEW PLAYER GUILD STATS
+export async function fetchPlayerGuildStatsNewAPI(brawlhallaId) {
+
+  await loadAliases();
+
+  // Resolve o ID (caso seja alt)
+  const resolvedId = resolveBrawlhallaId(String(brawlhallaId));
+
+  const key = `player_guild:${resolvedId}`;
+  const hit = getCached(key);
+
+  if (hit) {
+    console.log(`[Brawlhalla] Cache hit for player guild ${resolvedId}`);
+    return hit;
+  }
+
+  try {
+    console.log(`[Brawlhalla] Fetching player guild stats for ${resolvedId}`);
+    const data = await apiFetch(`https://api.brawlhalla.com/v1/player/guild?brawlhalla_id=${resolvedId}`);
+    console.log('[Brawlhalla] Raw player guild response:', data);
+
+    // Validações
+    if (!data || typeof data !== 'object') {
+      throw new Error('Invalid player guild response');
+    }
+
+    if (Object.keys(data).length === 0) {
+      throw new Error('Empty player guild response');
+    }
+
+    if (!data.guild) {
+      throw new Error('Missing guild object');
+    }
+
+    if (typeof data.guild.personal_xp_this_week === 'undefined') {
+      throw new Error('Missing personal_xp_this_week');
+    }
+
+    if (typeof data.guild.personal_points === 'undefined') {
+      throw new Error('Missing personal_points');
+    }
+
+    // Normalizações
+    const formattedData = {
+      brawlhalla_id: data.brawlhalla_id,
+      guild_id: data.guild.guild_id,
+      guild_name: normalizeUnicode(data.guild.guild_name || ''),
+      personal_xp_this_week: Number(data.guild.personal_xp_this_week || 0),
+      personal_points: Number(data.guild.personal_points || 0),
+      personal_xp: Number(data.guild.personal_xp || 0),
+      join_date: data.guild.join_date || 0,
+      rank: data.guild.rank || 'Unknown'
+    };
+
+    console.log('[Brawlhalla] Parsed player guild stats:', formattedData);
+    console.log(`[Brawlhalla] Caching player guild stats for ${resolvedId}`);
+
+    setCached(key, formattedData);
+    return formattedData;
+  } catch (err) {
+    console.error(`[Brawlhalla] Failed to fetch player guild stats for ${resolvedId}`);
+    console.error(err);
+    const stale = getCached(key, true);
+
+    if (stale) {
+      console.warn(`[Brawlhalla] Returning stale cache for player guild ${resolvedId}`);
+      return stale;
+    }
+
+    throw err;
+  }
+}
+
+// NEW GUILD STATS
 export async function fetchGuildStatsNewAPI(guildId = process.env.BRAWLHALLA_CLAN_ID || '396943') {
 
   const key = `guild:${guildId}`;
@@ -726,9 +799,62 @@ export async function fetchGuildStatsNewAPI(guildId = process.env.BRAWLHALLA_CLA
   }
 }
 
+// GUILD MEMBERS
+export async function fetchGuildMembersNewAPI(guildId = process.env.BRAWLHALLA_CLAN_ID || '396943') {
+
+  const key = `guild_members:${guildId}`;
+  const hit = getCached(key);
+
+  if (hit) {
+    console.log(`[Brawlhalla] Cache hit for guild members ${guildId}`);
+    return hit;
+  }
+
+  try {
+    const data = await apiFetch(
+      `https://api.brawlhalla.com/v1/guild/members?guild_id=${guildId}`
+    );
+
+    // Validar resposta
+    if (!data || typeof data !== 'object') {
+      throw new Error('Invalid guild members response');
+    }
+
+    if (!Array.isArray(data.guild_members)) {
+      throw new Error('Missing guild_members array');
+    }
+
+    // Normalizar nomes
+    data.guild_members = data.guild_members.map(member => ({
+      ...member,
+      name: normalizeUnicode(member.name || 'Unknown')
+    }));
+
+    console.log(`[Brawlhalla] Caching valid guild members for ${guildId}`);
+
+    setCached(key, data);
+
+    return data;
+
+  } catch (err) {
+
+    console.error(`[Brawlhalla] Failed to fetch guild members ${guildId}`);
+    console.error(err);
+
+    const stale = getCached(key, true);
+
+    if (stale) {
+      console.warn(`[Brawlhalla] Returning stale cache for guild members ${guildId}`);
+      return stale;
+    }
+
+    throw err;
+  }
+}
+
 // builders de embed
 
-export function createStatsEmbed(playerData) {
+export async function createStatsEmbed(playerData) {
   const stats = playerData || {};
   const ranked = stats.ranked || {};
   const legends = stats.legends || [];
@@ -796,6 +922,13 @@ export function createStatsEmbed(playerData) {
   const tier = ranked.tier || 'N/A';
   const mostLegendTime = mostPlayedLegend ? parseInt(mostPlayedLegend.matchtime || 0) : 0;
 
+  // Lógica para os Guild Points
+  const totalGuildPoints = stats.guildPoints || 0;
+
+  const lastGuildPointsData = await getPlayerWeeklyGuildPoints(stats.brawlhalla_id);
+  const lastGuildPoints = Number(lastGuildPointsData || 0);
+  const weeklyGuildPoints = Math.max(0, totalGuildPoints - lastGuildPoints);
+
   const embedFields = [
     {
       name: '📊 Main Stats',
@@ -810,6 +943,19 @@ export function createStatsEmbed(playerData) {
       value: `\`${formatNumber(wins)} W\` · \`${formatNumber(losses)} L\` · \`${formatNumber(games)} games\` (\`${winRatio}%\`)`,
       inline: false
     },
+   ...(lastGuildPointsData ? [{
+      name: '🏰 Guild Record',
+      value:
+        `Total GP: \`${formatNumber(totalGuildPoints)}\`\n` +
+        `Weekly GP: \`${formatNumber(weeklyGuildPoints)}\`` +
+
+        (weeklyGuildPoints < 1000
+          ? `\n\n🔴 **Alerta de Inatividade**\n` +
+            `Você precisa fazer mais \`${formatNumber(1000 - weeklyGuildPoints)}\` de contribuição para não ficar inativo.`
+          : ''),
+
+      inline: false
+    }] : []),
     {
       name: '🏆 Most Played Legend',
       value: mostPlayedLegend
@@ -1047,6 +1193,25 @@ export async function createGuildEmbed(guildData) {
   const lastWeekGuildPoints = Number(lastWeekGuildPointsData?.total_guild_points || 0);
   const weeklyGuildPoints = Math.max(0, Number(guildData.guild_points || 0) - lastWeekGuildPoints);
 
+  // Buscar membros
+  const membersData = await fetchGuildMembersNewAPI(guildId);
+
+  // Top 10 guild points
+  const topMembers = [...(membersData.guild_members || [])]
+    .sort((a, b) => (b.guild_points || 0) - (a.guild_points || 0))
+    .slice(0, 10);
+
+  const topMembersText = topMembers.length
+    ? topMembers
+        .map((member, index) => {
+          return (
+            `**${index + 1}.** ${member.name} ` +
+            `— ${formatNumber(member.guild_points || 0)} GP`
+          );
+        })
+        .join('\n')
+    : 'Nenhum membro encontrado';
+
   return new EmbedBuilder()
     .setColor(0x0099ff)
     .setTitle(`🏰 ${guildName} — Guild Stats`)
@@ -1063,8 +1228,8 @@ export async function createGuildEmbed(guildData) {
         inline: false
       },
       {
-        name: '📢 Mensagem do Dia',
-        value: notice,
+        name: '🏆 Top 10 Guild Points',
+        value: topMembersText,
         inline: false
       },
       {

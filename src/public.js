@@ -2,7 +2,7 @@
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
 import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID } from './db.js';
 
-import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI } from './brawlhalla.js';
+import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI, fetchPlayerGuildStatsNewAPI } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
 import { isAdmin, adminOnly } from '../utils/permissions.js';
@@ -308,7 +308,11 @@ export async function handleStats(message, args, client) {
     const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
     const playerData = await fetchPlayerStats(brawlhallaId);
 
-    const mainEmbed = createStatsEmbed(playerData);
+    // Pegar os guild points e mandar pro stats
+    const guildPoints = await fetchPlayerGuildStatsNewAPI(brawlhallaId);
+    playerData.guildPoints = guildPoints?.personal_points || 0;
+
+    const mainEmbed = await createStatsEmbed(playerData);
     const rankedEmbed = createRankedEmbed(playerData);
     const legendsEmbed = (await import('./brawlhalla.js')).createLegendsStatsEmbed(playerData);
     const weaponsEmbed = (await import('./brawlhalla.js')).createWeaponsStatsEmbed(playerData);
