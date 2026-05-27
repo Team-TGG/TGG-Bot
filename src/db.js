@@ -722,3 +722,18 @@ export async function corrigirID(discord_id, main_id) {
 
   return data;
 }
+
+// Função para puxar todas as justificativas dos inativos da guilda (.active)
+export async function getMemberJustifications(brawlhallaId) {
+  const supabase = getClient();
+
+  // Puxar todos os notes do jogador, ordenados do mais recente para o mais antigo
+  const { data, error } = await supabase
+    .from('weekly_inactive_players')
+    .select('week_reference, created_at, note')
+    .eq('brawlhalla_id', String(brawlhallaId))
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return data;
+}

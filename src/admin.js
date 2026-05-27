@@ -1,12 +1,13 @@
 // admin.js - Comandos apenas para administradores
-import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType, ComponentType } from 'discord.js';
 import { createClient, runSync, runEloSync } from './discord.js';
+import { fetchPlayerStats, getUserBrawlhallaId } from './brawlhalla.js';
 import { addWarning, getUserWarnings, removeWarning, removeLastWarning, parseTime, formatTime as formatModTime, safeSetTimeout } from './moderation.js';
-import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes, getMissionWeekStart, getActiveUser } from './db.js';
+import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes, getMissionWeekStart, getActiveUser, getMemberJustifications, formatDateBR } from './db.js';
 import { discord as discordConfig, STAFF_ROLE_IDS, inactivePlayers as inactivePlayersConfig, tickets as ticketsConfig } from '../config/index.js';
 import { loadCustomNicknames } from './customNicknames.js';
 import { syncNicknames, updateMemberNicknameDiscordPortion, parseNickname, buildNickname, fetchBrawlhallaClanData, loadClanCache } from './nicknameSync.js';
-import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
+import { createErrorEmbed, createSuccessEmbed, createWarningEmbed, sendCleanMessage } from '../utils/discordUtils.js';
 import { isAdmin, adminOnly, hasPermission, getMemberLevel} from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
 
@@ -1115,9 +1116,6 @@ export const handleEntrou = adminOnly(async (message, args, client) => {
     }
 
     const targetId = mentionMatch ? mentionMatch[1] : args[0];
-    const brawlhallaId = mentionMatch ? args[1] : args[1]; // Correct args index depending on input
-
-    // Re-evaluate args if it was an ID
     const finalBhid = mentionMatch ? args[1] : args[1];
 
     if (!finalBhid || !/^\d+$/.test(finalBhid)) {
@@ -1133,31 +1131,124 @@ export const handleEntrou = adminOnly(async (message, args, client) => {
       });
     }
 
-    const result = await reactivateOrAddUser(targetId, brawlhallaId, member.user.tag);
+    // Dados do player
+    const playerData = await fetchPlayerStats(finalBhid);
 
-    const rolesToRemove = ['1466815420630565069', '1478477041077588098', '1437447173896802395'];
-    const rolesToAdd = ['1437441679572471940', '1437427750209327297'];
-
-    for (const roleId of rolesToRemove) {
-      if (member.roles.cache.has(roleId)) {
-        await member.roles.remove(roleId);
-      }
+    if (!playerData) {
+      return message.reply({
+        embeds: [createErrorEmbed('Erro', 'Não foi possível encontrar o jogador na API do Brawlhalla.')]
+      });
     }
 
-    for (const roleId of rolesToAdd) {
-      if (!member.roles.cache.has(roleId)) {
-        await member.roles.add(roleId);
-      }
-    }
+    const playerName = playerData.name || 'Desconhecido';
 
-    const embed = createSuccessEmbed(
-      result.reactivated ? 'Usuário Reativado' : 'Usuário Adicionado',
-      `${member.user.tag} foi ${result.reactivated ? 'reativado' : 'adicionado'} ao banco de dados.\n**Brawlhalla ID:** ${brawlhallaId}\n**Cargo:** Recruit\n\nCargos atualizados com sucesso!`
+    // Embed de confirmação
+    const confirmEmbed = createWarningEmbed('Confirmação',
+      `Deseja realmente adicionar este usuário?\n\n` +
+      `👤 **Discord:** ${member.user.tag}\n` +
+      `🎮 **Brawlhalla ID:** ${finalBhid}\n` +
+      `🏷️ **Nome:** ${playerName}`
     );
 
-    await message.reply({ embeds: [embed] });
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('confirm_entrou')
+        .setLabel('Confirmar')
+        .setStyle(ButtonStyle.Success),
+
+      new ButtonBuilder()
+        .setCustomId('cancel_entrou')
+        .setLabel('Cancelar')
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    const confirmMessage = await message.reply({
+      embeds: [confirmEmbed],
+      components: [row]
+    });
+
+    const collector = confirmMessage.createMessageComponentCollector({
+      componentType: ComponentType.Button,
+      time: 30000
+    });
+
+    collector.on('collect', async (interaction) => {
+
+      if (interaction.user.id !== message.author.id) {
+        return interaction.reply({
+          content: 'Apenas quem executou o comando pode usar estes botões.',
+          ephemeral: true
+        });
+      }
+
+      // CANCELAR
+      if (interaction.customId === 'cancel_entrou') {
+
+        collector.stop();
+
+        return interaction.update({
+          embeds: [
+            createErrorEmbed(
+              'Operação Cancelada',
+              'O cadastro do usuário foi cancelado.'
+            )
+          ],
+          components: []
+        });
+      }
+
+      // CONFIRMAR
+      if (interaction.customId === 'confirm_entrou') {
+        collector.stop();
+        const result = await reactivateOrAddUser(targetId, finalBhid, member.user.tag);
+
+        const rolesToRemove = ['1466815420630565069', '1478477041077588098', '1437447173896802395'];
+        const rolesToAdd = ['1437441679572471940', '1437427750209327297'];
+
+        for (const roleId of rolesToRemove) {
+          if (member.roles.cache.has(roleId)) {
+            await member.roles.remove(roleId);
+          }
+        }
+
+        for (const roleId of rolesToAdd) {
+          if (!member.roles.cache.has(roleId)) {
+            await member.roles.add(roleId);
+          }
+        }
+
+        const successEmbed = createSuccessEmbed(
+          result.reactivated ? 'Usuário Reativado' : 'Usuário Adicionado',
+          `${member.user.tag} foi ${result.reactivated ? 'reativado' : 'adicionado'} ao banco de dados.\n\n` +
+          `🎮 **Brawlhalla ID:** ${finalBhid}\n` +
+          `🏷️ **Nome:** ${playerName}\n` +
+          `🎖️ **Cargo:** Recruit\n\n` +
+          `Cargos atualizados com sucesso!`
+        );
+        return interaction.update({
+          embeds: [successEmbed],
+          components: []
+        });
+      }
+    });
+
+    collector.on('end', async (_, reason) => {
+      if (reason === 'time') {
+
+        await confirmMessage.edit({
+          embeds: [
+            createErrorEmbed(
+              'Tempo Expirado',
+              'A confirmação expirou após 30 segundos.'
+            )
+          ],
+          components: []
+        }).catch(() => {});
+      }
+    });
 
   } catch (err) {
+    console.error(err);
     await message.reply({
       embeds: [createErrorEmbed('Erro ao Adicionar Usuário', err.message)]
     });
@@ -1474,6 +1565,143 @@ export const handleFecharTickets = adminOnly(async (message) => {
   } catch (err) {
     return message.reply({
       embeds: [createErrorEmbed('Erro ao fechar tickets', err.message)]
+    });
+  }
+});
+
+// .justificativas <@usuario/id>
+export const handleJustificativas = adminOnly(async (message, args) => {
+  try {
+    const mentionMatch = message.content.match(/<@!?(\d+)>/);
+    const idMatch = args[0]?.match(/^\d+$/);
+
+    if (!mentionMatch && !idMatch) {
+      return await message.reply({embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.justificativas <@usuario/ID>`')]});
+    }
+
+    const targetUserId = mentionMatch ? mentionMatch[1] : args[0];
+    const brawlhallaId = await getUserBrawlhallaId(targetUserId);
+
+    if (!brawlhallaId) {
+      return await message.reply({embeds: [createErrorEmbed('Brawlhalla ID Não Encontrado', 'Este usuário não tem um Brawlhalla ID registrado.')]});
+    }
+
+    const justifications = await getMemberJustifications(brawlhallaId);
+
+    if (!justifications || justifications.length === 0) {
+      return await message.reply({embeds: [createWarningEmbed('Nenhuma Justificativa', 'Este usuário não possui justificativas registradas.')]});
+    }
+
+    const ITEMS_PER_PAGE = 5;
+    const totalPages = Math.ceil(justifications.length / ITEMS_PER_PAGE);
+
+    let currentPage = 0;
+
+    function generateEmbed(page) {
+      const start = page * ITEMS_PER_PAGE;
+      const end = start + ITEMS_PER_PAGE;
+
+      const currentItems = justifications.slice(start, end);
+      const description = currentItems.map((item, index) => {
+      const createdAt = formatDateBR(item.created_at);
+
+        return (
+          `### ${start + index + 1}° Justificativa \n` +
+          `🕒 **Justificado em:** ${createdAt}\n` +
+          `📝 **Justificativa:**\n${item.note || 'Sem justificativa'}`
+        );
+
+      }).join('\n\n');
+
+      return new EmbedBuilder()
+        .setColor(0x5865f2)
+        .setTitle('📋 Justificativas do Usuário')
+        .setDescription(description)
+        .addFields({
+          name: '👤 Usuário',
+          value: `<@${targetUserId}>`,
+          inline: false
+        })
+        .setFooter({
+          text: `Página ${page + 1} de ${totalPages}`
+        })
+        .setTimestamp();
+    }
+
+    function generateButtons(page) {
+
+      return new ActionRowBuilder().addComponents(
+
+        new ButtonBuilder()
+          .setCustomId('just_prev')
+          .setLabel('⬅️')
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(page === 0),
+
+        new ButtonBuilder()
+          .setCustomId('just_next')
+          .setLabel('➡️')
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(page >= totalPages - 1)
+
+      );
+    }
+
+    const response = await message.reply({
+      embeds: [generateEmbed(currentPage)],
+      components: totalPages > 1
+        ? [generateButtons(currentPage)]
+        : []
+    });
+
+    if (totalPages <= 1) {
+      return;
+    }
+
+    const collector = response.createMessageComponentCollector({
+      componentType: ComponentType.Button,
+      time: 120000
+    });
+
+    collector.on('collect', async (interaction) => {
+
+      if (interaction.user.id !== message.author.id) {
+        return interaction.reply({
+          content: 'Apenas quem executou o comando pode usar os botões.',
+          ephemeral: true
+        });
+      }
+
+      if (interaction.customId === 'just_prev') {
+        currentPage--;
+      }
+
+      if (interaction.customId === 'just_next') {
+        currentPage++;
+      }
+
+      await interaction.update({
+        embeds: [generateEmbed(currentPage)],
+        components: [generateButtons(currentPage)]
+      });
+
+    });
+
+    collector.on('end', async () => {
+      await response.edit({
+        components: []
+      }).catch(() => {});
+    });
+
+  } catch (err) {
+    console.error(err);
+    return await message.reply({
+      embeds: [
+        createErrorEmbed(
+          'Erro',
+          err.message
+        )
+      ]
     });
   }
 });

@@ -5,8 +5,9 @@ import { fetchPlayerStats} from './brawlhalla.js';
 /**
  * Puxa os guild points semanal da guilda
  */
-export async function getGuildWeeklyGuildPoints(weekStartDate) {
+export async function getGuildWeeklyGuildPoints() {
   const supabase = getClient();
+  const weekStartDate = getMissionWeekStart();
 
   const { data, error } = await supabase
     .from('guild_weekly_guild_points')
@@ -43,4 +44,22 @@ export async function getPlayerWeeklyGuildPoints(brawlhallaId) {
   }
 
   return guildPoints;
+}
+
+/**
+ * Puxa os guild points semanal da guilda oponente no duelo semanal
+ */
+export async function getDuelGuildWeeklyGuildPoints() {
+  const supabase = getClient();
+  const weekStartDate = getMissionWeekStart();
+
+  const { data, error } = await supabase
+    .from('guild_duels')
+    .select('guild_id, guild_points')
+    .eq('week_start', weekStartDate)
+    .limit(1);
+
+  if (error) throw error;
+
+  return data?.[0] || null;
 }

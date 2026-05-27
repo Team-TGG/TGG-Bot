@@ -14,6 +14,13 @@ export function createSuccessEmbed(title, description) {
     .setDescription(description);
 }
 
+export function createWarningEmbed(title, description) {
+  return new EmbedBuilder()
+    .setColor(0xfee75c)
+    .setTitle(`⚠️ ${title}`)
+    .setDescription(description);
+}
+
 export async function sendCleanMessage(msg, content) {
   try {
     if (msg && msg.edit) {

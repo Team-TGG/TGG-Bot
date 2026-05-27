@@ -752,7 +752,7 @@ export async function fetchPlayerGuildStatsNewAPI(brawlhallaId) {
 }
 
 // NEW GUILD STATS
-export async function fetchGuildStatsNewAPI(guildId = process.env.BRAWLHALLA_CLAN_ID || '396943') {
+export async function fetchGuildStatsNewAPI(guildId) {
 
   const key = `guild:${guildId}`;
   const hit = getCached(key);
@@ -1182,8 +1182,7 @@ export async function createGuildEmbed(guildData) {
   const discordInvite = guildData.discord_invite_code ? `discord.gg/${guildData.discord_invite_code}` : 'None';
 
   // Fazer o cálculo dos pontos semanais subtraindo os pontos da semana anterior dos pontos atuais
-  const weekEnd = getMissionWeekStart();
-  const lastWeekGuildPointsData = await getGuildWeeklyGuildPoints(weekEnd);
+  const lastWeekGuildPointsData = await getGuildWeeklyGuildPoints();
 
   const lastWeekGuildPoints = Number(lastWeekGuildPointsData?.total_guild_points || 0);
   const weeklyGuildPoints = Math.max(0, Number(guildData.guild_points || 0) - lastWeekGuildPoints);

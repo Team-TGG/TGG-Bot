@@ -1,7 +1,7 @@
 // public.js - Comandos públicos
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
 import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID } from './db.js';
-
+import { getGuildWeeklyGuildPoints, getDuelGuildWeeklyGuildPoints, getPlayerWeeklyGuildPoints } from './guild.js';
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI, fetchPlayerGuildStatsNewAPI } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
@@ -19,6 +19,7 @@ export async function handleHelp(message, args, client) {
       { name: `${EMOJIS.arrowRight} .stats`, value: 'Trazer seus status atualizados do jogo', inline: false },
       { name: `${EMOJIS.arrowRight} .games`, value: 'Mostra a quantidade de jogos jogados durante a SEMANA', inline: false },
       { name: `${EMOJIS.arrowRight} .guild`, value: 'Ver informações da guilda Team TGG', inline: false },
+      { name: `${EMOJIS.arrowRight} .duel`, value: 'Ver informações do duelo atual contra outra guilda', inline: false },
       { name: `${EMOJIS.arrowRight} .corrigir-id`, value: 'Caso esteja na guilda com alguma alt, pode vincular o id da sua conta principal', inline: false },
     )
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
@@ -73,6 +74,7 @@ export async function handleHelp(message, args, client) {
       { name: `${EMOJIS.arrowRight} .active <justificativa>`, value: 'Se remover da lista de inativos', inline: false },
       { name: `${EMOJIS.arrowRight} .active [@user] <justificativa>`, value: 'Remover jogador da lista de inativos', inline: false },
       { name: `${EMOJIS.arrowRight} .inac-list`, value: 'Listar todos os jogadores inativos desta semana', inline: false },
+      { name: `${EMOJIS.arrowRight} .justificativas [@user]`, value: 'Listar todos os jogadores inativos desta semana', inline: false }
     )
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
     .setTimestamp();
@@ -984,4 +986,98 @@ export async function handleRedes(message) {
       components: [buildButtons(type)]
     });
   });
+}
+
+// .duel
+export async function handleDuel(message, args, client) {
+  try {
+    const OUR_GUILD_ID = 396943;
+
+    // Busca os dados da nossa guilda pela API
+    const ourGuild = await fetchGuildStatsNewAPI(OUR_GUILD_ID);
+
+    // Busca os pontos da nossa guilda salvos no início da semana
+    const ourGuildWeekly = await getGuildWeeklyGuildPoints();
+
+    // Busca os dados da guilda rival no banco
+    const duelGuildData = await getDuelGuildWeeklyGuildPoints();
+
+    if (!duelGuildData) {
+      return message.reply('Nenhuma guilda rival configurada para esta semana.');
+    }
+
+    const enemyGuildId = duelGuildData.guild_id;
+
+    if (!enemyGuildId) {
+      return message.reply('Guilda rival sem guild_id configurado.');
+    }
+
+    // Busca os dados atuais da guilda rival na API
+    const enemyGuild = await fetchGuildStatsNewAPI(enemyGuildId);
+
+    // Pontos atuais
+    const ourCurrentPoints = Number(ourGuild.guild_points || 0);
+    const enemyCurrentPoints = Number(enemyGuild.guild_points || 0);
+
+    // Pontos do início da semana
+    const ourInitialPoints = Number(ourGuildWeekly?.total_guild_points || 0);
+    const enemyInitialPoints = Number(duelGuildData.guild_points || 0);
+
+    // Diferença semanal
+    const ourDiff = ourCurrentPoints - ourInitialPoints;
+    const enemyDiff = enemyCurrentPoints - enemyInitialPoints;
+
+    // Quem está vencendo
+    let winnerText = '🤝 Empate';
+
+    if (ourDiff > enemyDiff) {
+      winnerText = `🏆 ${ourGuild.name} está vencendo`;
+    } else if (enemyDiff > ourDiff) {
+      winnerText = `🏆 ${enemyGuild.name} está vencendo`;
+    }
+
+    // Diferença entre as guildas
+    const duelDifference = Math.abs(ourDiff - enemyDiff);
+
+    const embed = new EmbedBuilder()
+      .setColor(ourDiff >= enemyDiff ? 0x57F287 : 0xED4245)
+      .setTitle('⚔️ Duelo Semanal de Guildas')
+      .setDescription(winnerText)
+      .addFields(
+        {
+          name: `${ourGuild.name}`,
+          value:
+            `👥 **Membros:** ${ourGuild.member_count}\n` +
+            `📈 **Guild Points:** ${ourCurrentPoints.toLocaleString()}\n` +
+            `🔥 **Pontos na semana:** ${ourDiff.toLocaleString()}`,
+          inline: true
+        },
+        {
+          name: `${enemyGuild.name}`,
+          value:
+            `👥 **Membros:** ${enemyGuild.member_count}\n` +
+            `📈 **Guild Points:** ${enemyCurrentPoints.toLocaleString()}\n` +
+            `🔥 **Pontos na semana:** ${enemyDiff.toLocaleString()}`,
+          inline: true
+        },
+        {
+          name: '📊 Diferença',
+          value: `${duelDifference.toLocaleString()} pontos`,
+          inline: false
+        }
+      )
+      .setFooter({
+        text: 'Comparação baseada nos pontos semanais'
+      })
+      .setTimestamp();
+
+    return message.reply({
+      embeds: [embed]
+    });
+
+  } catch (err) {
+    console.error(err);
+
+    return message.reply('Erro ao buscar informações do duelo.');
+  }
 }
