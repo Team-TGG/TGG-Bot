@@ -79,9 +79,7 @@ async function runDaily(target, member, discordId, streak, eventStreak, recovere
     ticketBalance = await tggCoins.updateTicketBalance(discordId, ticketReward);
   }
 
-  const replyMethod = typeof target.update === 'function'
-      ? target.update.bind(target)
-      : target.edit.bind(target);
+  const replyMethod = target.edit.bind(target);
 
   // Embed caso não tenha evento ativo
   if (!activeEvent) {
@@ -232,32 +230,45 @@ export async function handleDaily(message) {
           });
 
           collector.on('collect', async (interaction) => {
-            let finalStreak = 1;
-            let finalEventStreak = activeEvent ? 1 : null;
+            try {
+              await interaction.deferUpdate();
+              let finalStreak = 1;
+              let finalEventStreak = activeEvent ? 1 : null;
 
-            if (interaction.customId.startsWith('recover')) {
-              const balance = await tggCoins.getBalance(discordId);
+              if (interaction.customId.startsWith('recover')) {
+                const balance = await tggCoins.getBalance(discordId);
 
-              if (balance >= RECOVERY_COST) {
-                await tggCoins.addTransaction(
-                  discordId,
-                  -RECOVERY_COST,
-                  'STREAK_RECOVERY',
-                  'Recuperação de streak'
-                );
+                if (balance >= RECOVERY_COST) {
+                  await tggCoins.addTransaction(
+                    discordId,
+                    -RECOVERY_COST, 
+                    'STREAK_RECOVERY', 
+                    'Recuperação de streak'
+                  );
+                  
+                  await tggCoins.updateBalance(discordId, -RECOVERY_COST);
 
-                await tggCoins.updateBalance(discordId, -RECOVERY_COST);
+                  finalStreak = (streakData?.streak || 0) + 1;
+                  recovered = true;
 
-                finalStreak = (streakData?.streak || 0) + 1;
-                recovered = true;
-
-                if (activeEvent) {
-                  finalEventStreak = (eventStreakData?.streak || 0) + 1;
+                  if (activeEvent) {
+                    finalEventStreak = (eventStreakData?.streak || 0) + 1;
+                  }
                 }
               }
-            }
 
-            await runDaily(interaction, message.member, discordId, finalStreak, finalEventStreak, recovered);
+              await runDaily(loading, message.member, discordId, finalStreak, finalEventStreak, recovered);
+
+            } catch (err) {
+              console.error(err);
+
+              if (loading.editable) {
+                await loading.edit({
+                  embeds: [createErrorEmbed('Erro', 'Ocorreu um erro ao processar sua recompensa.')],
+                  components: []
+                }).catch(() => {});
+              }
+            }
           });
 
           collector.on('end', async (collected) => {

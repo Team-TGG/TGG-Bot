@@ -361,6 +361,25 @@ function normalizeUnicode(str) {
   }
 }
 
+export async function getGuildRankingPosition(brawlhallaId) {
+  // Chamada da API
+  const guildData = await fetchGuildMembersNewAPI();
+
+  const members = guildData.guild_members || guildData.GuildMembers || [];
+
+  // Ordena decrescentemente por guild_points
+  members.sort((a, b) => {
+    return (b.guild_points || 0) - (a.guild_points || 0);
+  });
+
+  // Procura a posição e retorna
+  const position = members.findIndex(
+    p => String(p.brawlhalla_id) === String(brawlhallaId)
+  );
+
+  return position >= 0 ? position + 1 : null;
+}
+
 // API
 
 export async function fetchPlayerStats(brawlhallaId) {
@@ -919,6 +938,7 @@ export async function createStatsEmbed(playerData) {
 
   // Lógica para os Guild Points
   const totalGuildPoints = stats.guildPoints || 0;
+  const guildPosition = await getGuildRankingPosition(stats.brawlhalla_id); // Pegar a posição atual do jogador no ranking da guilda (Por GP)
 
   const lastGuildPointsData = await getPlayerWeeklyGuildPoints(stats.brawlhalla_id);
   const lastGuildPoints = Number(lastGuildPointsData || 0);
@@ -941,7 +961,7 @@ export async function createStatsEmbed(playerData) {
    ...(lastGuildPointsData ? [{
       name: '🏰 Guild Record',
       value:
-        `Total GP: \`${formatNumber(totalGuildPoints)}\`\n` +
+        `Total GP: \`${formatNumber(totalGuildPoints)}\`` + (guildPosition ? ` · \`#${guildPosition}\`` : '') +`\n` +
         `Weekly GP: \`${formatNumber(weeklyGuildPoints)}\`` +
 
         (weeklyGuildPoints < 1000
