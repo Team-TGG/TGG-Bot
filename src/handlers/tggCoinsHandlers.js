@@ -524,6 +524,52 @@ export async function handleBuyExitlag(ctx) {
   }
 }
 
+// Para itens tipo EVENT_ROLE
+export async function handleBuyEventRole(ctx) {
+  const { message, item, discordId, member, finalPrice } = ctx;
+
+  const activeEvent = await tggCoins.getActiveEvent();
+
+  if (!activeEvent) {
+    return message.reply({embeds: [createErrorEmbed('Evento encerrado', 'Esse item não pode mais ser comprado.')]});
+  }
+
+  if (!item.role_id) {
+    return message.reply({embeds: [createErrorEmbed('Erro', 'Nenhum cargo configurado para este item.')]});
+  }
+
+  const ticketBalance = await tggCoins.getEventBalance(discordId);
+
+  if (ticketBalance < finalPrice) {
+    return message.reply({embeds: [createErrorEmbed('Saldo insuficiente',`Você precisa de ${finalPrice.toLocaleString('pt-BR')} Tickets.`)]});
+  }
+
+  try {
+    // Remove outros EVENT_ROLE
+    const eventRoles = await tggCoins.getShopItemsByType('EVENT_ROLE');
+
+    for (const roleItem of eventRoles) {
+      if (roleItem.role_id && member.roles.cache.has(roleItem.role_id)) {
+        await member.roles.remove(roleItem.role_id);
+      }
+    }
+
+    await member.roles.add(item.role_id);
+
+    await tggCoins.addTicketTransaction(discordId, activeEvent.id, -finalPrice, 'SHOP_PURCHASE', `Cargo de Evento: ${item.name}`);
+
+    const newBalance = await tggCoins.updateTicketBalance(discordId, -finalPrice);
+
+    await tggCoins.createPurchase(discordId, item);
+    await tggCoins.decreaseStock(item.id, item.stock);
+
+    return message.reply({embeds: [createSuccessEmbed('Cargo adquirido!', `Você recebeu **${item.name}**.\nSaldo atual: **${newBalance.toLocaleString('pt-BR')} Tickets**`)]});
+
+  } catch (err) {
+    return message.reply({embeds: [createErrorEmbed('Erro', err.message)]});
+  }
+}
+
 // Mapa de handlers
 export const buyHandlers = {
     SERVICE: handleBuyService,
@@ -533,7 +579,8 @@ export const buyHandlers = {
     ROLE_VIP: handleBuyRoleColor,
     ROLE_TABLE_MASTER: handleBuyRoleTableMaster,
     ROLE: handleBuyRole,
-    EXITLAG: handleBuyExitlag
+    EXITLAG: handleBuyExitlag,
+    EVENT_ROLE: handleBuyEventRole
 };
 
 

@@ -639,6 +639,23 @@ export async function getShopRolesByShopId(shopId) {
 }
 
 /**
+ * Retorna os itens da loja de um determinado tipo
+ */
+export async function getShopItemsByType(type) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('tgg_coins_shop')
+    .select('role_id')
+    .eq('type', type)
+    .order('name', { ascending: true });
+
+  if (error) throw error;
+
+  return data || [];
+}
+
+/**
  * Pegar as missões semanais para a semana atual (usado para as conquistas)
  */
 export async function getWeeklyMissions(weekStart, weekEnd) {

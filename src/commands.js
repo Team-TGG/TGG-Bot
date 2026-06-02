@@ -65,6 +65,7 @@ export const COMMAND_ALIASES = {
   'deiucu': 'daily', // Gameru
   'deiocu': 'daily',
   'dailhe': 'daily', // Violet
+  'daocu': 'daily', // Picturii
   'balance': 'balance',
   'bal': 'balance',
   'coins': 'balance',
@@ -78,6 +79,7 @@ export const COMMAND_ALIASES = {
   'lb': 'leaderboard',
   'shop': 'shop',
   'loja': 'shop',
+  'store': 'shop',
   'buy': 'buy',
   'comprar': 'buy',
   'conquistas': 'conquistas',
@@ -97,6 +99,7 @@ export const COMMAND_ALIASES = {
   'games': 'games',
   'gaymes': 'games',
   'jogos': 'games',
+  'partidas': 'games',
   'addprovider': 'addprovider',
   'removeprovider': 'removeprovider',
   'addcoins': 'addcoins',

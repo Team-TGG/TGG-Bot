@@ -696,8 +696,12 @@ export async function handleShop(message, args) {
 
       // Colocar itens de evento em primeiro
       return filtered.sort((a, b) => {
-        if (a.type === 'EVENT' && b.type !== 'EVENT') return -1;
-        if (a.type !== 'EVENT' && b.type === 'EVENT') return 1;
+        const aEvent = a.type === 'EVENT' || a.type === 'EVENT_ROLE';
+        const bEvent = b.type === 'EVENT' || b.type === 'EVENT_ROLE';
+
+        if (aEvent && !bEvent) return -1;
+        if (!aEvent && bEvent) return 1;
+
         return 0;
       });
     }
@@ -716,7 +720,7 @@ export async function handleShop(message, args) {
 
       const pageItems = getPageItems();
 
-      const hasEvent = allItems.data.some(item => item.type === 'EVENT');
+      const hasEvent = allItems.data.some(item => item.type === 'EVENT' || item.type === 'EVENT_ROLE');
 
       const balance = await tggCoins.getBalance(discordId);
       const eventBalance = hasEvent ? await tggCoins.getEventBalance(discordId) : null;
@@ -766,7 +770,7 @@ export async function handleShop(message, args) {
         let priceText;
 
         // Se for um item de evento, mostra o preço em tickets ao invés de coins, e não mostra desconto de booster (desconto não se aplica a itens de evento)
-        if (item.type === 'EVENT') {
+        if (item.type === 'EVENT' || item.type === 'EVENT_ROLE') {
           priceText = `${EMOJIS.tickets} **${item.price.toLocaleString('pt-BR')} Tickets**`;
         } else if (finalPrice === 0) {
           priceText = `🆓 **Grátis para Booster**`;
@@ -923,7 +927,7 @@ export async function handleBuy(message, args) {
 
     // Verifica se é um item de evento e se o evento ainda está ativo
     const activeEvent = await tggCoins.getActiveEvent();
-    const isEventItem = item.type === 'EVENT';
+    const isEventItem = item.type === 'EVENT' || item.type === 'EVENT_ROLE';
 
     if (isEventItem && !activeEvent) {
       return message.reply({
