@@ -603,7 +603,7 @@ export async function markExitlagCodeAsUsed(id, discordId) {
 export function getDiscountedPrice(member, item) {
   let price = item.price;
 
-  if (item.type === 'EVENT'){
+  if (item.type === 'EVENT' || item.type === 'EVENT_ROLE') {
     return item.price; // Sem desconto para itens de eventos
   }
 

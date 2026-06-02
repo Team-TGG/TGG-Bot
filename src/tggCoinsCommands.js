@@ -783,7 +783,7 @@ export async function handleShop(message, args) {
         }
 
         // Colocar emoji caso seja item de evento
-        const emoji = item.type === 'EVENT' ? '🎉 ' : '';
+        const emoji = item.type === 'EVENT' || item.type === 'EVENT_ROLE' ? '🎉 ' : '';
 
         embed.addFields({
           name: `#${position} • ${emoji}${item.name}`,
