@@ -105,6 +105,25 @@ async function main() {
     }
   });
 
+  // Responde quem marcar o Topson em dias específicos
+  const TOPSON_ID = '252249131202904074';
+  const STAFF_ROLE_ID = '1467935982593773719';
+  const HELPER_ROLE_ID = '1467177078204924168';
+  const SUPORTE_CHANNEL_ID = '1461132037908856964';
+  const TOPSON_MENTION_DAYS = [3, 6]; // Quarta (3) e Sábado (6) — UTC-3 BRT
+
+  client.on('messageCreate', async (message) => {
+    if (message.author.bot) return;
+    if (!message.mentions.users.has(TOPSON_ID)) return;
+
+    const now = new Date(Date.now() - 3 * 60 * 60 * 1000); // BRT (UTC-3)
+    if (!TOPSON_MENTION_DAYS.includes(now.getUTCDay())) return;
+
+    await message.reply(
+      `ola ${message.author}! o jobson ta indisponivel no momento, mas vc pode falar com um <@&${HELPER_ROLE_ID}> ou <@&${STAFF_ROLE_ID}>, ou abrir um ticket em <#${SUPORTE_CHANNEL_ID}>`
+    ).catch(() => {});
+  });
+
   await client.login(discordConfig.token);
 }
 
