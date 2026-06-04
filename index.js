@@ -112,6 +112,8 @@ async function main() {
 
   const TOPSON_MENTION_REGEX = new RegExp(`<@!?${TOPSON_ID}>`);
 
+  const STAFF_ROLE_ID_LIST = Object.values(STAFF_ROLE_IDS);
+
   client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
@@ -120,6 +122,10 @@ async function main() {
 
     const now = new Date(Date.now() - 3 * 60 * 60 * 1000);
     if (!TOPSON_MENTION_DAYS.includes(now.getUTCDay())) return;
+
+    const member = message.member;
+    const isStaffOrHelper = member && STAFF_ROLE_ID_LIST.some(roleId => member.roles.cache.has(roleId));
+    if (isStaffOrHelper) return;
 
     await message.delete().catch(() => {});
     await message.channel.send(
