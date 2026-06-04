@@ -112,14 +112,19 @@ async function main() {
   const SUPORTE_CHANNEL_ID = '1461132037908856964';
   const TOPSON_MENTION_DAYS = [3, 6]; // Quarta (3) e Sábado (6) — UTC-3 BRT
 
+  const TOPSON_MENTION_REGEX = new RegExp(`<@!?${TOPSON_ID}>`);
+
   client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
-    if (!message.mentions.users.has(TOPSON_ID)) return;
+
+    const mentionsTopson = message.mentions.users.has(TOPSON_ID) || TOPSON_MENTION_REGEX.test(message.content);
+    if (!mentionsTopson) return;
 
     const now = new Date(Date.now() - 3 * 60 * 60 * 1000); // BRT (UTC-3)
     if (!TOPSON_MENTION_DAYS.includes(now.getUTCDay())) return;
 
-    await message.reply(
+    await message.delete().catch(() => {});
+    await message.channel.send(
       `ola ${message.author}! o jobson ta indisponivel no momento, mas vc pode falar com um <@&${HELPER_ROLE_ID}> ou <@&${STAFF_ROLE_ID}>, ou abrir um ticket em <#${SUPORTE_CHANNEL_ID}>`
     ).catch(() => {});
   });
