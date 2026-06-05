@@ -77,6 +77,14 @@ export async function sendInactivePlayersReminder(client) {
     }
 }
 
-export function startInactiveReminder(_client) {
-    // temporariamente desativado
+export function startInactiveReminder(client) {
+    const interval = 10800000; // 3h
+
+    setInterval(() => {
+        sendInactivePlayersReminder(client);
+    }, interval);
+
+    setTimeout(() => {
+        sendInactivePlayersReminder(client);
+    }, 5000);
 }
