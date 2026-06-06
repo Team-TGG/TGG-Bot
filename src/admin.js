@@ -7,7 +7,7 @@ import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo, getUserByDi
 import { discord as discordConfig, STAFF_ROLE_IDS, inactivePlayers as inactivePlayersConfig, tickets as ticketsConfig } from '../config/index.js';
 import { loadCustomNicknames } from './customNicknames.js';
 import { syncNicknames, updateMemberNicknameDiscordPortion, parseNickname, buildNickname, fetchBrawlhallaClanData, loadClanCache } from './nicknameSync.js';
-import { createErrorEmbed, createSuccessEmbed, createWarningEmbed, sendCleanMessage } from '../utils/discordUtils.js';
+import { createErrorEmbed, createSuccessEmbed, createWarningEmbed, createLoadingEmbed, sendCleanMessage, awaitConfirmation } from '../utils/discordUtils.js';
 import { isAdmin, adminOnly, hasPermission, getMemberLevel} from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
 
@@ -73,7 +73,7 @@ async function setupMutePermissions(guild, muteRole) {
 
 // .sync
 export const handleSync = adminOnly(async (message, args, client) => {
-  const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando...`).setDescription('Executando sincronização completa...')] });
+  const loading = await message.reply({ embeds: [createLoadingEmbed(`${EMOJIS.loading} Sincronizando...`, 'Executando sincronização completa...')] });
   try {
     const users = await getUsers();
     const guildResult = await runSync(client, users);
@@ -95,14 +95,7 @@ export const handleSync = adminOnly(async (message, args, client) => {
 
 // .sync-all
 export const handleSyncAll = adminOnly(async (message, args, client) => {
-  const loading = await message.reply({
-    embeds: [
-      new EmbedBuilder()
-        .setColor(0xfaa61a)
-        .setTitle(`${EMOJIS.loading} Sincronizando (FULL)...`)
-        .setDescription('Executando sincronização completa (todos os usuários)...')
-    ]
-  });
+  const loading = await message.reply({ embeds: [createLoadingEmbed(`${EMOJIS.loading} Sincronizando (FULL)...`, 'Executando sincronização completa (todos os usuários)...')] });
 
   try {
     const users = await getAllUsers();
@@ -139,7 +132,7 @@ export const handleSyncAll = adminOnly(async (message, args, client) => {
 
 // .sync-nick
 export const handleSyncNick = adminOnly(async (message, args, client) => {
-  const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Sincronizando...`).setDescription('Sincronizando apelidos com clan Brawlhalla...')] });
+  const loading = await message.reply({ embeds: [createLoadingEmbed(`${EMOJIS.loading} Sincronizando...`, 'Sincronizando apelidos com clan Brawlhalla...')] });
   try {
     await loadCustomNicknames();
     const result = await syncNicknames(client, discordConfig.guildId);
@@ -165,7 +158,7 @@ export const handleSyncNick = adminOnly(async (message, args, client) => {
 
 // .refresh-cache
 export const handleRefreshCache = adminOnly(async (message, args, client) => {
-  const loading = await message.reply({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle(`${EMOJIS.loading} Atualizando...`).setDescription('Atualizando cache do clan Brawlhalla...')] });
+  const loading = await message.reply({ embeds: [createLoadingEmbed(`${EMOJIS.loading} Atualizando...`, 'Atualizando cache do clan Brawlhalla...')] });
   try {
     const clanData = await fetchBrawlhallaClanData();
     await sendCleanMessage(loading, { embeds: [new EmbedBuilder().setColor(0x57f287).setTitle(`${EMOJIS.check} Cache Atualizado`).setDescription(`${clanData.clan?.length || 0} membros`).addFields({ name: 'Clan', value: `${clanData.clan_name} (${clanData.clan_id})`, inline: true }).setTimestamp()] });
@@ -220,7 +213,7 @@ export const handleWarn = adminOnly(async (message, args, client) => {
       if (!muteRole) muteRole = await guild.roles.create({ name: 'Muted', color: 0x808080, reason: 'Cargo para silenciados' });
       await member.roles.add(muteRole);
       setTimeout(() => member.roles.remove(muteRole).catch(() => { }), 15 * 60 * 1000);
-      await message.channel.send({ embeds: [new EmbedBuilder().setColor(0xfaa61a).setTitle('⚠️ Mute Automático').setDescription(`${member.user.tag} foi silenciado por 15 minutos (2 avisos).`)] });
+      await message.channel.send({ embeds: [createWarningEmbed('Mute Automático', `${member.user.tag} foi silenciado por 15 minutos (2 avisos).`)] });
       // Atualiza permissões em background (não bloqueia resposta)
       setupMutePermissions(guild, muteRole).catch(err => console.error('[Mute] Erro ao configurar permissões:', err));
     } else if (warningCount >= 3) {
@@ -506,7 +499,7 @@ export const handleWarns = async (message, args, client) => {
           new ButtonBuilder()
             .setCustomId('warns_prev')
             .setEmoji('⬅️')
-            .setStyle(2)
+            .setStyle(ButtonStyle.Secondary)
         );
       }
 
@@ -515,7 +508,7 @@ export const handleWarns = async (message, args, client) => {
           .setCustomId('warns_page')
           .setLabel(`${page}/${totalPages}`)
           .setDisabled(true)
-          .setStyle(2)
+          .setStyle(ButtonStyle.Secondary)
       );
 
       if (page < totalPages) {
@@ -523,7 +516,7 @@ export const handleWarns = async (message, args, client) => {
           new ButtonBuilder()
             .setCustomId('warns_next')
             .setEmoji('➡️')
-            .setStyle(2)
+            .setStyle(ButtonStyle.Secondary)
         );
       }
 
@@ -637,7 +630,7 @@ export const handleMute = adminOnly(async (message, args, client) => {
         await m.roles.remove(muteRole).catch(() => { });
         if (m.voice.serverMute) await m.voice.setMute(false, 'Auto-unmute').catch(() => { });
         await removePersistentMute(targetId);
-        await message.channel.send({ embeds: [new EmbedBuilder().setColor(0x57f287).setTitle('✅ Desmutado').setDescription(`${m.user.tag} desmutado automaticamente.`)] }).catch(() => { });
+        await message.channel.send({ embeds: [createSuccessEmbed('Desmutado', `${m.user.tag} desmutado automaticamente.`)] }).catch(() => { });
       }
     }, durationMs);
   } catch (err) {
@@ -715,99 +708,39 @@ export const handleBan = adminOnly(async (message, args, client) => {
       return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')] });
     }
 
-    // Embed de confirmação
-    const confirmEmbed = {
-      title: '⚠️ Confirmação de Banimento',
-      description: `Você está prestes a banir o usuário abaixo:`,
-      color: 0xff0000,
-      fields: [
+    const confirmEmbed = new EmbedBuilder()
+      .setColor(0xff0000)
+      .setTitle('⚠️ Confirmação de Banimento')
+      .setDescription('Você está prestes a banir o usuário abaixo:')
+      .addFields(
         { name: 'Usuário', value: `${member.user.tag} (${member.id})` },
         { name: 'Motivo', value: reason }
-      ],
-      footer: { text: `Ação solicitada por ${message.author.tag}` }
-    };
+      )
+      .setFooter({ text: `Ação solicitada por ${message.author.tag}` });
 
-    // Botões de confirmação e cancelamento
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`confirm_ban_${targetId}`)
-        .setLabel('Confirmar')
-        .setStyle(ButtonStyle.Danger),
-
-      new ButtonBuilder()
-        .setCustomId('cancel_ban')
-        .setLabel('Cancelar')
-        .setStyle(ButtonStyle.Secondary)
-    );
-
-    const confirmMsg = await message.reply({
-      embeds: [confirmEmbed],
-      components: [row]
+    const { confirmed, interaction } = await awaitConfirmation(message, confirmEmbed, {
+      authorId: message.author.id,
+      time: 15000,
+      confirmLabel: 'Confirmar',
+      cancelLabel: 'Cancelar',
+      confirmStyle: ButtonStyle.Danger,
+      cancelStyle: ButtonStyle.Secondary,
     });
 
-    const collector = confirmMsg.createMessageComponentCollector({
-      time: 15000
-    });
+    if (confirmed === null) return;
 
-    collector.on('collect', async (interaction) => {
-      if (interaction.user.id !== message.author.id) {
-        return interaction.reply({
-          content: 'Apenas quem executou o comando pode usar os botões.',
-          ephemeral: true
-        });
-      }
+    if (!confirmed) {
+      return interaction.update({
+        embeds: [createErrorEmbed('Ação Cancelada', 'O banimento foi cancelado.')],
+        components: []
+      });
+    }
 
-      if (interaction.customId === `confirm_ban_${targetId}`) {
-        await member.ban({ reason });
+    await member.ban({ reason });
 
-        const successEmbed = {
-          title: '✅ Usuário Banido',
-          color: 0x00ff00,
-          fields: [
-            { name: 'Usuário', value: `${member.user.tag}` },
-            { name: 'Motivo', value: reason }
-          ]
-        };
-
-        await interaction.update({
-          embeds: [successEmbed],
-          components: []
-        });
-
-        collector.stop();
-      }
-
-      // Se clicar em cancelar
-      if (interaction.customId === 'cancel_ban') {
-        const cancelEmbed = {
-          title: '❌ Ação Cancelada',
-          description: 'O banimento foi cancelado.',
-          color: 0x808080
-        };
-
-        await interaction.update({
-          embeds: [cancelEmbed],
-          components: []
-        });
-
-        collector.stop();
-      }
-    });
-
-    // Se o tempo expirar sem resposta
-    collector.on('end', async (_, reasonEnd) => {
-      if (reasonEnd === 'time') {
-        const timeoutEmbed = {
-          title: '⏳ Tempo Expirado',
-          description: 'Nenhuma ação foi tomada.',
-          color: 0xffff00
-        };
-
-        await confirmMsg.edit({
-          embeds: [timeoutEmbed],
-          components: []
-        });
-      }
+    await interaction.update({
+      embeds: [createSuccessEmbed('Usuário Banido', `${member.user.tag} foi banido.\n**Motivo:** ${reason}`)],
+      components: []
     });
 
   } catch (err) {
@@ -933,12 +866,12 @@ export const handleInacList = adminOnly(async (message, args, client) => {
         new ButtonBuilder()
           .setCustomId('prev')
           .setLabel('Anterior')
-          .setStyle(1) // Primary
+          .setStyle(ButtonStyle.Primary)
           .setDisabled(page === 0),
         new ButtonBuilder()
           .setCustomId('next')
           .setLabel('Próximo')
-          .setStyle(1) // Primary
+          .setStyle(ButtonStyle.Primary)
           .setDisabled(page === pages.length - 1)
       );
       return row;
@@ -1008,13 +941,7 @@ export const handleConcluida = adminOnly(async (message, args, client) => {
 
     if (error) throw error;
 
-    const embed = new EmbedBuilder()
-      .setColor(0x57f287)
-      .setTitle('✅ Missões')
-      .setDescription(`Missão ${numero} marcada como concluída!`)
-      .setTimestamp();
-
-    return message.reply({ embeds: [embed] });
+    return message.reply({ embeds: [createSuccessEmbed('Missões', `Missão ${numero} marcada como concluída!`).setTimestamp()] });
 
   } catch (err) {
     return message.reply({
@@ -1142,7 +1069,6 @@ export const handleEntrou = adminOnly(async (message, args, client) => {
 
     const playerName = playerData.name || 'Desconhecido';
 
-    // Embed de confirmação
     const confirmEmbed = createWarningEmbed('Confirmação',
       `Deseja realmente adicionar este usuário?\n\n` +
       `👤 **Discord:** ${member.user.tag}\n` +
@@ -1150,102 +1076,42 @@ export const handleEntrou = adminOnly(async (message, args, client) => {
       `🏷️ **Nome:** ${playerName}`
     );
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('confirm_entrou')
-        .setLabel('Confirmar')
-        .setStyle(ButtonStyle.Success),
+    const { confirmed, interaction } = await awaitConfirmation(message, confirmEmbed, {
+      authorId: message.author.id,
+      time: 30000,
+    });
 
-      new ButtonBuilder()
-        .setCustomId('cancel_entrou')
-        .setLabel('Cancelar')
-        .setStyle(ButtonStyle.Danger)
+    if (confirmed === null) return;
+
+    if (!confirmed) {
+      return interaction.update({
+        embeds: [createErrorEmbed('Operação Cancelada', 'O cadastro do usuário foi cancelado.')],
+        components: []
+      });
+    }
+
+    const result = await reactivateOrAddUser(targetId, finalBhid, member.user.tag);
+
+    const rolesToRemove = ['1466815420630565069', '1478477041077588098', '1437447173896802395'];
+    const rolesToAdd = ['1437441679572471940', '1437427750209327297'];
+
+    for (const roleId of rolesToRemove) {
+      if (member.roles.cache.has(roleId)) await member.roles.remove(roleId);
+    }
+
+    for (const roleId of rolesToAdd) {
+      if (!member.roles.cache.has(roleId)) await member.roles.add(roleId);
+    }
+
+    const successEmbed = createSuccessEmbed(
+      result.reactivated ? 'Usuário Reativado' : 'Usuário Adicionado',
+      `${member.user.tag} foi ${result.reactivated ? 'reativado' : 'adicionado'} ao banco de dados.\n\n` +
+      `🎮 **Brawlhalla ID:** ${finalBhid}\n` +
+      `🏷️ **Nome:** ${playerName}\n` +
+      `🎖️ **Cargo:** Recruit\n\n` +
+      `Cargos atualizados com sucesso!`
     );
-
-    const confirmMessage = await message.reply({
-      embeds: [confirmEmbed],
-      components: [row]
-    });
-
-    const collector = confirmMessage.createMessageComponentCollector({
-      componentType: ComponentType.Button,
-      time: 30000
-    });
-
-    collector.on('collect', async (interaction) => {
-
-      if (interaction.user.id !== message.author.id) {
-        return interaction.reply({
-          content: 'Apenas quem executou o comando pode usar estes botões.',
-          ephemeral: true
-        });
-      }
-
-      // CANCELAR
-      if (interaction.customId === 'cancel_entrou') {
-
-        collector.stop();
-
-        return interaction.update({
-          embeds: [
-            createErrorEmbed(
-              'Operação Cancelada',
-              'O cadastro do usuário foi cancelado.'
-            )
-          ],
-          components: []
-        });
-      }
-
-      // CONFIRMAR
-      if (interaction.customId === 'confirm_entrou') {
-        collector.stop();
-        const result = await reactivateOrAddUser(targetId, finalBhid, member.user.tag);
-
-        const rolesToRemove = ['1466815420630565069', '1478477041077588098', '1437447173896802395'];
-        const rolesToAdd = ['1437441679572471940', '1437427750209327297'];
-
-        for (const roleId of rolesToRemove) {
-          if (member.roles.cache.has(roleId)) {
-            await member.roles.remove(roleId);
-          }
-        }
-
-        for (const roleId of rolesToAdd) {
-          if (!member.roles.cache.has(roleId)) {
-            await member.roles.add(roleId);
-          }
-        }
-
-        const successEmbed = createSuccessEmbed(
-          result.reactivated ? 'Usuário Reativado' : 'Usuário Adicionado',
-          `${member.user.tag} foi ${result.reactivated ? 'reativado' : 'adicionado'} ao banco de dados.\n\n` +
-          `🎮 **Brawlhalla ID:** ${finalBhid}\n` +
-          `🏷️ **Nome:** ${playerName}\n` +
-          `🎖️ **Cargo:** Recruit\n\n` +
-          `Cargos atualizados com sucesso!`
-        );
-        return interaction.update({
-          embeds: [successEmbed],
-          components: []
-        });
-      }
-    });
-
-    collector.on('end', async (_, reason) => {
-      if (reason === 'time') {
-
-        await confirmMessage.edit({
-          embeds: [
-            createErrorEmbed(
-              'Tempo Expirado',
-              'A confirmação expirou após 30 segundos.'
-            )
-          ],
-          components: []
-        }).catch(() => {});
-      }
-    });
+    return interaction.update({ embeds: [successEmbed], components: [] });
 
   } catch (err) {
     console.error(err);
@@ -1400,14 +1266,7 @@ export const handleEscrever = adminOnly(async (message, args) => {
 
 // .organize-tickets (Organiza os tickets dentro da categoria de tickets, renomeando e reordenando baseado no número no final do nome do canal)
 export const handleOrganizeTickets = adminOnly(async (message, args, client) => {
-  const loading = await message.reply({
-    embeds: [
-      new EmbedBuilder()
-        .setColor(0xfaa61a)
-        .setTitle(`${EMOJIS.loading} Organizando tickets...`)
-        .setDescription('Reordenando e renomeando canais...')
-    ]
-  });
+  const loading = await message.reply({ embeds: [createLoadingEmbed(`${EMOJIS.loading} Organizando tickets...`, 'Reordenando e renomeando canais...')] });
 
   try {
     const guild = client.guilds.cache.get(discordConfig.guildId);

@@ -4,7 +4,7 @@ import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, ge
 import { getGuildWeeklyGuildPoints, getDuelGuildWeeklyGuildPoints, getPlayerWeeklyGuildPoints } from './guild.js';
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI, fetchPlayerGuildStatsNewAPI } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
-import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
+import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage } from '../utils/discordUtils.js';
 import { isAdmin, adminOnly } from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
 import { SOCIALS } from '../config/socials.js';
@@ -302,12 +302,7 @@ export async function handleStats(message, args, client) {
       return await message.reply({ embeds: [createErrorEmbed('Brawlhalla ID Não Encontrado', 'Este usuário não tem um Brawlhalla ID registrado.')] });
     }
 
-    const loadingEmbed = new EmbedBuilder()
-      .setColor(0xfaa61a)
-      .setTitle(`${EMOJIS.loading} Carregando estatísticas...`)
-      .setDescription('Buscando dados do Brawlhalla...');
-
-    const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
+    const loadingMsg = await message.reply({ embeds: [createLoadingEmbed(`${EMOJIS.loading} Carregando estatísticas...`, 'Buscando dados do Brawlhalla...')] });
     const playerData = await fetchPlayerStats(brawlhallaId);
 
     // Pegar os guild points e mandar pro stats
@@ -320,10 +315,10 @@ export async function handleStats(message, args, client) {
     const weaponsEmbed = (await import('./brawlhalla.js')).createWeaponsStatsEmbed(playerData);
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('stats_main').setLabel('Geral').setStyle(1),
-      new ButtonBuilder().setCustomId('stats_ranked').setLabel('Ranked').setStyle(1),
-      new ButtonBuilder().setCustomId('stats_legends').setLabel('Legends').setStyle(1),
-      new ButtonBuilder().setCustomId('stats_weapons').setLabel('Weapons').setStyle(1)
+      new ButtonBuilder().setCustomId('stats_main').setLabel('Geral').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('stats_ranked').setLabel('Ranked').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('stats_legends').setLabel('Legends').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('stats_weapons').setLabel('Weapons').setStyle(ButtonStyle.Primary)
     );
 
     const statsMsg = await sendCleanMessage(loadingMsg, { embeds: [mainEmbed], components: [row] });
@@ -412,12 +407,7 @@ export async function handleGames(message, args) {
       });
     }
 
-    const loadingEmbed = new EmbedBuilder()
-      .setColor(0xfaa61a)
-      .setTitle('Carregando...')
-      .setDescription('Buscando dados semanais...');
-
-    loadingMsg = await message.reply({ embeds: [loadingEmbed] });
+    loadingMsg = await message.reply({ embeds: [createLoadingEmbed('Carregando...', 'Buscando dados semanais...')] });
 
     const weekStart = getMissionWeekStartDateTime();
     const initial = await getWeeklyInitial(brawlhallaId, weekStart);
@@ -570,12 +560,7 @@ export async function handleGuild(message, args, client) {
       return await message.reply({ embeds: [await createGuildEmbed(cachedData)] });
     }
 
-    const loadingEmbed = new EmbedBuilder()
-      .setColor(0xfaa61a)
-      .setTitle(`${EMOJIS.loading} Carregando informações da guilda...`)
-      .setDescription('Buscando dados do Brawlhalla...');
-
-    const loadingMsg = await message.reply({ embeds: [loadingEmbed] });
+    const loadingMsg = await message.reply({ embeds: [createLoadingEmbed(`${EMOJIS.loading} Carregando informações da guilda...`, 'Buscando dados do Brawlhalla...')] });
     const guildData = await fetchGuildStatsNewAPI(GuildId);
     await sendCleanMessage(loadingMsg, { embeds: [await createGuildEmbed(guildData)] });
 

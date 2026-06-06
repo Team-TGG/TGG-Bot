@@ -3,7 +3,7 @@ import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder,
 import * as tggCoins from './tggCoins.js';
 import { getUserByDiscordId, getMissionWeekStart, formatDateBR, getMissionWeekEnd, resolveBrawlhallaId, loadAliases } from './db.js';
 import { fetchPlayerStats, fetchPlayerStatsNoResolve } from './brawlhalla.js';
-import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../utils/discordUtils.js';
+import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage, createPagination, awaitConfirmation } from '../utils/discordUtils.js';
 import { adminOnly, leaderOnly, ROLE_HIERARCHY } from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
 import { STAFF_ROLE_IDS } from '../config/index.js';
@@ -118,13 +118,7 @@ async function runDaily(target, member, discordId, streak, eventStreak, recovere
 
 // ---- .daily ----
 export async function handleDaily(message) {
-  const loading = await message.reply({
-    embeds: [
-      new EmbedBuilder()
-        .setColor(0xfaa61a)
-        .setTitle(`${EMOJIS.loading} Resgatando daily...`)
-    ]
-  });
+  const loading = await message.reply({ embeds: [createLoadingEmbed(`${EMOJIS.loading} Resgatando daily...`)] });
 
   try {
     const discordId = message.author.id;
@@ -377,7 +371,6 @@ export async function handleHistorico(message, args) {
       });
     }
 
-    let page = 1;
     const limit = 5;
 
     async function generateEmbed(page) {
@@ -408,50 +401,12 @@ export async function handleHistorico(message, args) {
         .setTimestamp();
     }
 
-    const row = (page, totalPages) => new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('prev')
-          .setLabel('⬅️')
-          .setStyle(1)
-          .setDisabled(page <= 1),
-
-        new ButtonBuilder()
-          .setCustomId('next')
-          .setLabel('➡️')
-          .setStyle(1)
-          .setDisabled(page >= totalPages)
-      );
-
-    let { total } = await tggCoins.getTransactions(targetId, page, limit);
-    let totalPages = Math.ceil(total / limit) || 1;
-
-    const msg = await message.reply({
-      embeds: [await generateEmbed(page)],
-      components: [row(page, totalPages)]
-    });
-
-    const collector = msg.createMessageComponentCollector({
-        time: 60000
-      });
-
-    collector.on('collect', async (interaction) => {
-      if (interaction.user.id !== message.author.id) {
-        return interaction.reply({
-          content: 'Você não pode usar isso.',
-          ephemeral: true
-        });
-      }
-
-      if (interaction.customId === 'prev') page--;
-      if (interaction.customId === 'next') page++;
-
-      let { total } = await tggCoins.getTransactions(targetId, page, limit);
-      let totalPages = Math.ceil(total / limit) || 1;
-
-      await interaction.update({
-        embeds: [await generateEmbed(page)],
-        components: [row(page, totalPages)]
-      });
+    await createPagination(message, {
+      getEmbed: generateEmbed,
+      getTotalPages: async () => {
+        const { total } = await tggCoins.getTransactions(targetId, 1, limit);
+        return Math.ceil(total / limit) || 1;
+      },
     });
 
   } catch (err) {
@@ -464,7 +419,6 @@ export async function handleHistorico(message, args) {
 // ---- .leaderboard ----
 export async function handleLeaderboard(message) {
   try {
-    let page = 1;
     const limit = 10;
 
     // Ver se algum evento está ativo para colocar o leaderboard de tickets
@@ -560,89 +514,38 @@ export async function handleLeaderboard(message) {
         .setTimestamp();
     }
 
-    const row = (page, totalPages) => new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('prev_lb')
-        .setLabel('⬅️')
-        .setStyle(1)
-        .setDisabled(page <= 1),
-
-      new ButtonBuilder()
-        .setCustomId('next_lb')
-        .setLabel('➡️')
-        .setStyle(1)
-        .setDisabled(page >= totalPages),
-
-      // Botão de moedas totais
-      new ButtonBuilder()
-        .setCustomId('toggle_total')
-        .setLabel(mode === 'TOTAL' ? 'Ver Atuais' : 'Ver Totais')
-        .setEmoji(EMOJIS.TGGcoin)
-        .setStyle(2),
-
-      ...(hasEvent ? [
+    await createPagination(message, {
+      getEmbed: generateEmbed,
+      getTotalPages: () => {
+        const source = mode === 'TICKETS' ? cache.tickets : mode === 'TOTAL' ? cache.totalCoins : cache.coins;
+        return Math.ceil(source.total / limit) || 1;
+      },
+      prevId: 'prev_lb',
+      nextId: 'next_lb',
+      extraButtons: () => [
         new ButtonBuilder()
-          .setCustomId('toggle_mode')
-          .setLabel(mode === 'TICKETS' ? 'Ver TGG Coins' : 'Ver Tickets')
-          .setEmoji(mode === 'TICKETS' ? EMOJIS.TGGcoin : EMOJIS.tickets)
-          .setStyle(2)
-      ] : [])
-    );
-
-    let total = cache.coins.total;
-    let totalPages = Math.ceil(total / limit) || 1;
-
-    const msg = await message.reply({
-      embeds: [await generateEmbed(page)],
-      components: [row(page, totalPages)]
-    });
-
-    const collector = msg.createMessageComponentCollector({
-      time: 60000
-    });
-
-    collector.on('collect', async (interaction) => {
-      try {
-        if (interaction.user.id !== message.author.id) {
-          return interaction.reply({
-            content: 'Você não pode usar isso.',
-            ephemeral: true
-          });
-        }
-
-        await interaction.deferUpdate(); // Evitar timeout
-
-        if (interaction.customId === 'prev_lb') page--;
-        if (interaction.customId === 'next_lb') page++;
-
+          .setCustomId('toggle_total')
+          .setLabel(mode === 'TOTAL' ? 'Ver Atuais' : 'Ver Totais')
+          .setEmoji(EMOJIS.TGGcoin)
+          .setStyle(ButtonStyle.Secondary),
+        ...(hasEvent ? [
+          new ButtonBuilder()
+            .setCustomId('toggle_mode')
+            .setLabel(mode === 'TICKETS' ? 'Ver TGG Coins' : 'Ver Tickets')
+            .setEmoji(mode === 'TICKETS' ? EMOJIS.TGGcoin : EMOJIS.tickets)
+            .setStyle(ButtonStyle.Secondary)
+        ] : [])
+      ],
+      onExtra: async (interaction, page) => {
         if (interaction.customId === 'toggle_total') {
           mode = mode === 'TOTAL' ? 'COINS' : 'TOTAL';
-          page = 1;
+          return 1;
         }
-
         if (interaction.customId === 'toggle_mode') {
           mode = mode === 'TICKETS' ? 'COINS' : 'TICKETS';
-          page = 1;
+          return 1;
         }
-
-        const source =
-          mode === 'TICKETS'
-            ? cache.tickets
-            : mode === 'TOTAL'
-              ? cache.totalCoins
-              : cache.coins;
-
-        let total = source.total;
-        let totalPages = Math.ceil(total / limit) || 1;
-
-        await interaction.editReply({
-          embeds: [await generateEmbed(page)],
-          components: [row(page, totalPages)]
-        });
-
-      } catch (err) {
-        console.error('[LEADERBOARD ERROR]', err);
-      }
+      },
     });
 
   } catch (err) {
@@ -1042,92 +945,33 @@ export async function handleBuy(message, args) {
       });
     }
 
-    const confirmRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`buy_confirm_${discordId}`)
-        .setLabel('Confirmar')
-        .setEmoji('✅')
-        .setStyle(ButtonStyle.Success),
+    const confirmEmbed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle('🛒 Confirmar compra')
+      .setDescription(
+        `Deseja comprar **${item.name}** por **${finalPrice.toLocaleString('pt-BR')} ${isEventItem ? 'Tickets' : 'TGG-Coins'}**?`
+      );
 
-      new ButtonBuilder()
-        .setCustomId(`buy_cancel_${discordId}`)
-        .setLabel('Cancelar')
-        .setEmoji('❌')
-        .setStyle(ButtonStyle.Danger)
-    );
-
-    const confirmMsg = await message.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(0x5865f2)
-          .setTitle('🛒 Confirmar compra')
-          .setDescription(
-            `Deseja comprar **${item.name}** por **${finalPrice.toLocaleString('pt-BR')} ${isEventItem ? 'Tickets' : 'TGG-Coins'}**?`
-          )
-      ],
-      components: [confirmRow]
+    const { confirmed, interaction } = await awaitConfirmation(message, confirmEmbed, {
+      authorId: discordId,
+      time: 30000,
     });
 
-    const collector = confirmMsg.createMessageComponentCollector({
-      time: 30000
+    if (confirmed === null) return;
+
+    if (!confirmed) {
+      return interaction.update({
+        embeds: [createErrorEmbed('Compra cancelada', 'A compra foi cancelada.')],
+        components: []
+      });
+    }
+
+    await interaction.update({
+      embeds: [createSuccessEmbed('Compra confirmada!', 'Processando compra...')],
+      components: []
     });
 
-    collector.on('collect', async (interaction) => {
-      if (interaction.user.id !== discordId) {
-        return interaction.reply({
-          content: 'Você não pode usar isso.',
-          ephemeral: true
-        });
-      }
-
-      // Cancelar
-      if (interaction.customId === `buy_cancel_${discordId}`) {
-        collector.stop('cancelled');
-        return interaction.update({
-          embeds: [
-            createErrorEmbed(
-              'Compra cancelada',
-              'A compra foi cancelada.'
-            )
-          ],
-          components: []
-        });
-      }
-
-      // Confirmar
-      if (interaction.customId === `buy_confirm_${discordId}`) {
-        collector.stop('confirmed');
-        await interaction.update({
-          embeds: [
-            createSuccessEmbed(
-              'Compra confirmada!',
-              'Processando compra...'
-            )
-          ],
-          components: []
-        });
-
-        return executePurchase();
-      }
-    });
-
-    collector.on('end', async (_, reason) => {
-      if (reason === 'time') {
-        try {
-          await confirmMsg.edit({
-            embeds: [
-              createErrorEmbed(
-                'Tempo esgotado',
-                'A confirmação da compra expirou.'
-              )
-            ],
-            components: []
-          });
-        } catch (err) {}
-      }
-    });
-    
-    return;
+    return executePurchase();
 
   } catch (err) {
     return message.reply({
@@ -1138,13 +982,7 @@ export async function handleBuy(message, args) {
 
 // ---- .conquistas ----
 export async function handleConquistas(message) {
-  const loading = await message.reply({
-    embeds: [
-      new EmbedBuilder()
-        .setColor(0xfaa61a)
-        .setTitle(`${EMOJIS.loading} Carregando conquistas...`)
-    ]
-  });
+  const loading = await message.reply({ embeds: [createLoadingEmbed(`${EMOJIS.loading} Carregando conquistas...`)] });
 
   try {
     const discordId = message.author.id;
@@ -1337,13 +1175,7 @@ export async function handleConquistas(message) {
 
 // --- .addaccount <brawlhalla_id> ---
 export async function handleAddAccount(message, args) {
-  const loading = await message.reply({
-    embeds: [
-      new EmbedBuilder()
-        .setColor(0xfaa61a)
-        .setDescription('🔄 Vinculando conta...')
-    ]
-  });
+  const loading = await message.reply({ embeds: [createLoadingEmbed(null, '🔄 Vinculando conta...')] });
 
   try {
     const discordId = message.author.id;
@@ -1659,13 +1491,7 @@ export async function handleQuiz(message) {
 
 // ---- .addcoins (líder) ----
 export const handleAddCoins = leaderOnly(async (message, args, client) => {
-  const loading = await message.reply({
-    embeds: [
-      new EmbedBuilder()
-        .setColor(0xfaa61a)
-        .setTitle('💰 Adicionando moedas...')
-    ]
-  });
+  const loading = await message.reply({ embeds: [createLoadingEmbed('💰 Adicionando moedas...')] });
 
   try {
     const target = message.mentions.users.first();
