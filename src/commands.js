@@ -68,6 +68,7 @@ export const COMMAND_ALIASES = {
   'daocu': 'daily', // Picturii
   'balance': 'balance',
   'bal': 'balance',
+  'baal': 'balance',
   'coins': 'balance',
   'moedas': 'balance',
   'saldo  ': 'balance',
