@@ -16,7 +16,7 @@ export const LEADER_ID = '252249131202904074'; // ID do líder para acesso total
 // Canais permitidos para comandos do bot
 const ALLOWED_CHANNELS = [
   '1437504463375175936', // Comandos Staff
-  '1437416481343406122', // Principal
+  '1440865671150829648', // TGG-Geral
   '1437416406038872225', // Comandos
   '1468600851290521692'  // Players Inativos
 ];
