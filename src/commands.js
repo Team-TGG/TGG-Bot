@@ -1,7 +1,7 @@
 // Handlers
 import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleMute, handleUnmute, handleBan, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleAbrirTickets, handleFecharTickets, handleWam, handleJustificativas } from './admin.js';
 import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes, handleDuel } from './public.js';
-import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins, handleAddAccount, handleQuiz } from './tggCoinsCommands.js';
+import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins, handleAddAccount, handleQuiz, handleInventory } from './tggCoinsCommands.js';
 
 // Command Aliases
 export const COMMAND_ALIASES = {
@@ -66,6 +66,7 @@ export const COMMAND_ALIASES = {
   'deiocu': 'daily',
   'dailhe': 'daily', // Violet
   'daocu': 'daily', // Picturii
+  'pizzolho': 'daily', // ADM_Bart
   'balance': 'balance',
   'bal': 'balance',
   'baal': 'balance',
@@ -83,6 +84,10 @@ export const COMMAND_ALIASES = {
   'store': 'shop',
   'buy': 'buy',
   'comprar': 'buy',
+  'inventory': 'inventory',
+  'inventario': 'inventory',
+  'inventário': 'inventory',
+  'inv': 'inventory',
   'conquistas': 'conquistas',
   'conquista': 'conquistas',
   'achievements': 'conquistas',
@@ -209,5 +214,6 @@ export const commands = {
   addprovider: handleAddProvider,
   removeprovider: handleRemoveProvider,
   addcoins: handleAddCoins,
-  'add-account': handleAddAccount
+  'add-account': handleAddAccount,
+  inventory: handleInventory
 };

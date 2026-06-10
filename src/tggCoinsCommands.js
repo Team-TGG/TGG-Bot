@@ -1,5 +1,5 @@
 // Comandos da TGG-Coins
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder, ButtonStyle } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder, ButtonStyle, ComponentType } from 'discord.js';
 import * as tggCoins from './tggCoins.js';
 import { getUserByDiscordId, getMissionWeekStart, formatDateBR, getMissionWeekEnd, resolveBrawlhallaId, loadAliases } from './db.js';
 import { fetchPlayerStats, fetchPlayerStatsNoResolve } from './brawlhalla.js';
@@ -976,6 +976,157 @@ export async function handleBuy(message, args) {
   } catch (err) {
     return message.reply({
       embeds: [createErrorEmbed('Erro na compra', err.message)]
+    });
+  }
+}
+
+// ---- .inventory ----
+export async function handleInventory(message) {
+  try {
+    const inventory = await tggCoins.getInventory(message.author.id);
+
+    // Se o inventário estiver vazio
+    if (!inventory.length) {
+      return message.reply({
+        embeds: [createErrorEmbed('🎒 Inventário vazio', 'Você ainda não possui nenhuma cor.')]
+      });
+    }
+
+    const options = [];
+    const ownedRoles = [];
+
+    for (const item of inventory) {
+      const role = message.guild.roles.cache.get(item.role_id);
+
+      if (!role) continue;
+
+      const equipped = message.member.roles.cache.has(item.role_id);
+
+      ownedRoles.push(`${equipped ? '👉' : '•'} ${role}`);
+      options.push({label: role.name, value: item.role_id, description: equipped ? 'Atualmente equipada' : `Equipar ${role.name}`});
+    }
+
+    // Se for algum cargo inválido (Deletado ou inexistente)
+    if (!options.length) {
+      return message.reply({
+        embeds: [createErrorEmbed('Erro', 'Nenhum cargo válido foi encontrado no seu inventário.')]
+      });
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle('🎒 Seu Inventário')
+      .setDescription(['**Cores disponíveis:**', '', ownedRoles.join('\n'), '', 'Selecione uma cor no menu abaixo para equipar.'].join('\n'))
+      .setTimestamp();
+
+    const select = new StringSelectMenuBuilder()
+      .setCustomId(`inventory_${message.author.id}`)
+      .setPlaceholder('Escolha uma cor')
+      .addOptions(options.slice(0, 25));
+
+    const row = new ActionRowBuilder().addComponents(select);
+
+    const msg = await message.reply({
+      embeds: [embed],
+      components: [row]
+    });
+
+    const collector = msg.createMessageComponentCollector({
+      componentType: ComponentType.StringSelect,
+      time: 120000
+    });
+
+    collector.on('collect', async interaction => {
+      try {
+        if (interaction.user.id !== message.author.id) {
+          return interaction.reply({
+            content: 'Você não pode utilizar este menu.',
+            ephemeral: true
+          });
+        }
+
+        const selectedRoleId = interaction.values[0];
+
+        const member = await message.guild.members.fetch(
+          interaction.user.id
+        );
+
+        // Se o usuário já tiver a cor equipada
+        if (member.roles.cache.has(selectedRoleId)) {
+          return interaction.reply({
+            embeds: [createErrorEmbed('Cor já equipada', 'Você já está utilizando essa cor.')],
+            ephemeral: true
+          });
+        }
+
+        const userInventory = await tggCoins.getInventory(interaction.user.id);
+        const inventoryRoleIds = userInventory.map(item => item.role_id);
+        const ownsRole = inventoryRoleIds.includes(selectedRoleId);
+
+        // Verifica se o usuário possui a cor no inventário
+        if (!ownsRole) {
+          return interaction.reply({
+            embeds: [createErrorEmbed('Erro', 'Você não possui essa cor.')],
+            ephemeral: true
+          });
+        }
+
+        const rolesToRemove = inventoryRoleIds.filter(roleId => member.roles.cache.has(roleId));
+
+        if (rolesToRemove.length) {
+          await member.roles.remove(rolesToRemove);
+        }
+
+        await member.roles.add(selectedRoleId);
+
+        const selectedRole = message.guild.roles.cache.get(selectedRoleId);
+        const updatedRoles = [];
+
+        for (const item of userInventory) {
+          const role = message.guild.roles.cache.get(item.role_id);
+          if (!role) continue;
+          updatedRoles.push(item.role_id === selectedRoleId ? `👉 ${role}` : `• ${role}`);
+        }
+
+        const updatedEmbed = new EmbedBuilder()
+          .setColor(0x57f287)
+          .setTitle('🎒 Seu Inventário')
+          .setDescription(['**Cores disponíveis:**', '', updatedRoles.join('\n'), '', `Cor equipada: ${selectedRole}`].join('\n'))
+          .setTimestamp();
+
+        await interaction.update({
+          embeds: [updatedEmbed],
+          components: [row]
+        });
+
+      } catch (err) {
+        console.error(err);
+
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({
+            embeds: [createErrorEmbed('Erro', err.message)],
+            ephemeral: true
+          });
+        }
+      }
+    });
+
+    collector.on('end', async () => {
+      try {
+        const disabledSelect = StringSelectMenuBuilder.from(select).setDisabled(true);
+        const disabledRow = new ActionRowBuilder().addComponents(disabledSelect);
+
+        await msg.edit({
+          components: [disabledRow]
+        });
+      } catch (err) {}
+    });
+
+  } catch (err) {
+    console.error(err);
+
+    return message.reply({
+      embeds: [createErrorEmbed('Erro', err.message)]
     });
   }
 }

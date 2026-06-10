@@ -300,8 +300,27 @@ export async function handleBuyRoleColor(ctx) {
 
   const row = new ActionRowBuilder().addComponents(select);
 
+  const availableColors = roles
+    .map(role => {
+      const guildRole = message.guild.roles.cache.get(role.role_id);
+
+      if (!guildRole) {
+        return `• ${role.name}`;
+      }
+
+      const isCurrent = currentRole && String(currentRole.role_id) === String(role.role_id);
+      return `${isCurrent ? '👉' : '•'} ${guildRole}`;
+    })
+    .join('\n');
+
+  const embed = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle(`🎨 ${item.name}`)
+    .setDescription(['**Cores disponíveis:**', '', availableColors, '', 'Selecione uma cor no menu abaixo.'].join('\n')
+    );
+
   const msg = await message.reply({
-    content: `Escolha um cargo para **${item.name}**:`,
+    embeds: [embed],
     components: [row]
   });
 
@@ -346,6 +365,7 @@ export async function handleBuyRoleColor(ctx) {
 
     await member.roles.add(selectedRoleId);
 
+    await tggCoins.addInventoryItem(discordId, selectedRoleId); // Adiciona a cor no inventário do usuário
     await tggCoins.addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Cargo: ${item.name}`);
     const newBalance = await tggCoins.updateBalance(discordId, -finalPrice);
 
@@ -556,6 +576,7 @@ export async function handleBuyEventRole(ctx) {
 
     await member.roles.add(item.role_id);
 
+    await tggCoins.addInventoryItem(discordId, item.role_id); // Adiciona o cargo no inventário do usuário
     await tggCoins.addTicketTransaction(discordId, activeEvent.id, -finalPrice, 'SHOP_PURCHASE', `Cargo de Evento: ${item.name}`);
 
     const newBalance = await tggCoins.updateTicketBalance(discordId, -finalPrice);

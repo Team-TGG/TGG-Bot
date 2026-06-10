@@ -1127,3 +1127,36 @@ export async function markQuizCompleted(discordId) {
       completed_at: new Date()
     });
 }
+
+/*
+ * Adiciona um item de inventário para o usuário (usado para os itens de cargos, para registrar quais cargos o usuário tem comprado)
+*/
+export async function addInventoryItem(discordId, roleId) {
+  const supabase = getClient();
+
+  const { error } = await supabase
+    .from('tgg_coins_inventory')
+    .insert({
+      discord_id: String(discordId),
+      role_id: String(roleId)
+    });
+
+  if (error) throw error;
+}
+
+/**
+ * Busca inventário do usuário
+ */
+export async function getInventory(discordId) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('tgg_coins_inventory')
+    .select('*')
+    .eq('discord_id', String(discordId))
+    .order('purchased_at', { ascending: false });
+
+  if (error) throw error;
+
+  return data ?? [];
+}
