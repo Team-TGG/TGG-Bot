@@ -52,6 +52,48 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 
 ---
 
+## Roadmap
+
+### Concluído
+- [x] Criar um inventário para as cores usando as cores armazenadas em compras.
+- [x] Ao usar `.buy` em uma cor, verificar se o usuário já possui a cor e ajustar o fluxo de compra.
+- [x] Mostrar as cores em um embed antes de comprar no `.buy`.
+- [x] Fazer warn temporário e mandar mensagem na DM.
+- [x] Criar `.edit-warn <@user> [número] "Motivo"`.
+
+### Correções e Ajustes
+- [ ] Caso o usuário não tenha registro para a semana, mostrar esse erro no `.conquistas`.
+- [ ] `.add-account` deve adicionar registro em `player_weekly_info`.
+- [ ] `.entrou` deve adicionar registro em `player_weekly_info`.
+- [ ] Corrigir o emoji `<:silver4:1479458769757933821>`.
+- [ ] Corrigir o emoji `:rupture:`.
+- [ ] Adicionar botão para voltar para "essa semana" no `.games`.
+
+### Novos Comandos
+- [ ] Criar `.resumão` com um resumo grande e detalhado da guilda.
+- [ ] Criar `.scan` com visão de staff sobre um membro: justificativas, jogos da semana atual/passada, histórico de saída da guilda e outros dados relevantes.
+- [ ] Criar `.alts`.
+- [ ] Adicionar a tabela de warns em um comando do bot, bloqueado em canais que não sejam da staff.
+- [ ] Criar `.refund`, restrito ao dono.
+- [ ] Criar `.registrarmissão` com dropdown para registrar missão por clique.
+- [ ] Criar `.crz` como contador geral.
+
+### Sistemas e Melhorias
+- [ ] Começar o tipo Coach e testar.
+- [ ] Basear Coach na lista de instrutores.
+- [ ] Fazer o preço do Coach variar dependendo do elo.
+- [ ] Discutir com staff/helpers os preços e o que incluir no Coach.
+- [ ] Adicionar `.games` mensal/seasonal.
+- [x] Fazer o bot mandar o MOTD no canal de aniversário, sem pingar ninguém.
+- [ ] Melhorar a automação do histórico da guilda, deixando mais rápido e criando views para evitar ler muitas linhas.
+
+### Futuro
+- [ ] Comandos slash.
+- [ ] Criar um Brawdle.
+- [ ] Criar leilões no TGG Coins, com lances para itens pagos ou exclusivos.
+
+---
+
 ## Autores
 
 - [@joaopaulofeijao](https://github.com/joaopaulofeijao)
