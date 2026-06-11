@@ -17,6 +17,7 @@ import { checkChannelPermission } from './utils/permissions.js';
 // Services
 import { startInactiveReminder } from './src/services/inactivePlayers.js';
 import { restoreMutes } from './src/services/muteManager.js';
+import { restoreTemporaryWarnings } from './src/services/warningManager.js';
 // Commands
 import { COMMAND_ALIASES, commands } from './src/commands.js';
 
@@ -46,6 +47,7 @@ async function main() {
     // Aviso de inatividade e restauração de mutes
     startInactiveReminder(client);
     await restoreMutes(client);
+    await restoreTemporaryWarnings(client);
   });
 
   // Armazenamento de rate limit

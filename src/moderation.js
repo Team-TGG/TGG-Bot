@@ -1,10 +1,18 @@
 import { getClient } from './db.js';
 
+function isMissingExpiresAtColumn(error) {
+  return error?.code === '42703'
+    || error?.code === 'PGRST204'
+    || error?.message?.includes('expires_at');
+}
+
 // Adiciona aviso no banco de dados
-export async function addWarning(userId, moderatorId, reason) {
+export async function addWarning(userId, moderatorId, reason, expiresAt = null) {
   const client = getClient();
   
   try {
+    await deleteExpiredWarnings(userId);
+
     // Busca avisos existentes do usuário
     const { data: existingWarnings, error: fetchError } = await client
       .from('warnings')
@@ -17,20 +25,26 @@ export async function addWarning(userId, moderatorId, reason) {
     const warningCount = (existingWarnings?.length || 0) + 1;
     
     // Insere novo aviso
+    const payload = {
+      user_id: userId,
+      moderator_id: moderatorId,
+      reason: reason,
+      warning_number: warningCount
+    };
+
+    if (expiresAt) {
+      payload.expires_at = expiresAt;
+    }
+
     const { data, error } = await client
       .from('warnings')
-      .insert({
-        user_id: userId,
-        moderator_id: moderatorId,
-        reason: reason,
-        warning_number: warningCount
-      })
+      .insert(payload)
       .select()
       .single();
     
     if (error) throw error;
     
-    return warningCount;
+    return { warningCount, warning: data };
   } catch (error) {
     console.error('Error adding warning:', error);
     throw error;
@@ -42,6 +56,8 @@ export async function getWarningCount(userId) {
   const client = getClient();
   
   try {
+    await deleteExpiredWarnings(userId);
+
     const { count, error } = await client
       .from('warnings')
       .select('*', { count: 'exact', head: true })
@@ -61,6 +77,8 @@ export async function getUserWarnings(userId) {
   const client = getClient();
   
   try {
+    await deleteExpiredWarnings(userId);
+
     const { data, error } = await client
       .from('warnings')
       .select('*')
@@ -100,6 +118,8 @@ export async function removeWarning(userId, warningNumber) {
   const client = getClient();
   
   try {
+    await deleteExpiredWarnings(userId);
+
     const { error } = await client
       .from('warnings')
       .delete()
@@ -114,6 +134,27 @@ export async function removeWarning(userId, warningNumber) {
     return true;
   } catch (error) {
     console.error('Error removing warning:', error);
+    throw error;
+  }
+}
+
+// Remove um aviso pelo ID do registro
+export async function removeWarningById(warningId, userId) {
+  const client = getClient();
+
+  try {
+    const { error } = await client
+      .from('warnings')
+      .delete()
+      .eq('id', warningId);
+
+    if (error) throw error;
+
+    await reorderWarnings(userId);
+
+    return true;
+  } catch (error) {
+    console.error('Error removing warning by id:', error);
     throw error;
   }
 }
@@ -143,11 +184,70 @@ async function reorderWarnings(userId) {
   }
 }
 
+// Remove avisos temporários vencidos e reorganiza a numeração
+export async function deleteExpiredWarnings(userId = null) {
+  const client = getClient();
+  const now = new Date().toISOString();
+
+  try {
+    let query = client
+      .from('warnings')
+      .delete()
+      .lt('expires_at', now)
+      .select('user_id');
+
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+
+    const affectedUsers = [...new Set((data || []).map(w => w.user_id))];
+
+    for (const affectedUserId of affectedUsers) {
+      await reorderWarnings(affectedUserId);
+    }
+
+    return data?.length || 0;
+  } catch (error) {
+    if (isMissingExpiresAtColumn(error)) return 0;
+    console.error('Error deleting expired warnings:', error);
+    throw error;
+  }
+}
+
+// Busca avisos temporários ainda ativos para restaurar timers no boot
+export async function getActiveTemporaryWarnings() {
+  const client = getClient();
+  const now = new Date().toISOString();
+
+  try {
+    await deleteExpiredWarnings();
+
+    const { data, error } = await client
+      .from('warnings')
+      .select('*')
+      .gt('expires_at', now);
+
+    if (error) throw error;
+
+    return data || [];
+  } catch (error) {
+    if (isMissingExpiresAtColumn(error)) return [];
+    console.error('Error getting active temporary warnings:', error);
+    throw error;
+  }
+}
+
 // Remove o último aviso de um usuário
 export async function removeLastWarning(userId) {
   const client = getClient();
   
   try {
+    await deleteExpiredWarnings(userId);
+
     // Busca o aviso mais recente
     const { data: latestWarning, error: fetchError } = await client
       .from('warnings')

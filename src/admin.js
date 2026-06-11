@@ -2,7 +2,7 @@
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType, ComponentType } from 'discord.js';
 import { createClient, runSync, runEloSync } from './discord.js';
 import { fetchPlayerStats, getUserBrawlhallaId } from './brawlhalla.js';
-import { addWarning, getUserWarnings, removeWarning, removeLastWarning, editWarning, parseTime, formatTime as formatModTime, safeSetTimeout } from './moderation.js';
+import { addWarning, getUserWarnings, removeWarning, removeLastWarning, editWarning, deleteExpiredWarnings, parseTime, formatTime as formatModTime, safeSetTimeout } from './moderation.js';
 import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes, getMissionWeekStart, getActiveUser, getMemberJustifications, formatDateBR } from './db.js';
 import { discord as discordConfig, STAFF_ROLE_IDS, inactivePlayers as inactivePlayersConfig, tickets as ticketsConfig } from '../config/index.js';
 import { loadCustomNicknames } from './customNicknames.js';
@@ -10,6 +10,7 @@ import { syncNicknames, updateMemberNicknameDiscordPortion, parseNickname, build
 import { createErrorEmbed, createSuccessEmbed, createWarningEmbed, createLoadingEmbed, sendCleanMessage, awaitConfirmation } from '../utils/discordUtils.js';
 import { isAdmin, adminOnly, hasPermission, getMemberLevel} from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
+import { scheduleTemporaryWarningRemoval } from './services/warningManager.js';
 
 // Funções auxiliares
 
@@ -191,22 +192,48 @@ export const handleWarn = adminOnly(async (message, args, client) => {
     }
 
     if (!targetId) {
-      return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.warn <@user/ID> [motivo]`')] });
+      return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.warn <@user/ID> [duração] [motivo]`')] });
     }
 
     if (await isAdmin(targetId)) {
       return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Você não pode dar um aviso a um administrador.')] });
     }
 
-    const reason = message.content.includes('>')
-      ? message.content.split('>').slice(1).join('>').trim()
-      : args.slice(1).join(' ').trim() || 'Sem motivo especificado';
+    const afterTarget = mentionMatch
+      ? message.content.slice(message.content.indexOf(mentionMatch[0]) + mentionMatch[0].length).trim()
+      : args.slice(1).join(' ').trim();
+    const durationMatch = afterTarget.match(/^(\d+[smhdMy])(?:\s+|$)/);
+    const durationMs = durationMatch ? parseTime(durationMatch[1]) : null;
+    const expiresAt = durationMs ? new Date(Date.now() + durationMs).toISOString() : null;
+    const reason = durationMatch
+      ? afterTarget.slice(durationMatch[0].length).trim() || 'Sem motivo especificado'
+      : afterTarget || 'Sem motivo especificado';
 
     const member = await guild.members.fetch(targetId).catch(() => null);
     if (!member) return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')] });
 
-    const warningCount = await addWarning(targetId, message.author.id, reason);
-    await message.reply({ embeds: [createSuccessEmbed('Aviso Adicionado', `${member.user.tag} recebeu um aviso.\n**Motivo:** ${reason}\n**Total de avisos:** ${warningCount}/3`)] });
+    const { warningCount, warning } = await addWarning(targetId, message.author.id, reason, expiresAt);
+    const durationLine = expiresAt ? `\n**Duração:** ${formatModTime(durationMs)}` : '';
+    const expiresLine = expiresAt ? `\n**Expira em:** <t:${Math.floor(new Date(expiresAt).getTime() / 1000)}:F>` : '';
+
+    await member.send({
+      embeds: [
+        createWarningEmbed(
+          'Aviso Recebido',
+          `Você recebeu um warn/aviso.\n**Motivo:** ${reason}${durationLine}${expiresLine}\n**Total de avisos:** ${warningCount}/3`
+        )
+      ]
+    }).catch(() => console.log(`[Warn] Could not send DM to ${targetId}`));
+
+    if (expiresAt) {
+      scheduleTemporaryWarningRemoval({
+        warning,
+        guild,
+        channel: message.channel
+      });
+    }
+
+    await message.reply({ embeds: [createSuccessEmbed('Aviso Adicionado', `${member.user.tag} recebeu um aviso.\n**Motivo:** ${reason}${durationLine}${expiresLine}\n**Total de avisos:** ${warningCount}/3`)] });
 
     if (warningCount === 2) {
       let muteRole = guild.roles.cache.find(r => r.name === 'Muted');
@@ -401,6 +428,7 @@ export const handleEditWarn = adminOnly(async (message, args, client) => {
 // .warns
 export const handleWarns = async (message, args, client) => {
   try {
+    await deleteExpiredWarnings();
 
     const admin = await isAdmin(message.author.id);
 
@@ -529,9 +557,13 @@ export const handleWarns = async (message, args, client) => {
       const description = pageData.map(ud => {
 
         const warns = ud.warnings.map((w, i) => {
+          const expiration = w.expires_at
+            ? `\n> Expira em: <t:${Math.floor(new Date(w.expires_at).getTime() / 1000)}:R>`
+            : '';
+
           return [
             `> **${i + 1}.** ${w.reason || 'Sem motivo especificado'}`,
-            `> ${new Date(w.created_at).toLocaleDateString('pt-BR')}`
+            `> ${new Date(w.created_at).toLocaleDateString('pt-BR')}${expiration}`
           ].join('\n');
         }).join('\n> \n');
 

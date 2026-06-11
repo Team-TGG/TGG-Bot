@@ -45,6 +45,7 @@ export const brawlhalla = {
 export const inactivePlayers = {
   inactiveRoleId: '1468593277363290304',
   channelId: '1468600851290521692',
+  messageEnabled: true,
   messageInterval: process.env.INACTIVE_MESSAGE_INTERVAL,
 };
 

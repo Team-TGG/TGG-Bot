@@ -78,7 +78,12 @@ export async function sendInactivePlayersReminder(client) {
 }
 
 export function startInactiveReminder(client) {
-    const interval = 10800000; // 3h
+    if (!inactivePlayersConfig.messageEnabled) {
+        console.log('[Inactive Reminder] Disabled in config');
+        return;
+    }
+
+    const interval = Number(inactivePlayersConfig.messageInterval) || 10800000; // 3h
 
     setInterval(() => {
         sendInactivePlayersReminder(client);
