@@ -59,6 +59,7 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 - [x] Ao usar `.buy` em uma cor, verificar se o usuário já possui a cor e ajustar o fluxo de compra.
 - [x] Mostrar as cores em um embed antes de comprar no `.buy`.
 - [x] Fazer warn temporário e mandar mensagem na DM.
+- [x] Fazer o bot mandar o MOTD no canal de aniversário, sem pingar ninguém.
 - [x] Criar `.edit-warn <@user> [número] "Motivo"`.
 
 ### Correções e Ajustes
@@ -68,6 +69,7 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 - [ ] Corrigir o emoji `<:silver4:1479458769757933821>`.
 - [ ] Corrigir o emoji `:rupture:`.
 - [ ] Adicionar botão para voltar para "essa semana" no `.games`.
+- [ ] Sincronizar MOTD com o site(/api/motd.php)
 
 ### Novos Comandos
 - [ ] Criar `.resumão` com um resumo grande e detalhado da guilda.
@@ -79,12 +81,10 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 - [ ] Criar `.crz` como contador geral.
 
 ### Sistemas e Melhorias
-- [ ] Começar o tipo Coach e testar.
 - [ ] Basear Coach na lista de instrutores.
 - [ ] Fazer o preço do Coach variar dependendo do elo.
 - [ ] Discutir com staff/helpers os preços e o que incluir no Coach.
 - [ ] Adicionar `.games` mensal/seasonal.
-- [x] Fazer o bot mandar o MOTD no canal de aniversário, sem pingar ninguém.
 - [ ] Melhorar a automação do histórico da guilda, deixando mais rápido e criando views para evitar ler muitas linhas.
 
 ### Futuro
