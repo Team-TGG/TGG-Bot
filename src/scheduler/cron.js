@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { discord as discordConfig } from '../../config/index.js';
 import { processBirthdays, removeBirthdayRole } from '../services/birthdayService.js';
+import { publishMotd } from '../services/motdService.js';
 
 export function startCronJobs(client, services) {
   const {
@@ -47,6 +48,13 @@ export function startCronJobs(client, services) {
     } catch (err) {
       console.error('[CRON ERROR - Birthdays]', err);
     }
+  }, {
+    timezone: 'America/Sao_Paulo'
+  });
+
+  // MOTD - 9:00 AM
+  cron.schedule('0 9 * * *', async () => {
+    await publishMotd(client);
   }, {
     timezone: 'America/Sao_Paulo'
   });
