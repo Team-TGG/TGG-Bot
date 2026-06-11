@@ -1,5 +1,5 @@
 // Handlers
-import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleMute, handleUnmute, handleBan, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleAbrirTickets, handleFecharTickets, handleWam, handleJustificativas } from './admin.js';
+import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleEditWarn, handleMute, handleUnmute, handleBan, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleAbrirTickets, handleFecharTickets, handleWam, handleJustificativas } from './admin.js';
 import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes, handleDuel } from './public.js';
 import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins, handleAddAccount, handleQuiz, handleInventory } from './tggCoinsCommands.js';
 
@@ -37,6 +37,8 @@ export const COMMAND_ALIASES = {
   'unwarn': 'unwarn',
   'warns': 'warns',
   'warnings': 'warns',
+  'edit-warn': 'edit-warn',
+  'editwarn': 'edit-warn',
   'mute': 'mute',
   'unmute': 'unmute',
   'ban': 'ban',
@@ -187,6 +189,7 @@ export const commands = {
   wam: handleWam,
   unwarn: handleUnwarn,
   warns: handleWarns,
+  'edit-warn': handleEditWarn,
   mute: handleMute,
   unmute: handleUnmute,
   ban: handleBan,

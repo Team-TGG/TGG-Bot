@@ -2,7 +2,7 @@
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType, ComponentType } from 'discord.js';
 import { createClient, runSync, runEloSync } from './discord.js';
 import { fetchPlayerStats, getUserBrawlhallaId } from './brawlhalla.js';
-import { addWarning, getUserWarnings, removeWarning, removeLastWarning, parseTime, formatTime as formatModTime, safeSetTimeout } from './moderation.js';
+import { addWarning, getUserWarnings, removeWarning, removeLastWarning, editWarning, parseTime, formatTime as formatModTime, safeSetTimeout } from './moderation.js';
 import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes, getMissionWeekStart, getActiveUser, getMemberJustifications, formatDateBR } from './db.js';
 import { discord as discordConfig, STAFF_ROLE_IDS, inactivePlayers as inactivePlayersConfig, tickets as ticketsConfig } from '../config/index.js';
 import { loadCustomNicknames } from './customNicknames.js';
@@ -324,6 +324,78 @@ export const handleUnwarn = adminOnly(async (message, args, client) => {
     await message.reply({ embeds: [createErrorEmbed('Erro ao Remover Aviso', err.message)] });
   }
 
+});
+
+// .edit-warn
+export const handleEditWarn = adminOnly(async (message, args, client) => {
+  try {
+    if (!hasPermission(message.member, 2)) {
+      return message.reply({
+        embeds: [createErrorEmbed('Acesso Negado', 'Apenas moderadores ou superiores podem editar avisos.')]
+      });
+    }
+
+    const guild = client.guilds.cache.get(discordConfig.guildId);
+    if (!guild) throw new Error('Guild não encontrada');
+
+    // Extrai menção ou ID
+    let targetId;
+    const mentionMatch = message.content.match(/<@!?(\d+)>/);
+    if (mentionMatch) {
+      targetId = mentionMatch[1];
+    } else {
+      const idMatch = args[0]?.match(/^\d+$/);
+      if (idMatch) targetId = args[0];
+    }
+
+    if (!targetId) {
+      return message.reply({
+        embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.edit-warn <@user/ID> <número> "Motivo"`')]
+      });
+    }
+
+    // Extrai o número do aviso e o novo motivo
+    // Sintaxe: .edit-warn @user <número> "Motivo"
+    const afterMention = mentionMatch
+      ? message.content.slice(message.content.indexOf(mentionMatch[0]) + mentionMatch[0].length).trim()
+      : args.slice(1).join(' ').trim();
+
+    const warnNumMatch = afterMention.match(/^(\d+)\s+/);
+    if (!warnNumMatch) {
+      return message.reply({
+        embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.edit-warn <@user/ID> <número> "Motivo"`')]
+      });
+    }
+
+    const warningNumber = parseInt(warnNumMatch[1]);
+    const newReason = afterMention.slice(warnNumMatch[0].length).replace(/^["']|["']$/g, '').trim();
+
+    if (!newReason) {
+      return message.reply({
+        embeds: [createErrorEmbed('Formato Inválido', 'Informe o novo motivo após o número do aviso.')]
+      });
+    }
+
+    const member = await guild.members.fetch(targetId).catch(() => null);
+    if (!member) {
+      return message.reply({
+        embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')]
+      });
+    }
+
+    const updated = await editWarning(targetId, warningNumber, newReason);
+    if (!updated) {
+      return message.reply({
+        embeds: [createErrorEmbed('Aviso Não Encontrado', `O aviso **${warningNumber}** de ${member.user.tag} não existe.`)]
+      });
+    }
+
+    await message.reply({
+      embeds: [createSuccessEmbed('Aviso Editado', `O aviso **${warningNumber}** de ${member.user.tag} foi atualizado.\n**Novo motivo:** ${newReason}`)]
+    });
+  } catch (err) {
+    await message.reply({ embeds: [createErrorEmbed('Erro ao Editar Aviso', err.message)] });
+  }
 });
 
 // .warns

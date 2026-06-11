@@ -182,6 +182,31 @@ export async function removeLastWarning(userId) {
   }
 }
 
+// Edita o motivo de um aviso específico
+export async function editWarning(userId, warningNumber, newReason) {
+  const client = getClient();
+
+  try {
+    const { data, error } = await client
+      .from('warnings')
+      .update({ reason: newReason })
+      .eq('user_id', userId)
+      .eq('warning_number', warningNumber)
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      throw error;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error editing warning:', error);
+    throw error;
+  }
+}
+
 // converte string de tempo (1s, 1m, 1h, 1d, 1M, 1y)
 export function parseTime(timeString) {
   const match = timeString.match(/^(\d+)([smhdMy])$/);
