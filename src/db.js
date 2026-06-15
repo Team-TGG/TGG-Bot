@@ -610,49 +610,6 @@ export async function getLastMotd(discordId) {
   return data || null;
 }
 
-export async function getRandomUnusedMotd() {
-  const supabase = getClient();
-
-  let { data, error } = await supabase
-    .from('motd')
-    .select('id, discord_id, name, message')
-    .eq('used', false);
-
-  if (error) throw error;
-
-  if (!data || data.length === 0) {
-    const { error: resetError } = await supabase
-      .from('motd')
-      .update({ used: false })
-      .eq('used', true);
-
-    if (resetError) throw resetError;
-
-    const retry = await supabase
-      .from('motd')
-      .select('id, discord_id, name, message')
-      .eq('used', false);
-
-    if (retry.error) throw retry.error;
-    data = retry.data;
-  }
-
-  if (!data || data.length === 0) return null;
-
-  return data[Math.floor(Math.random() * data.length)];
-}
-
-export async function markMotdUsed(id) {
-  const supabase = getClient();
-
-  const { error } = await supabase
-    .from('motd')
-    .update({ used: true })
-    .eq('id', id);
-
-  if (error) throw error;
-}
-
 /**
  * BIRTHDAYS
  */

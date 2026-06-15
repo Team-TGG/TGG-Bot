@@ -60,10 +60,11 @@ export const birthdays = {
   channelId: '1437416350183325727',
 };
 
-export const motd = {
-  channelId: birthdays.channelId,
-};
-
 export const tggCoinsEvents = {
   anunciosChannelId: '1437415122837573695', // Canal de anúncios
+};
+
+export const motd = {
+  url: 'https://teamtgg.com.br/api/motd.php',
+  channelId: birthdays.channelId,
 };
