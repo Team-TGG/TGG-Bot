@@ -1,6 +1,6 @@
 // Handlers
 import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleEditWarn, handleMute, handleUnmute, handleBan, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleAbrirTickets, handleFecharTickets, handleWam, handleJustificativas } from './admin.js';
-import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes, handleDuel } from './public.js';
+import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes, handleDuel, handleCrz } from './public.js';
 import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins, handleAddAccount, handleQuiz, handleInventory } from './tggCoinsCommands.js';
 
 // Command Aliases
@@ -162,6 +162,7 @@ export const COMMAND_ALIASES = {
   'mentira': 'justificativas',
   'desculpas': 'justificativas',
   'desculpa': 'justificativas',
+  'crz': 'crz',
 };
 
 // Lista de comandos
@@ -179,6 +180,7 @@ export const commands = {
   'corrigir-id': handleCorrigirID,
   redes: handleRedes,
   duel: handleDuel,
+  crz: handleCrz,
 
   // Admin
   sync: handleSync,

@@ -1,9 +1,10 @@
 // public.js - Comandos públicos
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
-import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID } from './db.js';
+import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID, incrementCrz } from './db.js';
 import { getGuildWeeklyGuildPoints, getDuelGuildWeeklyGuildPoints, getPlayerWeeklyGuildPoints } from './guild.js';
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI, fetchPlayerGuildStatsNewAPI } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
+
 import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage } from '../utils/discordUtils.js';
 import { isAdmin, adminOnly } from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
@@ -845,6 +846,67 @@ export async function handleCorrigirID(message, args) {
         createErrorEmbed('Erro ao ajustar ID', err.message)
       ]
     });
+  }
+}
+
+const crzCooldown = new Map();
+const CRZ_COOLDOWN_MS = 5000;
+
+// .crz
+export async function handleCrz(message) {
+  const now = Date.now();
+  const last = crzCooldown.get(message.author.id);
+  if (last && now - last < CRZ_COOLDOWN_MS) {
+    const remaining = Math.ceil((CRZ_COOLDOWN_MS - (now - last)) / 1000);
+    return message.reply({ embeds: [createErrorEmbed('Calma lá!', `Aguarde **${remaining}s** para usar novamente.`)] });
+  }
+  crzCooldown.set(message.author.id, now);
+  try {
+    const count = await incrementCrz();
+
+    const guild = message.client.guilds.cache.get(discordConfig.guildId);
+    const member = guild ? await guild.members.fetch(message.author.id).catch(() => null) : null;
+
+    if (count === 67) {
+      if (member) await member.timeout(67 * 1000, 'crz 67');
+      await message.reply({
+        content: `vai farmando aura mutado 🫃 (${count})`,
+        embeds: [new EmbedBuilder().setImage('https://media.discordapp.net/attachments/1260084537648611409/1437215582326886410/bleedIMG4xqM7x8El2rPJ.gif?ex=6a327e91&is=6a312d11&hm=a8ebf0e0bab88d4aacdca6f7341522bd865e34ffc6fdf008384500a501159d44&=&width=598&height=479')]
+      });
+      return;
+    }
+
+    if (count === 200) {
+      await message.reply(`crz liberou o precioso para ${count}, escolha alguem pra levar 5min de mute (mencione em 30s)`);
+      const collected = await message.channel.awaitMessages({
+        filter: m => m.author.id === message.author.id && m.mentions.members?.size > 0,
+        max: 1,
+        time: 30000,
+        errors: []
+      });
+      const choice = collected.first();
+      if (choice) {
+        const victim = choice.mentions.members.first();
+        if (victim && !victim.user.bot) {
+          await victim.timeout(5 * 60 * 1000, 'crz 200');
+          await message.channel.send(`${victim} foi escolhido, 5min de mute`);
+        }
+      } else {
+        await message.channel.send('tempo esgotado, ninguém levou mute dessa vez');
+      }
+      return;
+    }
+
+    if (count === 666) {
+      if (member) await member.timeout((6 * 60 + 66) * 1000, 'crz 666');
+      await message.reply(`crz liberou o precioso para ${count}, mute de 6min e 66s`);
+      return;
+    }
+
+await message.reply(`crz liberou o precioso para ${count}`);
+  } catch (err) {
+    console.error('[CRZ Error]', err);
+    await message.reply({ embeds: [createErrorEmbed('Erro', 'Não foi possível atualizar o contador.')] });
   }
 }
 

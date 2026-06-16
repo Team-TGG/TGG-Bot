@@ -723,6 +723,22 @@ export async function corrigirID(discord_id, main_id) {
   return data;
 }
 
+export async function incrementCrz() {
+  const supabase = getClient();
+  const { data: row, error: selErr } = await supabase
+    .from('contador_crz')
+    .select('count')
+    .single();
+  if (selErr) throw selErr;
+  const newCount = row.count + 1;
+  const { error: updErr } = await supabase
+    .from('contador_crz')
+    .update({ count: newCount })
+    .eq('id', 1);
+  if (updErr) throw updErr;
+  return newCount;
+}
+
 // Função para puxar todas as justificativas dos inativos da guilda (.active)
 export async function getMemberJustifications(brawlhallaId) {
   const supabase = getClient();
