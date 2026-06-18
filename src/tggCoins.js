@@ -409,6 +409,7 @@ export async function getShopItemByPosition(position, category = 'GERAL') {
 export function getCategory(type) {
   if (type.startsWith('ROLE')) return 'CARGOS';
   if (type === 'SERVICE') return 'SERVICOS';
+  if (type === 'COACH') return 'COACHING';
   return 'GERAL';
 }
 
@@ -1159,4 +1160,67 @@ export async function getInventory(discordId) {
   if (error) throw error;
 
   return data ?? [];
+}
+
+/**
+ * Pega a faixa de preço dos treinadores disponíveis na loja
+ */
+export async function getCoachPriceRange(shopId) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('tgg_coins_coach_prices')
+    .select('price')
+    .eq('shop_id', shopId);
+
+  if (error) throw error;
+
+  if (!data.length) {
+    return null;
+  }
+
+  const prices = data.map(row => Number(row.price));
+
+  return {
+    min: Math.min.apply(null, prices),
+    max: Math.max.apply(null, prices)
+  };
+}
+
+/**
+ * Pegar os coaches disponíveis para um item específico da loja, com os dados do coach (nome, descrição, etc)
+ */
+export async function getCoachesByShopId(shopId) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('tgg_coins_coach_prices')
+    .select(`coach_id, tgg_coins_coachs (discord_id, name, description)`)
+    .eq('shop_id', shopId);
+
+  if (error) {
+    throw error;
+  }
+
+  return data.map(row => row.tgg_coins_coachs);
+}
+
+/**
+ * Pega o preço de um coach específico para um item da loja
+ */
+export async function getCoachPrice(shopId, coachId) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('tgg_coins_coach_prices')
+    .select('price')
+    .eq('shop_id', shopId)
+    .eq('coach_id', coachId)
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
 }

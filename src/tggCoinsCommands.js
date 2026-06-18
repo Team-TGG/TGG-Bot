@@ -578,7 +578,8 @@ export async function handleShop(message, args) {
     const categoryNames = {
       GERAL: '📦 Geral',
       CARGOS: '🎭 Cargos',
-      SERVICOS: '🛠️ Serviços'
+      SERVICOS: '🛠️ Serviços',
+      COACHING: '🎓 Coaching',
     };
 
     let category = 'GERAL';
@@ -622,6 +623,16 @@ export async function handleShop(message, args) {
       if (page > totalPages) page = totalPages;
 
       const pageItems = getPageItems();
+
+      const coachRanges = {};
+
+      for (let i = 0; i < pageItems.length; i++) {
+        const item = pageItems[i];
+
+        if (item.type === 'COACH') {
+          coachRanges[item.id] = await tggCoins.getCoachPriceRange(item.id);
+        }
+      }
 
       const hasEvent = allItems.data.some(item => item.type === 'EVENT' || item.type === 'EVENT_ROLE');
 
@@ -672,8 +683,20 @@ export async function handleShop(message, args) {
 
         let priceText;
 
+        // Se for um item de coach, mostra a faixa de preço ao invés de um preço fixo, e uma observação que o preço varia conforme o coach escolhido, já que cada coach tem um preço diferente e o usuário escolhe o coach depois de comprar o item, então não tem como mostrar um preço fixo na loja
+        if (item.type === 'COACH') {
+          const range = coachRanges[item.id];
+
+          if (range) {
+            priceText =
+              `${EMOJIS.TGGcoin} **${range.min.toLocaleString('pt-BR')} ~ ${range.max.toLocaleString('pt-BR')} TGG-Coins**\n` +
+              `👨‍🏫 Valor varia conforme o coach escolhido`;
+          } else {
+            priceText = `👨‍🏫 Valor definido pelo coach`;
+          }
+        }
         // Se for um item de evento, mostra o preço em tickets ao invés de coins, e não mostra desconto de booster (desconto não se aplica a itens de evento)
-        if (item.type === 'EVENT' || item.type === 'EVENT_ROLE') {
+        else if (item.type === 'EVENT' || item.type === 'EVENT_ROLE') {
           priceText = `${EMOJIS.tickets} **${item.price.toLocaleString('pt-BR')} Tickets**`;
         } else if (finalPrice === 0) {
           priceText = `🆓 **Grátis para Booster**`;
@@ -707,7 +730,8 @@ export async function handleShop(message, args) {
         .addOptions([
           { label: '📦 Geral', value: 'GERAL', default: category === 'GERAL' },
           { label: '🎭 Cargos', value: 'CARGOS', default: category === 'CARGOS' },
-          { label: '🛠️ Serviços', value: 'SERVICOS', default: category === 'SERVICOS' }
+          { label: '🛠️ Serviços', value: 'SERVICOS', default: category === 'SERVICOS' },
+          { label: '🎓 Coaching', value: 'COACHING', default: category === 'COACHING'}
         ]);
 
       const buttons = new ActionRowBuilder().addComponents(
@@ -840,6 +864,12 @@ export async function handleBuy(message, args) {
 
     // Preço final (verifica se o usuario tem desconto (booster) e aplica o desconto)
     const finalPrice = tggCoins.getDiscountedPrice(member, item);
+
+    // Se for um item de coach, redireciona para o handler específico de coach, que vai lidar com a escolha do coach e o preço
+    if (item.type === 'COACH') {
+      const ctx = {message, item, member, discordId};
+      return buyHandlers.COACH(ctx);
+    }
 
     // Se for um item único
     if (item.is_unique) {

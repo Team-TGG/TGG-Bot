@@ -1,7 +1,7 @@
 // Comandos da TGG-Coins
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder, ButtonStyle } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder, ButtonStyle, ChannelType, PermissionsBitField } from 'discord.js';
 import * as tggCoins from '../tggCoins.js';
-import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from '../../utils/discordUtils.js';
+import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage, createPagination, awaitConfirmation } from '../../utils/discordUtils.js';
 import { adminOnly, leaderOnly, ROLE_HIERARCHY } from '../../utils/permissions.js';
 import { STAFF_ROLE_IDS } from '../../config/index.js';
 import { EMOJIS } from '../../config/emojis.js';
@@ -12,6 +12,17 @@ export const TGG_COINS_ROLES = {
   VIP:          '1490462353995731054',  // VIP
   BOOSTER:      '1437560273031528470'   // Booster
 };
+
+// Função para sanitizar nomes para criação de canais (remover acentos, caracteres especiais, etc.)
+function sanitizeChannelName(name) {
+  return name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
 
 // Buy Handlers
 
@@ -591,6 +602,212 @@ export async function handleBuyEventRole(ctx) {
   }
 }
 
+// Pra itens tipo COACH
+export async function handleBuyCoach(ctx) {
+  const { message, item, discordId } = ctx;
+
+  const coaches = await tggCoins.getCoachesByShopId(item.id);
+
+  if (!coaches.length) {
+    return message.reply({
+      embeds: [createErrorEmbed('Sem coaches', 'Nenhum coach disponível para este serviço.')]
+    });
+  }
+
+  const options = [];
+
+  for (const coach of coaches) {
+    try {
+      const member = await message.guild.members.fetch(coach.discord_id);
+      const coachPrice = await tggCoins.getCoachPrice(item.id, coach.discord_id);
+
+      options.push({
+        label: member.displayName,
+        description: `${coachPrice.price.toLocaleString('pt-BR')} TGG-Coins`,
+        value: coach.discord_id
+      });
+
+    } catch {
+      // ignora coaches fora da guilda
+    }
+  }
+
+  if (!options.length) {
+    return message.reply({
+      embeds: [createErrorEmbed('Erro', 'Nenhum coach válido encontrado.')]
+    });
+  }
+
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(`coach_${item.id}`)
+    .setPlaceholder('Escolha o coach')
+    .addOptions(options);
+
+  const row = new ActionRowBuilder().addComponents(select);
+
+  const msg = await message.reply({
+    content: `Selecione o coach para **${item.name}**:`,
+    components: [row]
+  });
+
+  const collector = msg.createMessageComponentCollector({
+    time: 60000
+  });
+
+  collector.on('collect', async (interaction) => {
+    if (interaction.user.id !== discordId) {
+      return interaction.reply({
+        content: 'Você não pode usar isso.',
+        ephemeral: true
+      });
+    }
+
+    const coachDiscordId = interaction.values[0];
+
+    const coach = coaches.find(
+      c => c.discord_id === coachDiscordId
+    );
+
+    if (!coach) {
+      return interaction.reply({
+        content: 'Coach não encontrado.',
+        ephemeral: true
+      });
+    }
+
+    if (coach.discord_id === discordId) {
+      return interaction.reply({
+        content: 'Você não pode contratar a si mesmo.',
+        ephemeral: true
+      });
+    }
+
+    const coachPrice = await tggCoins.getCoachPrice(item.id, coach.discord_id);
+    const finalPrice = Number(coachPrice.price);
+    const balanceNow = await tggCoins.getBalance(discordId);
+
+    if (balanceNow < finalPrice) {
+      return interaction.reply({
+        embeds: [createErrorEmbed('Saldo insuficiente', `Você precisa de ${finalPrice.toLocaleString('pt-BR')} TGG-Coins.`)],
+        ephemeral: true
+      });
+    }
+
+    await interaction.update({
+      content: 'Abrindo confirmação...',
+      components: []
+    });
+
+    const confirmEmbed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle('🛒 Confirmar Coaching')
+      .setDescription(
+        [
+          `Serviço: **${item.name}**`,
+          `Coach: <@${coach.discord_id}>`,
+          `Valor: **${finalPrice.toLocaleString('pt-BR')} TGG-Coins**`,
+          '',
+          'Deseja confirmar a contratação?'
+        ].join('\n')
+      );
+
+    const {confirmed, interaction: confirmInteraction} = 
+    await awaitConfirmation(message, confirmEmbed,
+      {
+        authorId: discordId,
+        time: 30000
+      }
+    );
+
+    if (confirmed === null) {
+      return;
+    }
+
+    if (!confirmed) {
+      return confirmInteraction.update({
+        embeds: [createErrorEmbed('Compra cancelada', 'A contratação foi cancelada.')],
+        components: []
+      });
+    }
+
+    // Debita comprador
+    await tggCoins.addTransaction(discordId, -finalPrice, 'COACH_PAYMENT', `Coach: ${item.name}`);
+    const newBalance = await tggCoins.updateBalance(discordId, -finalPrice);
+
+    // Credita coach
+    await tggCoins.addTransaction(coach.discord_id, finalPrice, 'COACH_RECEIVED', `Coach: ${item.name}`);
+    await tggCoins.updateBalance(coach.discord_id, finalPrice);
+
+    // Histórico de compra
+    await tggCoins.createPurchase(discordId, item);
+
+    // Pegando informações para criar o canal entre instutor e aluno
+    const coachMember = await message.guild.members.fetch(coach.discord_id);
+    const buyerMember = await message.guild.members.fetch(discordId);
+    const channelName = `coach-${sanitizeChannelName(coachMember.displayName)}-${sanitizeChannelName(buyerMember.displayName)}`;
+
+    const channel = await message.guild.channels.create({
+      name: channelName,
+      type: ChannelType.GuildText,
+      parent: '1459959579541504043',
+
+      permissionOverwrites: [
+        {
+          id: message.guild.roles.everyone.id,
+          deny: [PermissionsBitField.Flags.ViewChannel]
+        },
+        {
+          id: coach.discord_id,
+          allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory]
+        },
+        {
+          id: discordId,
+          allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory]
+        }
+      ]
+    });
+
+    await channel.send({
+      content: `<@${coach.discord_id}> <@${discordId}>`,
+      embeds: [
+        createSuccessEmbed(
+          'Coaching iniciado',
+          [
+            `👨‍🏫 Coach: <@${coach.discord_id}>`,
+            `🎮 Aluno: <@${discordId}>`,
+            '',
+            `Serviço: **${item.name}**`,
+            '',
+            'Utilizem este canal para combinar horários e realizar o coaching.'
+          ].join('\n')
+        )
+      ]
+    });
+
+    await confirmInteraction.update({
+      embeds: [
+        createSuccessEmbed(
+          'Coach contratado!',
+          [
+            `Serviço: **${item.name}**`,
+            `Coach: <@${coach.discord_id}>`,
+            `Valor: **${finalPrice.toLocaleString('pt-BR')} TGG-Coins**`,
+            '',
+            `Canal criado: ${channel}`,
+            '',
+            `Saldo atual: **${newBalance.toLocaleString('pt-BR')} TGG-Coins**`
+          ].join('\n')
+        )
+      ],
+      components: []
+    });
+
+    collector.stop();
+  });
+
+  return;
+}
+
 // Mapa de handlers
 export const buyHandlers = {
     SERVICE: handleBuyService,
@@ -601,7 +818,8 @@ export const buyHandlers = {
     ROLE_TABLE_MASTER: handleBuyRoleTableMaster,
     ROLE: handleBuyRole,
     EXITLAG: handleBuyExitlag,
-    EVENT_ROLE: handleBuyEventRole
+    EVENT_ROLE: handleBuyEventRole,
+    COACH: handleBuyCoach
 };
 
 
