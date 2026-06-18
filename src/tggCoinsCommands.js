@@ -312,7 +312,15 @@ export async function handleDaily(message) {
 // ---- .balance ----
 export async function handleBalance(message) {
   try {
-    const discordId = message.author.id;
+    let discordId = message.author.id;
+    const args = message.content.trim().split(/\s+/);
+    const mentionMatch = message.content.match(/<@!?(\d+)>/);
+
+    if (mentionMatch) {
+      discordId = mentionMatch[1];
+    } else if (args[1] && /^\d+$/.test(args[1])) {
+      discordId = args[1];
+    }
 
     const user = await getUserByDiscordId(discordId);
     if (!user || !user.active) {
@@ -320,6 +328,14 @@ export async function handleBalance(message) {
         embeds: [createErrorEmbed('Acesso Negado', 'Você não está na guilda.')]
       });
     }
+
+    const targetMember = await message.guild.members
+      .fetch(discordId)
+      .catch(() => null);
+
+    const displayName = targetMember
+      ? targetMember.displayName
+      : user.nickname || 'Usuário';
 
     const balance = await tggCoins.getBalance(discordId);
     const activeEvent = await tggCoins.getActiveEvent();
@@ -1207,7 +1223,24 @@ export async function handleConquistas(message) {
   const loading = await message.reply({ embeds: [createLoadingEmbed(`${EMOJIS.loading} Carregando conquistas...`)] });
 
   try {
-    const discordId = message.author.id;
+    let discordId = message.author.id;
+
+    const args = message.content.trim().split(/\s+/);
+
+    const mentionMatch = message.content.match(/<@!?(\d+)>/);
+
+    if (mentionMatch) {
+      discordId = mentionMatch[1];
+    } else if (args[1] && /^\d+$/.test(args[1])) {
+      discordId = args[1];
+    }
+
+    const targetMember = await message.guild.members
+    .fetch(discordId)
+    .catch(() => null);
+
+    const displayName = targetMember ? targetMember.displayName : 'Usuário';
+
     const user = await getUserByDiscordId(discordId);
 
     // Garante que os aliases estão carregados
@@ -1327,7 +1360,7 @@ export async function handleConquistas(message) {
     function historyEmbed() {
       return new EmbedBuilder()
         .setColor(0x5865f2)
-        .setTitle('🏆 Missões Concluídas')
+        .setTitle(`🏆 Missões Concluídas - ${displayName}`)
         .setDescription(buildHistory(currentPage))
         .setFooter({
           text: `Página ${currentPage + 1} de ${Math.max(1, Math.ceil((history?.length || 0) / pageSize))}`
@@ -1336,7 +1369,7 @@ export async function handleConquistas(message) {
 
     const activeEmbed = new EmbedBuilder()
       .setColor(0x00ff99)
-      .setTitle('🎯 Missões da Semana')
+      .setTitle(`🎯 Missões da Semana - ${displayName}`)
       .setDescription(activeText || 'Nenhuma missão ativa.')
       .setFooter({
         text: `Semana iniciada em ${formatDateBR(weekStart)}`

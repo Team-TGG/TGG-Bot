@@ -63,7 +63,8 @@ export async function handleHelp(message, args, client) {
       { name: `${EMOJIS.arrowRight} .warns`, value: 'Mostrar a listagem de todos os warns', inline: false },
       { name: `${EMOJIS.arrowRight} .mute <@user> <duração> [motivo]`, value: 'Silenciar um usuário por certo tempo', inline: false },
       { name: `${EMOJIS.arrowRight} .unmute <@user>`, value: 'Dessilenciar um usuário', inline: false },
-      { name: `${EMOJIS.arrowRight} .ban <@user> [motivo]`, value: 'Banir um usuário do servidor (motivo é opcional)', inline: false }
+      { name: `${EMOJIS.arrowRight} .ban <@user> [motivo]`, value: 'Banir um usuário do servidor (motivo é opcional)', inline: false },
+      { name: `${EMOJIS.arrowRight} .bam <@user> [motivo]`, value: 'Ban falso (só pra brincar)', inline: false },
     )
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
     .setTimestamp();
@@ -128,7 +129,7 @@ export async function handleHelp(message, args, client) {
     { label: 'TGG Coins', value: 'tggcoins', emoji: EMOJIS.TGGcoin, description: 'Comandos TGG Coins' }
   ];
 
-  // Só adiciona se for admin
+  // Páginas exclusivas para admins
   if (isUserAdmin) {
     options.push(
       { label: 'Sincronização (admin).', value: 'sync', emoji: EMOJIS.hourglass, description: 'Comandos de sincronização' },

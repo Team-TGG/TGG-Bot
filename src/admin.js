@@ -830,10 +830,10 @@ export const handleBan = adminOnly(async (message, args, client) => {
 export const handleBam = adminOnly(async (message, args, client) => {
   try {
 
-    // Apenas supervisores ou superiores podem usar esse comando
-    if (!hasPermission(message.member, 3)) {
+    // Apenas moderadores ou superiores podem usar esse comando
+    if (!hasPermission(message.member, 2)) {
       return message.reply({
-        embeds: [createErrorEmbed('Acesso Negado', 'Apenas supervisores ou superiores podem usar o .bam.')]
+        embeds: [createErrorEmbed('Acesso Negado', 'Apenas moderadores ou superiores podem usar o .bam.')]
       });
     }
 
@@ -1696,4 +1696,287 @@ export const handleJustificativas = adminOnly(async (message, args) => {
       ]
     });
   }
+});
+
+// .resumo
+export const handleResumo = adminOnly(async (message, args) => {
+  const pages = [];
+
+  // Página 1 - Visão Geral
+  pages.push(
+    new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle('🏰 Team TGG')
+      .setDescription(
+        '**Bem-vindo à Team TGG!**\n\n' +
+        'Esta é uma página de exemplo contendo absolutamente qualquer tipo de informação que você queira exibir.\n\n' +
+        'Você pode usar esta página para mostrar estatísticas, regras, novidades, avisos ou qualquer outra coisa.'
+      )
+      .setThumbnail(message.guild.iconURL())
+      .addFields(
+        {
+          name: '👥 Membros',
+          value: '523',
+          inline: true
+        },
+        {
+          name: '📅 Fundação',
+          value: '2021',
+          inline: true
+        },
+        {
+          name: '🏆 Ranking',
+          value: '#1',
+          inline: true
+        },
+        {
+          name: '📢 Aviso',
+          value: 'Evento especial começando em breve.',
+          inline: false
+        }
+      )
+      .setImage('https://via.placeholder.com/1000x250')
+      .setFooter({ text: 'Página 1/6 • Visão Geral' })
+      .setTimestamp()
+  );
+
+  // Página 2 - Economia
+  pages.push(
+    new EmbedBuilder()
+      .setColor(0xf1c40f)
+      .setTitle('💰 Economia')
+      .setDescription(
+        'Sistema econômico da guilda.\n\n' +
+        'Aqui você pode mostrar:\n' +
+        '• Coins distribuídas\n' +
+        '• Tickets\n' +
+        '• Compras\n' +
+        '• Loja\n' +
+        '• Estatísticas'
+      )
+      .addFields(
+        { name: '💵 Coins Distribuídas', value: '1.250.000', inline: true },
+        { name: '🎟️ Tickets Emitidos', value: '15.492', inline: true },
+        { name: '🛒 Compras', value: '4.832', inline: true },
+        { name: '🏪 Loja', value: 'Itens cosméticos, títulos, cores e muito mais.', inline: false }
+      )
+      .setFooter({ text: 'Página 2/6 • Economia' })
+      .setTimestamp()
+  );
+
+  // Página 3 - Missões
+  pages.push(
+    new EmbedBuilder()
+      .setColor(0x2ecc71)
+      .setTitle('🎯 Missões')
+      .setDescription(
+        'Missões semanais e conquistas permanentes.\n\n' +
+        'Exemplo de informações que podem aparecer aqui.'
+      )
+      .addFields(
+        { name: '📌 Semanais', value: '12 ativas', inline: true },
+        { name: '🏆 Conquistas', value: '84 cadastradas', inline: true },
+        { name: '💎 Recompensas', value: 'Coins + Tickets', inline: true },
+        { name: 'ℹ️ Informações', value: 'Complete missões para subir no ranking.', inline: false }
+      )
+      .setFooter({ text: 'Página 3/6 • Missões' })
+      .setTimestamp()
+  );
+
+  // Página 4 - Eventos
+  pages.push(
+    new EmbedBuilder()
+      .setColor(0xe74c3c)
+      .setTitle('🎉 Eventos')
+      .setDescription(
+        'Área destinada aos eventos especiais da guilda.'
+      )
+      .addFields(
+        { name: '🔥 Evento Atual', value: 'Festival de Verão', inline: true },
+        { name: '👥 Participantes', value: '245', inline: true },
+        { name: '🎁 Recompensas', value: 'Exclusivas', inline: true },
+        { name: '📅 Próximo Evento', value: '01/07/2026', inline: false }
+      )
+      .setFooter({ text: 'Página 4/6 • Eventos' })
+      .setTimestamp()
+  );
+
+  // Página 5 - Regras
+  pages.push(
+    new EmbedBuilder()
+      .setColor(0x95a5a6)
+      .setTitle('📜 Regras')
+      .setDescription(
+        'Exemplo de regras da guilda.\n\n' +
+        '1. Respeite os membros.\n' +
+        '2. Não utilize cheats.\n' +
+        '3. Não compartilhe contas.\n' +
+        '4. Respeite a staff.\n' +
+        '5. Siga as diretrizes do servidor.'
+      )
+      .setFooter({ text: 'Página 5/6 • Regras' })
+      .setTimestamp()
+  );
+
+  // Página 6 - Comandos
+  pages.push(
+    new EmbedBuilder()
+      .setColor(0x9b59b6)
+      .setTitle('🤖 Comandos')
+      .setDescription(
+        'Lista de comandos disponíveis.'
+      )
+      .addFields(
+        {
+          name: '👤 Usuário',
+          value:
+            '`.balance`\n' +
+            '`.inventory`\n' +
+            '`.conquistas`\n' +
+            '`.stats`',
+          inline: true
+        },
+        {
+          name: '🎯 Economia',
+          value:
+            '`.shop`\n' +
+            '`.equip`\n' +
+            '`.buy`\n' +
+            '`.eventshop`',
+          inline: true
+        },
+        {
+          name: '👮 Staff',
+          value:
+            '`.ban`\n' +
+            '`.bam`\n' +
+            '`.justificativas`\n' +
+            '`.coins`',
+          inline: true
+        }
+      )
+      .setFooter({ text: 'Página 6/6 • Comandos' })
+      .setTimestamp()
+  );
+
+  let currentPage = 0;
+
+  function buildComponents(page) {
+
+    const menuRow = new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId('overview')
+          .setLabel('🏰')
+          .setStyle(ButtonStyle.Primary),
+
+        new ButtonBuilder()
+          .setCustomId('economy')
+          .setLabel('💰')
+          .setStyle(ButtonStyle.Success),
+
+        new ButtonBuilder()
+          .setCustomId('missions')
+          .setLabel('🎯')
+          .setStyle(ButtonStyle.Success),
+
+        new ButtonBuilder()
+          .setCustomId('events')
+          .setLabel('🎉')
+          .setStyle(ButtonStyle.Danger),
+
+        new ButtonBuilder()
+          .setCustomId('rules')
+          .setLabel('📜')
+          .setStyle(ButtonStyle.Secondary)
+      );
+
+    const navRow = new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId('prev')
+          .setLabel('⬅️')
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(page === 0),
+
+        new ButtonBuilder()
+          .setCustomId('commands')
+          .setLabel('🤖 Comandos')
+          .setStyle(ButtonStyle.Primary),
+
+        new ButtonBuilder()
+          .setCustomId('next')
+          .setLabel('➡️')
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(page === pages.length - 1)
+      );
+
+    return [menuRow, navRow];
+  }
+
+  const msg = await message.reply({
+    embeds: [pages[currentPage]],
+    components: buildComponents(currentPage)
+  });
+
+  const collector = msg.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    time: 300000
+  });
+
+  collector.on('collect', async interaction => {
+
+    if (interaction.user.id !== message.author.id) {
+      return interaction.reply({
+        content: 'Apenas quem executou o comando pode usar os botões.',
+        ephemeral: true
+      });
+    }
+
+    switch (interaction.customId) {
+
+      case 'overview':
+        currentPage = 0;
+        break;
+
+      case 'economy':
+        currentPage = 1;
+        break;
+
+      case 'missions':
+        currentPage = 2;
+        break;
+
+      case 'events':
+        currentPage = 3;
+        break;
+
+      case 'rules':
+        currentPage = 4;
+        break;
+
+      case 'commands':
+        currentPage = 5;
+        break;
+
+      case 'prev':
+        currentPage--;
+        break;
+
+      case 'next':
+        currentPage++;
+        break;
+    }
+
+    await interaction.update({
+      embeds: [pages[currentPage]],
+      components: buildComponents(currentPage)
+    });
+  });
+
+  collector.on('end', async () => {
+    await msg.edit({
+      components: []
+    }).catch(() => {});
+  });
 });

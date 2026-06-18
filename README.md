@@ -68,6 +68,7 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 - [x] Adicionar `.games` mensal/seasonal.
 - [x] Adicionar botão para voltar para "essa semana" no `.games`.
 - [x] Criar um `.bam` (.ban falso)
+- [x] `.bal @user` e `.conquistas @user`para mostrar dados de outro usuário
 
 ### Correções e Ajustes
 - [ ] Caso o usuário não tenha registro para a semana, mostrar esse erro no `.conquistas`.
@@ -88,7 +89,6 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 - [ ] Discutir com staff/helpers os preços e o que incluir no Coach.
 - [ ] Melhorar a automação do histórico da guilda, deixando mais rápido e criando views para evitar ler muitas linhas.
 - [ ] Criação de uma aba no Leaderboard para streaks
-- [ ] `.bal @user` para mostrar as moedas de outro usuário
 
 ### Futuro
 - [ ] Comandos slash.
