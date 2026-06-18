@@ -1,5 +1,5 @@
 // Handlers
-import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleEditWarn, handleMute, handleUnmute, handleBan, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleAbrirTickets, handleFecharTickets, handleWam, handleJustificativas } from './admin.js';
+import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleEditWarn, handleMute, handleUnmute, handleBan, handleBam, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleAbrirTickets, handleFecharTickets, handleWam, handleJustificativas } from './admin.js';
 import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes, handleDuel, handleCrz } from './public.js';
 import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins, handleAddAccount, handleQuiz, handleInventory } from './tggCoinsCommands.js';
 
@@ -42,6 +42,8 @@ export const COMMAND_ALIASES = {
   'mute': 'mute',
   'unmute': 'unmute',
   'ban': 'ban',
+  'banir': 'ban',
+  'bam': 'bam',
   'inac-all': 'inac-all',
   'inac-list': 'inac-list',
   'concluida': 'concluida',
@@ -69,6 +71,7 @@ export const COMMAND_ALIASES = {
   'dailhe': 'daily', // Violet
   'daocu': 'daily', // Picturii
   'pizzolho': 'daily', // ADM_Bart
+  'dekko': 'daily', // Dekkosun
   'balance': 'balance',
   'bal': 'balance',
   'baal': 'balance',
@@ -79,6 +82,8 @@ export const COMMAND_ALIASES = {
   'histórico': 'historico',
   'history': 'historico',
   'hist': 'historico',
+  'compra': 'historico',
+  'compras': 'historico',
   'leaderboard': 'leaderboard',
   'lb': 'leaderboard',
   'shop': 'shop',
@@ -90,6 +95,8 @@ export const COMMAND_ALIASES = {
   'inventario': 'inventory',
   'inventário': 'inventory',
   'inv': 'inventory',
+  'cores': 'inventory',
+  'cor': 'inventory',
   'conquistas': 'conquistas',
   'conquista': 'conquistas',
   'achievements': 'conquistas',
@@ -195,6 +202,7 @@ export const commands = {
   mute: handleMute,
   unmute: handleUnmute,
   ban: handleBan,
+  bam: handleBam,
   'inac-all': handleInacAll,
   'inac-list': handleInacList,
   concluida: handleConcluida,

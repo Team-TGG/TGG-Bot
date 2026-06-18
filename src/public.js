@@ -1,9 +1,10 @@
 // public.js - Comandos públicos
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
-import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID, incrementCrz } from './db.js';
+import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getMonthWeekStartDateTime, getCurrentSeason, getSeasonWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID, incrementCrz } from './db.js';
 import { getGuildWeeklyGuildPoints, getDuelGuildWeeklyGuildPoints, getPlayerWeeklyGuildPoints } from './guild.js';
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI, fetchPlayerGuildStatsNewAPI } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
+import { calculateGames } from './handlers/publicHandlers.js';
 
 import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage } from '../utils/discordUtils.js';
 import { isAdmin, adminOnly } from '../utils/permissions.js';
@@ -104,6 +105,7 @@ export async function handleHelp(message, args, client) {
       { name: `${EMOJIS.arrowRight} .quiz`, value: 'Responder um quiz sobre como funcionam as coisas na guilda', inline: false },
       { name: `${EMOJIS.arrowRight} .shop`, value: 'Ver a loja de itens', inline: false },
       { name: `${EMOJIS.arrowRight} .buy <número do item>`, value: 'Fazer uma compra de um item da loja (usar o número que aparece ao lado do item)', inline: false },
+      { name: `${EMOJIS.arrowRight} .inventory (.inv)`, value: 'Equipar e/ou trocar suas cores no servidor', inline: false },
     )
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
     .setTimestamp();
@@ -383,12 +385,7 @@ export async function handleGames(message, args) {
 
     if (requestedAnotherUser && !isUserAdmin) {
       return await message.reply({
-        embeds: [
-          createErrorEmbed(
-            'Acesso negado',
-            'Você só pode ver seus próprios dados.'
-          )
-        ]
+        embeds: [createErrorEmbed('Acesso negado', 'Você só pode ver seus próprios dados.')]
       });
     }
 
@@ -434,10 +431,10 @@ export async function handleGames(message, args) {
 
     const current3v3 = ranked['rotating_ranked']?.games ?? 0;
 
-    const totalGames = currentGames - (initial.games ?? 0);
     const games1v1 = current1v1 - (initial.initial_games_1v1 ?? 0);
     const games2v2 = current2v2 - (initial.initial_games_2v2 ?? 0);
     const games3v3 = current3v3 - (initial.initial_games_3v3 ?? 0);
+    const totalGames = currentGames - (initial.games ?? 0) + games1v1 + games2v2 + games3v3;
     const casualGames = totalGames - games1v1 - games2v2 - games3v3;
 
     const embed = new EmbedBuilder()
@@ -455,17 +452,32 @@ export async function handleGames(message, args) {
         text: `Dados contabilizados a partir de: ${formatCreatedAtBR(initial.created_at)}`
       });
 
-    let components = [];
+    let components = [
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('games_week')
+          .setLabel('Semanal')
+          .setStyle(ButtonStyle.Primary),
+
+        new ButtonBuilder()
+          .setCustomId('games_month')
+          .setLabel('Mensal')
+          .setStyle(ButtonStyle.Secondary),
+
+        new ButtonBuilder()
+          .setCustomId('games_season')
+          .setLabel('Season')
+          .setStyle(ButtonStyle.Success)
+      )
+    ];
 
     if (isUserAdmin) {
-      components = [
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`prev_week`)
-            .setLabel('Semana passada')
-            .setStyle(ButtonStyle.Danger)
-        )
-      ];
+      components[0].addComponents(
+        new ButtonBuilder()
+          .setCustomId('prev_week')
+          .setLabel('Semana passada')
+          .setStyle(ButtonStyle.Danger)
+      );
     }
 
     const sentMessage = await sendCleanMessage(loadingMsg, {
@@ -473,32 +485,33 @@ export async function handleGames(message, args) {
       components
     });
 
-    // Botão de semana passada (apenas para admins)
-    if (isUserAdmin) {
-      const filter = (i) => i.user.id === message.author.id;
+    const filter = (i) => i.user.id === message.author.id;
 
-      const collector = sentMessage.createMessageComponentCollector({
-        filter,
-        time: 60000,
-        max: 1
-      });
+    const collector = sentMessage.createMessageComponentCollector({
+      filter,
+      time: 60000
+    });
 
-      collector.on('collect', async (interaction) => {
-        try {
-          await interaction.deferUpdate();
+    collector.on('collect', async (interaction) => {
+      try {
+        await interaction.deferUpdate();
 
-          const prev = new Date(weekStart);
+        let weekStart;
+        let title;
+
+        // Se clicou no botão de semana passada, precisa calcular a data da semana passada e buscar os dados a partir dela
+        if (interaction.customId === 'prev_week') {
+          const prev = new Date(getMissionWeekStartDateTime());
           prev.setDate(prev.getDate() - 7);
 
           // Usa a data atual -7 dias, mas com o horário de 06:00:00
           const previousWeek = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}-${String(prev.getDate()).padStart(2, '0')} 06:00:00`;
-
+          
           const data = await getWeeklyInitial(brawlhallaId, previousWeek);
 
           if (!data) {
             return interaction.editReply({
-              embeds: [createErrorEmbed('Erro', 'Dados da semana passada não encontrados')],
-              components: []
+              embeds: [createErrorEmbed('Erro', 'Dados da semana passada não encontrados')]
             });
           }
 
@@ -523,16 +536,66 @@ export async function handleGames(message, args) {
               text: `Semana iniciada em: ${formatCreatedAtBR(data.week_start)}`
             });
 
-          await interaction.editReply({
+          return interaction.editReply({
             embeds: [prevEmbed],
-            components: []
+            components
+          });
+        }
+
+        // Para o botão "Semana", compara os dados atuais com os dados do início da semana atual
+        if (interaction.customId === 'games_week') {
+          weekStart = getMissionWeekStartDateTime();
+          title = '🎮 Jogos semanais';
+        }
+
+        // Para o botão "Mês", compara os dados atuais com os dados da primeira quinta-feira do mês atual
+        if (interaction.customId === 'games_month') {
+          weekStart = getMonthWeekStartDateTime();
+          title = '🗓️ Jogos mensais';
+        }
+
+        // Para o botão "Season", compara os dados atuais com os dados do início da season (se tiver algum dado)
+        if (interaction.customId === 'games_season') {
+          const season = await getCurrentSeason();
+          weekStart = getSeasonWeekStartDateTime(season.started_at);
+          title = `🏆 Season ${season.season}`;
+        }
+
+        const initial = await getWeeklyInitial(brawlhallaId, weekStart);
+
+        if (!initial) {
+          return interaction.editReply({
+            embeds: [createErrorEmbed('Sem dados', `Não existe um registro gravado para ${formatDateBR(weekStart)}.`)]
+          });
+        }
+
+        const result = calculateGames(stats, ranked, initial);
+
+        const embed = new EmbedBuilder()
+          .setColor(0x5865f2)
+          .setTitle(`${title} - ${stats.name}`)
+          .addFields(
+            { name: 'Jogos Totais', value: `\`${result.totalGames}\``, inline: true },
+            { name: 'Jogos Casuais', value: `\`${result.casualGames}\``, inline: true },
+            { name: '\u200B', value: '\u200B', inline: true },
+            { name: 'Ranked 1v1', value: `\`${result.games1v1}\``, inline: true },
+            { name: 'Ranked 2v2', value: `\`${result.games2v2}\``, inline: true },
+            { name: 'Ranked 3v3', value: `\`${result.games3v3}\``, inline: true }
+          )
+          .setFooter({
+            text: `Dados contabilizados a partir de: ${formatCreatedAtBR(initial.created_at)}`
           });
 
-        } catch (err) {
-          console.error('Erro no botão:', err);
-        }
-      });
-    }
+        await interaction.editReply({
+          embeds: [embed],
+          components
+        });
+
+      } catch (err) {
+        console.error('Erro no botão:', err);
+      }
+    });
+    
 
   } catch (err) {
     console.error(err);

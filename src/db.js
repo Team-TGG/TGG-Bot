@@ -129,6 +129,34 @@ export function getMissionWeekEnd() {
   return formatDateTime(end);
 }
 
+// Pegar o início do mês atual e ajustar para a primeira quinta-feira às 06:00
+export function getMonthWeekStartDateTime() {
+  const now = new Date();
+
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  let diff = 4 - firstDay.getDay();
+
+  if (diff < 0) {
+    diff += 7;
+  }
+
+  const firstThursday = new Date(firstDay);
+  firstThursday.setDate(firstDay.getDate() + diff);
+
+  return `${firstThursday.getFullYear()}-${String(firstThursday.getMonth() + 1).padStart(2, '0')}-${String(firstThursday.getDate()).padStart(2, '0')} 06:00:00`;
+}
+
+// Pegar o início da season + 1 (quinta-feira às 06:00)
+export function getSeasonWeekStartDateTime(startedAt) {
+  const [year, month, day] = startedAt.split('-').map(Number);
+
+  const date = new Date(year, month - 1, day);
+
+  date.setDate(date.getDate() + 1);
+
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} 06:00:00`;
+}
 
 export async function getUsers() {
   const supabase = getClient();
@@ -672,9 +700,28 @@ export async function getWeeklyInitial(brawlhallaId, weekStart) {
     .select('*')
     .eq('brawlhalla_id', brawlhallaId)
     .eq('week_start', weekStart)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+// Função para pegar o início da season atual
+export async function getCurrentSeason() {
+  const supabase = getClient();
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  const { data, error } = await supabase
+    .from('season')
+    .select('*')
+    .lte('started_at', today)
+    .order('started_at', { ascending: false })
+    .limit(1)
     .single();
 
   if (error) throw error;
+
   return data;
 }
 

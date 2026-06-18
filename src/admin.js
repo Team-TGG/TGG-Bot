@@ -217,12 +217,7 @@ export const handleWarn = adminOnly(async (message, args, client) => {
     const expiresLine = expiresAt ? `\n**Expira em:** <t:${Math.floor(new Date(expiresAt).getTime() / 1000)}:F>` : '';
 
     await member.send({
-      embeds: [
-        createWarningEmbed(
-          'Aviso Recebido',
-          `Você recebeu um warn/aviso.\n**Motivo:** ${reason}${durationLine}${expiresLine}\n**Total de avisos:** ${warningCount}/3`
-        )
-      ]
+      embeds: [createWarningEmbed('Aviso Recebido', `Você recebeu um warn/aviso.\n**Motivo:** ${reason}${durationLine}${expiresLine}\n**Total de avisos:** ${warningCount}/3`)]
     }).catch(() => console.log(`[Warn] Could not send DM to ${targetId}`));
 
     if (expiresAt) {
@@ -298,11 +293,7 @@ export const handleWam = adminOnly(async (message, args, client) => {
     const fakeWarnings = Math.floor(Math.random() * 3) + 1;
 
     await message.reply({
-      embeds: [
-        createSuccessEmbed(
-          'Aviso Adicionado',
-          `${member.user.tag} recebeu um aviso.\n**Motivo:** ${reason}\n**Total de avisos:** ${fakeWarnings}/3`
-        )
+      embeds: [createSuccessEmbed('Aviso Adicionado', `${member.user.tag} recebeu um aviso.\n**Motivo:** ${reason}\n**Total de avisos:** ${fakeWarnings}/3`).setFooter({text: 'Este comando é fake e não faz absolutamente nada.'})
       ]
     });
 
@@ -443,12 +434,7 @@ export const handleWarns = async (message, args, client) => {
 
         if (!admin && possibleUser.id !== message.author.id) {
           return message.reply({
-            embeds: [
-              createErrorEmbed(
-                'Sem Permissão',
-                'Você só pode visualizar seus próprios avisos.'
-              )
-            ]
+            embeds: [createErrorEmbed('Sem Permissão', 'Você só pode visualizar seus próprios avisos.')]
           });
         }
 
@@ -478,14 +464,7 @@ export const handleWarns = async (message, args, client) => {
 
     if (!allWarnings || allWarnings.length === 0) {
       return message.reply({
-        embeds: [
-          createErrorEmbed(
-            'Sem Avisos',
-            viewingOthers
-              ? 'Este usuário não possui avisos.'
-              : 'Você não possui avisos.'
-          )
-        ]
+        embeds: [createErrorEmbed('Sem Avisos', viewingOthers ? 'Este usuário não possui avisos.' : 'Você não possui avisos.')]
       });
     }
 
@@ -533,12 +512,7 @@ export const handleWarns = async (message, args, client) => {
 
     if (sorted.length === 0) {
       return message.reply({
-        embeds: [
-          createErrorEmbed(
-            'Sem Avisos',
-            'Nenhum aviso válido encontrado.'
-          )
-        ]
+        embeds: [createErrorEmbed('Sem Avisos', 'Nenhum aviso válido encontrado.')]
       });
     }
 
@@ -852,6 +826,98 @@ export const handleBan = adminOnly(async (message, args, client) => {
   }
 });
 
+// .bam
+export const handleBam = adminOnly(async (message, args, client) => {
+  try {
+
+    // Apenas supervisores ou superiores podem usar esse comando
+    if (!hasPermission(message.member, 3)) {
+      return message.reply({
+        embeds: [createErrorEmbed('Acesso Negado', 'Apenas supervisores ou superiores podem usar o .bam.')]
+      });
+    }
+
+    const guild = client.guilds.cache.get(discordConfig.guildId);
+    if (!guild) throw new Error('Guild não encontrada');
+
+    let targetId;
+    const mentionMatch = message.content.match(/<@!?(\d+)>/);
+    if (mentionMatch) {
+      targetId = mentionMatch[1];
+    } else {
+      const idMatch = args[0]?.match(/^\d+$/);
+      if (idMatch) targetId = args[0];
+    }
+
+    if (!targetId) {
+      return message.reply({
+        embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.bam <@user/ID> [motivo]`')]
+      });
+    }
+
+    const reason = message.content.includes('>')
+      ? message.content.split('>').slice(1).join('>').trim()
+      : args.slice(1).join(' ').trim() || 'Sem motivo especificado';
+
+    const member = await guild.members.fetch(targetId).catch(() => null);
+    if (!member) {
+      return message.reply({
+        embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')]
+      });
+    }
+
+    const confirmEmbed = new EmbedBuilder()
+      .setColor(0xff0000)
+      .setTitle('⚠️ Confirmação de BAM')
+      .setDescription('Você está prestes a aplicar um BAM no usuário abaixo:')
+      .addFields(
+        { name: 'Usuário', value: `${member.user.tag} (${member.id})` },
+        { name: 'Motivo', value: reason }
+      )
+      .setFooter({ text: `Ação solicitada por ${message.author.tag}` });
+
+    const { confirmed, interaction } = await awaitConfirmation(message, confirmEmbed, {
+      authorId: message.author.id,
+      time: 15000,
+      confirmLabel: 'Confirmar',
+      cancelLabel: 'Cancelar',
+      confirmStyle: ButtonStyle.Danger,
+      cancelStyle: ButtonStyle.Secondary,
+    });
+
+    if (confirmed === null) return;
+
+    if (!confirmed) {
+      return interaction.update({
+        embeds: [createErrorEmbed('Ação Cancelada', 'O BAM foi cancelado.')],
+        components: []
+      });
+    }
+
+    const fakeEmbed = new EmbedBuilder()
+      .setColor(0x00ff00)
+      .setTitle('🔨 BAM Aplicado')
+      .setDescription(`${member.user.tag} recebeu um BAM com sucesso.`)
+      .addFields({
+        name: 'Motivo',
+        value: reason
+      })
+      .setFooter({
+        text: 'Este comando é fake e não faz absolutamente nada.'
+      });
+
+    await interaction.update({
+      embeds: [fakeEmbed],
+      components: []
+    });
+
+  } catch (err) {
+    await message.reply({
+      embeds: [createErrorEmbed('Erro ao Aplicar BAM', err.message)]
+    });
+  }
+});
+
 // .inac-all
 import pLimit from 'p-limit'; // Controle de concorrência para evitar rate limits do Discord
 export const handleInacAll = adminOnly(async (message, args, client) => {
@@ -914,10 +980,7 @@ export const handleInacAll = adminOnly(async (message, args, client) => {
     // Executa tudo com concorrência controlada
     await Promise.all(tasks);
 
-    const embed = createSuccessEmbed(
-      'Inativos Aplicados',
-      `Cargo aplicado em ${applied} usuário(s).\nFalhas: ${failed}`
-    );
+    const embed = createSuccessEmbed('Inativos Aplicados', `Cargo aplicado em ${applied} usuário(s).\nFalhas: ${failed}`);
 
     await message.reply({ embeds: [embed] });
 
@@ -1049,9 +1112,7 @@ export const handleConcluida = adminOnly(async (message, args, client) => {
 
   } catch (err) {
     return message.reply({
-      embeds: [
-        createErrorEmbed('Erro', err.message)
-      ]
+      embeds: [createErrorEmbed('Erro', err.message)]
     });
   }
 });
@@ -1065,12 +1126,7 @@ export const handleCadastrarMissao = adminOnly(async (message, args, client) => 
 
     if (!match) {
       return message.reply({
-        embeds: [
-          createErrorEmbed(
-            'Missões',
-            'Formato inválido.\nUse: .cadastrarMissao "Nome" "Dica" <objetivo>\nUse aspas.\nObjetivo = valor final.'
-          )
-        ]
+        embeds: [createErrorEmbed('Missões', 'Formato inválido.\nUse: .cadastrarMissao "Nome" "Dica" <objetivo>\nUse aspas.\nObjetivo = valor final.')]
       });
     }
 
@@ -1085,12 +1141,7 @@ export const handleCadastrarMissao = adminOnly(async (message, args, client) => 
 
     if (missions.length >= 4) {
       return message.reply({
-        embeds: [
-          createErrorEmbed(
-            'Missões',
-            'Já existem 4 missões cadastradas para esta semana.'
-          )
-        ]
+        embeds: [createErrorEmbed('Missões', 'Já existem 4 missões cadastradas para esta semana.')]
       });
     }
 
@@ -1118,9 +1169,7 @@ export const handleCadastrarMissao = adminOnly(async (message, args, client) => 
 
   } catch (err) {
     return message.reply({
-      embeds: [
-        createErrorEmbed('Erro', err.message)
-      ]
+      embeds: [createErrorEmbed('Erro', err.message)]
     });
   }
 });
@@ -1233,12 +1282,7 @@ export const handleEscrever = adminOnly(async (message, args) => {
 
     if (!raw) {
       return message.channel.send({
-        embeds: [
-          createErrorEmbed(
-            "Uso incorreto",
-            "Envie um JSON após .escrever (use o https://discohook.org para criar o JSON de forma fácil)."
-          )
-        ]
+        embeds: [createErrorEmbed("Uso incorreto", "Envie um JSON após .escrever (use o https://discohook.org para criar o JSON de forma fácil).")]
       });
     }
 
@@ -1248,12 +1292,7 @@ export const handleEscrever = adminOnly(async (message, args) => {
       data = JSON.parse(raw);
     } catch (e) {
       return message.channel.send({
-        embeds: [
-          createErrorEmbed(
-            "JSON inválido",
-            e.message
-          )
-        ]
+        embeds: [createErrorEmbed("JSON inválido", e.message)]
       });
     }
 
@@ -1267,12 +1306,7 @@ export const handleEscrever = adminOnly(async (message, args) => {
 
       if (!channel || !channel.isTextBased()) {
         return message.channel.send({
-          embeds: [
-            createErrorEmbed(
-              "Canal inválido",
-              "channel_id não encontrado."
-            )
-          ]
+          embeds: [createErrorEmbed("Canal inválido", "channel_id não encontrado.")]
         });
       }
 
@@ -1358,12 +1392,7 @@ export const handleEscrever = adminOnly(async (message, args) => {
 
   } catch (err) {
     await message.channel.send({
-      embeds: [
-        createErrorEmbed(
-          "Erro ao enviar embed",
-          err.message
-        )
-      ]
+      embeds: [createErrorEmbed("Erro ao enviar embed", err.message)]
     });
   }
 });

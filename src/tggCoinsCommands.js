@@ -1033,7 +1033,7 @@ export async function handleInventory(message) {
       const equipped = message.member.roles.cache.has(item.role_id);
 
       ownedRoles.push(`${equipped ? '👉' : '•'} ${role}`);
-      options.push({label: role.name, value: item.role_id, description: equipped ? 'Atualmente equipada' : `Equipar ${role.name}`});
+      options.push({label: role.name, value: String(item.role_id), description: equipped ? 'Atualmente equipada' : `Equipar ${role.name}`});
     }
 
     // Se for algum cargo inválido (Deletado ou inexistente)
@@ -1054,15 +1054,21 @@ export async function handleInventory(message) {
       .setPlaceholder('Escolha uma cor')
       .addOptions(options.slice(0, 25));
 
+    // Botão para remover todas as cores
+    const removeButton = new ButtonBuilder()
+      .setCustomId(`inventory_remove_${message.author.id}`)
+      .setLabel('Remover todas as cores')
+      .setStyle(ButtonStyle.Danger);
+
     const row = new ActionRowBuilder().addComponents(select);
+    const buttonRow = new ActionRowBuilder().addComponents(removeButton);
 
     const msg = await message.reply({
       embeds: [embed],
-      components: [row]
+      components: [row, buttonRow]
     });
 
     const collector = msg.createMessageComponentCollector({
-      componentType: ComponentType.StringSelect,
       time: 120000
     });
 
@@ -1075,23 +1081,54 @@ export async function handleInventory(message) {
           });
         }
 
-        const selectedRoleId = interaction.values[0];
-
         const member = await message.guild.members.fetch(
           interaction.user.id
         );
 
-        // Se o usuário já tiver a cor equipada
-        if (member.roles.cache.has(selectedRoleId)) {
-          return interaction.reply({
-            embeds: [createErrorEmbed('Cor já equipada', 'Você já está utilizando essa cor.')],
-            ephemeral: true
+        const userInventory = await tggCoins.getInventory(interaction.user.id);
+        const inventoryRoleIds = userInventory.map(item => String(item.role_id));
+
+        // Botão de remover todas as cores
+        if (interaction.isButton()) {
+
+          const rolesToRemove = inventoryRoleIds.filter(roleId => member.roles.cache.has(roleId));
+
+          if (rolesToRemove.length) {
+            await member.roles.remove(rolesToRemove);
+          }
+
+          const updatedRoles = [];
+
+          for (const item of userInventory) {
+            const role = message.guild.roles.cache.get(
+              item.role_id
+            );
+
+            if (!role) continue;
+
+            updatedRoles.push(`• ${role}`);
+          }
+
+          const updatedEmbed = new EmbedBuilder()
+            .setColor(0xed4245)
+            .setTitle('🎒 Seu Inventário')
+            .setDescription(['**Cores disponíveis:**', '', updatedRoles.join('\n'), '', 'Nenhuma cor equipada.'].join('\n'))
+            .setTimestamp();
+
+          return interaction.update({
+            embeds: [updatedEmbed],
+            components: [row, buttonRow]
           });
         }
 
-        const userInventory = await tggCoins.getInventory(interaction.user.id);
-        const inventoryRoleIds = userInventory.map(item => item.role_id);
-        const ownsRole = inventoryRoleIds.includes(selectedRoleId);
+        // Menu de seleção de cor
+        if (!interaction.isStringSelectMenu()) {
+          return;
+        }
+
+        const selectedRoleId = interaction.values[0];
+
+        const ownsRole = inventoryRoleIds.includes(String(selectedRoleId));
 
         // Verifica se o usuário possui a cor no inventário
         if (!ownsRole) {
@@ -1101,12 +1138,14 @@ export async function handleInventory(message) {
           });
         }
 
+        // Remove TODAS as cores do inventário
         const rolesToRemove = inventoryRoleIds.filter(roleId => member.roles.cache.has(roleId));
 
         if (rolesToRemove.length) {
           await member.roles.remove(rolesToRemove);
         }
 
+        // Adiciona somente a selecionada
         await member.roles.add(selectedRoleId);
 
         const selectedRole = message.guild.roles.cache.get(selectedRoleId);
@@ -1115,7 +1154,7 @@ export async function handleInventory(message) {
         for (const item of userInventory) {
           const role = message.guild.roles.cache.get(item.role_id);
           if (!role) continue;
-          updatedRoles.push(item.role_id === selectedRoleId ? `👉 ${role}` : `• ${role}`);
+          updatedRoles.push(String(item.role_id) === String(selectedRoleId) ? `👉 ${role}` : `• ${role}`);
         }
 
         const updatedEmbed = new EmbedBuilder()
@@ -1126,7 +1165,7 @@ export async function handleInventory(message) {
 
         await interaction.update({
           embeds: [updatedEmbed],
-          components: [row]
+          components: [row, buttonRow]
         });
 
       } catch (err) {
@@ -1144,10 +1183,12 @@ export async function handleInventory(message) {
     collector.on('end', async () => {
       try {
         const disabledSelect = StringSelectMenuBuilder.from(select).setDisabled(true);
+        const disabledButton = ButtonBuilder.from(removeButton).setDisabled(true);
         const disabledRow = new ActionRowBuilder().addComponents(disabledSelect);
+        const disabledButtonRow = new ActionRowBuilder().addComponents(disabledButton);
 
         await msg.edit({
-          components: [disabledRow]
+          components: [disabledRow, disabledButtonRow]
         });
       } catch (err) {}
     });

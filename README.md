@@ -62,6 +62,12 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 - [x] Fazer o bot mandar o MOTD no canal configurado, sem pingar ninguém.
 - [x] Sincronizar MOTD com o site (`/api/motd.php`).
 - [x] Criar `.edit-warn <@user> [número] "Motivo"`.
+- [x] Criar `.crz` como contador geral.
+- [x] Basear Coach na lista de instrutores.
+- [x] Fazer o preço do Coach variar dependendo do elo.
+- [x] Adicionar `.games` mensal/seasonal.
+- [x] Adicionar botão para voltar para "essa semana" no `.games`.
+- [x] Criar um `.bam` (.ban falso)
 
 ### Correções e Ajustes
 - [ ] Caso o usuário não tenha registro para a semana, mostrar esse erro no `.conquistas`.
@@ -69,7 +75,6 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 - [ ] `.entrou` deve adicionar registro em `player_weekly_info`.
 - [ ] Corrigir o emoji `<:silver4:1479458769757933821>`.
 - [ ] Corrigir o emoji `:rupture:`.
-- [ ] Adicionar botão para voltar para "essa semana" no `.games`.
 
 ### Novos Comandos
 - [ ] Criar `.resumão` com um resumo grande e detalhado da guilda.
@@ -78,19 +83,18 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 - [ ] Adicionar a tabela de warns em um comando do bot, bloqueado em canais que não sejam da staff.
 - [ ] Criar `.refund`, restrito ao dono.
 - [ ] Criar `.registrarmissão` com dropdown para registrar missão por clique.
-- [ ] Criar `.crz` como contador geral.
 
 ### Sistemas e Melhorias
-- [ ] Basear Coach na lista de instrutores.
-- [ ] Fazer o preço do Coach variar dependendo do elo.
 - [ ] Discutir com staff/helpers os preços e o que incluir no Coach.
-- [ ] Adicionar `.games` mensal/seasonal.
 - [ ] Melhorar a automação do histórico da guilda, deixando mais rápido e criando views para evitar ler muitas linhas.
+- [ ] Criação de uma aba no Leaderboard para streaks
+- [ ] `.bal @user` para mostrar as moedas de outro usuário
 
 ### Futuro
 - [ ] Comandos slash.
 - [ ] Criar um Brawdle.
 - [ ] Criar leilões no TGG Coins, com lances para itens pagos ou exclusivos.
+- [ ] StarTGG.
 
 ---
 
