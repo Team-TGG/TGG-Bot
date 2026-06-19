@@ -1,10 +1,12 @@
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
 
 export function createErrorEmbed(title, description) {
+  const safeDescription = String(description || 'Ocorreu um erro inesperado.');
+
   return new EmbedBuilder()
     .setColor(0xed4245)
     .setTitle(`❌ ${title}`)
-    .setDescription(description);
+    .setDescription(safeDescription.slice(0, 4096));
 }
 
 export function createSuccessEmbed(title, description) {

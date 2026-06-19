@@ -45,7 +45,18 @@ async function apiFetch(url) {
   if (wait > 0) await new Promise(r => setTimeout(r, wait));
   recordRequest();
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`API Error ${res.status}: ${await res.text().catch(() => '')}`);
+  if (!res.ok) {
+    const contentType = res.headers.get('content-type') || '';
+    let details = '';
+
+    // Cloudflare and other proxies often return a full HTML error page. Do not
+    // leak that into logs or Discord embeds; the status already identifies it.
+    if (!contentType.includes('text/html')) {
+      details = (await res.text().catch(() => '')).trim().slice(0, 500);
+    }
+
+    throw new Error(`API Error ${res.status} ${res.statusText}${details ? `: ${details}` : ''}`);
+  }
   return res.json();
 }
 
@@ -66,9 +77,6 @@ function setSharedData(data) {
 
 export function getCached(key, ignoreTtl = false) {
   try {
-    if (key === '__legends__') {
-      return getSharedData()['__legends__']?.data || null;
-    }
     if (key.startsWith('player:')) {
       const bhid = key.split(':')[1];
       const path = resolve(CACHE_DIR, `player_${bhid}.json`);
@@ -78,6 +86,11 @@ export function getCached(key, ignoreTtl = false) {
         return entry.data;
       }
     }
+
+    const entry = getSharedData()[key];
+    if (!entry) return null;
+    if (!ignoreTtl && Date.now() - entry.timestamp > CACHE_TTL) return null;
+    return entry.data;
   } catch { }
   return null;
 }
@@ -85,13 +98,13 @@ export function getCached(key, ignoreTtl = false) {
 function setCached(key, data) {
   try {
     const entry = { data, timestamp: Date.now() };
-    if (key === '__legends__') {
-      const shared = getSharedData();
-      shared['__legends__'] = entry;
-      setSharedData(shared);
-    } else if (key.startsWith('player:')) {
+    if (key.startsWith('player:')) {
       const bhid = key.split(':')[1];
       writeFileSync(resolve(CACHE_DIR, `player_${bhid}.json`), JSON.stringify(entry, null, 2));
+    } else {
+      const shared = getSharedData();
+      shared[key] = entry;
+      setSharedData(shared);
     }
   } catch { }
 }
@@ -137,6 +150,7 @@ const LEGEND_EMOJIS = {
   'arcadia': '<:Arcadia:1480883381754658866>',
   'artemis': '<:Artemis:1480883384291954829>',
   'asuri': '<:Asuri:1480883386334843003>',
+  'aurus': '<:Aurus:1517541401305415790>',
   'azoth': '<:Azoth:1480883389174382602>',
   'barraza': '<:Barraza:1480883392856850483>',
   'bodvar': '<:Bodvar:1480883395692331039>',
@@ -181,7 +195,7 @@ const LEGEND_EMOJIS = {
   'redraptor': '<:Redraptor:1480883500239290449>',
   'reno': '<:Reno:1480883502378389566>',
   'ransom': '<:Ransom:1480883794545676288>',
-  'rupture': '<:Rupture:1480883794545676288>',
+  'rupture': '<:Rupture:1517541364601196634>',
   'scarlet': '<:Scarlet:1480883504169488495>',
   'sentinel': '<:Sentinel:1480883506346328107>',
   'seven': '<:Seven:1480883508904857610>',
@@ -252,7 +266,7 @@ const RANK_ICONS = {
   'silver1': '<:Silver1:1480882023731036210>',
   'silver2': '<:Silver2:1480882025454895266>',
   'silver3': '<:Silver3:1480882028030328902>',
-  'silver4': '<:Silver4:1480882023101111317>',
+  'silver4': '<:Silver4:1480882033101111317>',
   'silver5': '<:Silver5:1480882035957563505>',
   'tin0': '<:Tin0:1480882038323024013>',
   'tin1': '<:Tin1:1480882040990728272>',
@@ -279,7 +293,8 @@ const LEGEND_NAMES = {
   reno: 'Reno', munin: 'Munin', arcadia: 'Arcadia', ezio: 'Ezio',
   tezca: 'Tezca', thea: 'Thea', redraptor: 'Red Raptor', loki: 'Loki',
   seven: 'Seven', vivi: 'Vivi', imugi: 'Imugi', kingzuva: 'King Zuva',
-  priya: 'Priya', ransom: 'Ransom', ladyvera: 'Lady Vera', rupture: 'Rupture'
+  priya: 'Priya', ransom: 'Ransom', ladyvera: 'Lady Vera', rupture: 'Rupture',
+  aurus: 'Aurus'
 };
 
 const LEGEND_IDS = {
@@ -299,7 +314,8 @@ const LEGEND_IDS = {
   57: 'reno', 58: 'munin', 59: 'arcadia', 60: 'ezio',
   63: 'tezca', 62: 'thea', 17: 'redraptor', 27: 'loki',
   61: 'seven', 64: 'vivi', 65: 'imugi', 66: 'kingzuva',
-  67: 'priya', 68: 'ransom', 69: 'ladyvera', 70: 'rupture'
+  67: 'priya', 68: 'ransom', 69: 'ladyvera', 70: 'rupture',
+  71: 'aurus'
 };
 
 function normalizeWeapon(w) {
@@ -362,8 +378,15 @@ function normalizeUnicode(str) {
 }
 
 export async function getGuildRankingPosition(brawlhallaId) {
-  // Chamada da API
-  const guildData = await fetchGuildMembersNewAPI();
+  let guildData;
+  try {
+    guildData = await fetchGuildMembersNewAPI();
+  } catch (err) {
+    // Guild position is optional metadata. A transient failure here must not
+    // discard the player stats that were already fetched successfully.
+    console.warn(`[Brawlhalla] Guild ranking unavailable for ${brawlhallaId}: ${err.message}`);
+    return null;
+  }
 
   const members = guildData.guild_members || guildData.GuildMembers || [];
 

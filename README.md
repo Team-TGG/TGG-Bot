@@ -69,13 +69,13 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 - [x] Adicionar botão para voltar para "essa semana" no `.games`.
 - [x] Criar um `.bam` (.ban falso)
 - [x] `.bal @user` e `.conquistas @user`para mostrar dados de outro usuário
+- [x] Corrigir os emojis Silver 4 e Rupture nas estatísticas.
+- [x] Adicionar Aurus às estatísticas de lendas.
 
 ### Correções e Ajustes
 - [ ] Caso o usuário não tenha registro para a semana, mostrar esse erro no `.conquistas`.
 - [ ] `.add-account` deve adicionar registro em `player_weekly_info`.
 - [ ] `.entrou` deve adicionar registro em `player_weekly_info`.
-- [ ] Corrigir o emoji `<:silver4:1479458769757933821>`.
-- [ ] Corrigir o emoji `:rupture:`.
 
 ### Novos Comandos
 - [ ] Criar `.resumão` com um resumo grande e detalhado da guilda.
