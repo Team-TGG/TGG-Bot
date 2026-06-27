@@ -831,9 +831,9 @@ export const handleBam = adminOnly(async (message, args, client) => {
   try {
 
     // Apenas moderadores ou superiores podem usar esse comando
-    if (!hasPermission(message.member, 2)) {
+    if (!hasPermission(message.member, 1)) {
       return message.reply({
-        embeds: [createErrorEmbed('Acesso Negado', 'Apenas moderadores ou superiores podem usar o .bam.')]
+        embeds: [createErrorEmbed('Acesso Negado', 'Apenas Helper ou superiores podem usar o .bam.')]
       });
     }
 
