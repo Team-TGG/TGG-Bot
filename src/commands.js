@@ -72,7 +72,8 @@ export const COMMAND_ALIASES = {
   'daocu': 'daily', // Picturii
   'pizzolho': 'daily', // ADM_Bart
   'dekko': 'daily', // Dekkosun
-  'miguel-kyna-lopes-yüz-da-silva':'daily', // Mig
+  'miguel-kyna-lopes-yüz-da-silva': 'daily', // Mig
+  'a-sol-falou-que-me-amava-e-eu-tenho-certeza-de-que-foi-tudo-coisa-da-minha-cabeça...': 'daily', // Kay
   'balance': 'balance',
   'bal': 'balance',
   'baal': 'balance',
