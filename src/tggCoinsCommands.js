@@ -45,7 +45,7 @@ async function runDaily(target, member, discordId, streak, eventStreak, recovere
   }
 
   const original = reward;
-  reward = Math.floor(reward * multiplier);
+  reward = Math.round(reward * multiplier);
   const bonus = reward - original;
 
   let bonusMessage = '';
