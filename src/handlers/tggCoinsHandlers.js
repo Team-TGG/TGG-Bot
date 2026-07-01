@@ -1010,6 +1010,13 @@ export async function buildMissionText({tierMissions, mode, type, allStats, user
 // Handlers para Daily
 
 export function getDailyReward(streak) {
+  if (streak >= 67) {
+    return {
+      reward: 150,
+      message: `🔥 Streak de ${streak} dias! Recompensa máxima!`
+    };
+  }
+
   if (streak >= 7) {
     return {
       reward: 100,

@@ -87,7 +87,7 @@ async function runDaily(target, member, discordId, streak, eventStreak, recovere
       embeds: [
         createSuccessEmbed(
           'TGG Coins recebidas!', 
-          `+${reward} TGG-Coins ${EMOJIS.TGGcoin}\n${streakMessage}${bonusMessage}\n\nSaldo atual: **${newBalance.toLocaleString('pt-BR')}**`
+          `${EMOJIS.TGGcoin} +${reward} TGG-Coins\n${streakMessage}${bonusMessage}\n\nSaldo atual: **${newBalance.toLocaleString('pt-BR')}**`
         )
       ],
       components: []
@@ -1522,6 +1522,9 @@ export async function handleStreak(message) {
     } else if (streak < 7) {
       nextBonus = 100;
       daysLeft = 7 - streak;
+    } else if (streak < 67) {
+      nextBonus = 150;
+      daysLeft = 67 - streak;
     }
 
     let description = `Você está com **${streak} dia(s)** de streak.`;
@@ -1529,7 +1532,7 @@ export async function handleStreak(message) {
     if (nextBonus !== null) {
       description += `\n\n⏳ Faltam **${daysLeft} dia(s)** para o próximo bônus de **${nextBonus} moedas**.`;
     } else {
-      description += `\n\n🏆 Você já atingiu o bônus máximo de **100 moedas**!`;
+      description += `\n\n🏆 Você já atingiu o bônus máximo de **150 moedas**!`;
     }
 
     // Se tiver algum evento ativo, mostra a streak do evento também, e os bônus relacionados à streak do evento
@@ -1546,6 +1549,9 @@ export async function handleStreak(message) {
       } else if (eventStreak < 7) {
         eventBonus = 100;
         eventDaysLeft = 7 - eventStreak;
+      } else if (eventStreak < 67) {
+        eventBonus = 150;
+        eventDaysLeft = 67 - eventStreak;
       }
 
       description += `\n\n${EMOJIS.tickets} **Streak do Evento:** ${eventStreak} dia(s)`;
@@ -1553,7 +1559,7 @@ export async function handleStreak(message) {
       if (eventBonus !== null) {
         description += `\n⏳ Faltam **${eventDaysLeft} dia(s)** para o próximo bônus de **${eventBonus} tickets**.`;
       } else {
-        description += `\n🏆 Você já atingiu o bônus máximo de **100 tickets**!`;
+        description += `\n🏆 Você já atingiu o bônus máximo de **150 tickets**!`;
       }
     }
 
