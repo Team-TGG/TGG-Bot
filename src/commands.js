@@ -72,6 +72,7 @@ export const COMMAND_ALIASES = {
   'daocu': 'daily', // Picturii
   'pizzolho': 'daily', // ADM_Bart
   'dekko': 'daily', // Dekkosun
+  'miguel-kyna-lopes-yüz-da-silva':'daily', // Mig
   'balance': 'balance',
   'bal': 'balance',
   'baal': 'balance',
