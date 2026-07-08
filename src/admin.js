@@ -1,9 +1,9 @@
 // admin.js - Comandos apenas para administradores
-import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType, ComponentType } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, ComponentType } from 'discord.js';
 import { createClient, runSync, runEloSync } from './discord.js';
 import { fetchPlayerStats, getUserBrawlhallaId } from './brawlhalla.js';
-import { addWarning, getUserWarnings, removeWarning, removeLastWarning, editWarning, deleteExpiredWarnings, parseTime, formatTime as formatModTime, safeSetTimeout } from './moderation.js';
-import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getActiveMutes, getMissionWeekStart, getActiveUser, getMemberJustifications, formatDateBR } from './db.js';
+import { addWarning, getUserWarnings, removeWarning, removeLastWarning, editWarning, deleteExpiredWarnings, parseTime, formatTime as formatModTime } from './moderation.js';
+import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getMissionWeekStart, getActiveUser, getMemberJustifications, formatDateBR } from './db.js';
 import { discord as discordConfig, STAFF_ROLE_IDS, inactivePlayers as inactivePlayersConfig, tickets as ticketsConfig } from '../config/index.js';
 import { loadCustomNicknames } from './customNicknames.js';
 import { syncNicknames, updateMemberNicknameDiscordPortion, parseNickname, buildNickname, fetchBrawlhallaClanData, loadClanCache } from './nicknameSync.js';
@@ -11,66 +11,9 @@ import { createErrorEmbed, createSuccessEmbed, createWarningEmbed, createLoading
 import { isAdmin, adminOnly, hasPermission, getMemberLevel} from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
 import { scheduleTemporaryWarningRemoval } from './services/warningManager.js';
+import { scheduleMuteRenewal } from './services/muteManager.js';
 
 // Funções auxiliares
-
-// Configura permissões do cargo Muted em todos os canais (incluindo fóruns) — em paralelo
-async function setupMutePermissions(guild, muteRole) {
-  const denyPermissions = [
-    PermissionFlagsBits.SendMessages,
-    PermissionFlagsBits.SendMessagesInThreads,
-    PermissionFlagsBits.CreatePublicThreads,
-    PermissionFlagsBits.CreatePrivateThreads,
-    PermissionFlagsBits.AddReactions,
-    PermissionFlagsBits.Speak,
-  ];
-
-  const targetChannelTypes = [
-    ChannelType.GuildText,
-    ChannelType.GuildVoice,
-    ChannelType.GuildForum,
-    ChannelType.GuildStageVoice,
-    ChannelType.GuildCategory,
-    ChannelType.GuildMedia,
-  ];
-
-  const channels = guild.channels.cache.filter(c => targetChannelTypes.includes(c.type));
-
-  // Filtra apenas canais que precisam de atualização
-  const channelsToUpdate = [];
-  for (const [, channel] of channels) {
-    const existingOverwrite = channel.permissionOverwrites.cache.get(muteRole.id);
-    if (existingOverwrite) {
-      const denied = existingOverwrite.deny;
-      const allDenied = denyPermissions.every(p => denied.has(p));
-      if (allDenied) continue; // Já está configurado corretamente
-    }
-    channelsToUpdate.push(channel);
-  }
-
-  if (channelsToUpdate.length === 0) return;
-
-  // Atualiza todos os canais em paralelo
-  const muteOverrides = {
-    SendMessages: false,
-    SendMessagesInThreads: false,
-    CreatePublicThreads: false,
-    CreatePrivateThreads: false,
-    AddReactions: false,
-    Speak: false,
-  };
-
-  const results = await Promise.allSettled(
-    channelsToUpdate.map(channel =>
-      channel.permissionOverwrites.edit(muteRole, muteOverrides)
-    )
-  );
-
-  const failed = results.filter(r => r.status === 'rejected');
-  if (failed.length > 0) {
-    console.error(`[Mute] ${failed.length}/${channelsToUpdate.length} canais falharam ao configurar permissões.`);
-  }
-}
 
 // .sync
 export const handleSync = adminOnly(async (message, args, client) => {
@@ -231,13 +174,8 @@ export const handleWarn = adminOnly(async (message, args, client) => {
     await message.reply({ embeds: [createSuccessEmbed('Aviso Adicionado', `${member.user.tag} recebeu um aviso.\n**Motivo:** ${reason}${durationLine}${expiresLine}\n**Total de avisos:** ${warningCount}/3`)] });
 
     if (warningCount === 2) {
-      let muteRole = guild.roles.cache.find(r => r.name === 'Muted');
-      if (!muteRole) muteRole = await guild.roles.create({ name: 'Muted', color: 0x808080, reason: 'Cargo para silenciados' });
-      await member.roles.add(muteRole);
-      setTimeout(() => member.roles.remove(muteRole).catch(() => { }), 15 * 60 * 1000);
+      await member.timeout(15 * 60 * 1000, '2 avisos acumulados').catch(() => { });
       await message.channel.send({ embeds: [createWarningEmbed('Mute Automático', `${member.user.tag} foi silenciado por 15 minutos (2 avisos).`)] });
-      // Atualiza permissões em background (não bloqueia resposta)
-      setupMutePermissions(guild, muteRole).catch(err => console.error('[Mute] Erro ao configurar permissões:', err));
     } else if (warningCount >= 3) {
       await member.ban({ reason: '3 avisos acumulados' });
       await message.channel.send({ embeds: [new EmbedBuilder().setColor(0xed4245).setTitle('🔨 Ban Automático').setDescription(`${member.user.tag} foi banido por 3 avisos acumulados.`)] });
@@ -689,28 +627,11 @@ export const handleMute = adminOnly(async (message, args, client) => {
     const member = await guild.members.fetch(targetId).catch(() => null);
     if (!member) return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')] });
 
-    let muteRole = guild.roles.cache.find(r => r.name === 'Muted');
-    if (!muteRole) muteRole = await guild.roles.create({ name: 'Muted', color: 0x808080, reason: 'Cargo para silenciados' });
-    await member.roles.add(muteRole);
-    if (member.voice.channel) await member.voice.setMute(true, 'Moderação').catch(() => { });
-
     const expiresAt = new Date(Date.now() + durationMs).toISOString();
     await addPersistentMute(targetId, expiresAt);
+    await scheduleMuteRenewal(guild, targetId, expiresAt, message.channel);
 
     await message.reply({ embeds: [createSuccessEmbed('Silenciado', `${member.user.tag} silenciado por ${formatModTime(durationMs)}.\n**Motivo:** ${reason}`)] });
-
-    // Atualiza permissões em background (não bloqueia resposta)
-    setupMutePermissions(guild, muteRole).catch(err => console.error('[Mute] Erro ao configurar permissões:', err));
-
-    safeSetTimeout(async () => {
-      const m = await guild.members.fetch(targetId).catch(() => null);
-      if (m?.roles.cache.has(muteRole.id)) {
-        await m.roles.remove(muteRole).catch(() => { });
-        if (m.voice.serverMute) await m.voice.setMute(false, 'Auto-unmute').catch(() => { });
-        await removePersistentMute(targetId);
-        await message.channel.send({ embeds: [createSuccessEmbed('Desmutado', `${m.user.tag} desmutado automaticamente.`)] }).catch(() => { });
-      }
-    }, durationMs);
   } catch (err) {
     await message.reply({ embeds: [createErrorEmbed('Erro ao Silenciar', err.message)] });
   }
@@ -735,10 +656,8 @@ export const handleUnmute = adminOnly(async (message, args, client) => {
 
     const member = await guild.members.fetch(targetId).catch(() => null);
     if (!member) return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')] });
-    const muteRole = guild.roles.cache.find(r => r.name === 'Muted');
-    if (!muteRole || !member.roles.cache.has(muteRole.id)) return message.reply({ embeds: [createErrorEmbed('Não Silenciado', 'Este usuário não está silenciado.')] });
-    await member.roles.remove(muteRole);
-    if (member.voice.serverMute) await member.voice.setMute(false, 'Moderação').catch(() => { });
+    if (!member.isCommunicationDisabled()) return message.reply({ embeds: [createErrorEmbed('Não Silenciado', 'Este usuário não está silenciado.')] });
+    await member.timeout(null).catch(() => { });
     await removePersistentMute(targetId);
     await message.reply({ embeds: [createSuccessEmbed('Desmutado', `${member.user.tag} desmutado com sucesso.`)] });
   } catch (err) {
