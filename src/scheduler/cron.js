@@ -53,7 +53,7 @@ export function startCronJobs(client, services) {
   });
 
   // MOTD - 00:00
-  cron.schedule('0 0 * * *', async () => {
+  cron.schedule('0 6 * * *', async () => {
     await publishMotd(client);
   }, {
     timezone: 'America/Sao_Paulo'

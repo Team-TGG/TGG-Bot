@@ -66,5 +66,5 @@ export const tggCoinsEvents = {
 
 export const motd = {
   url: 'https://teamtgg.com.br/api/motd.php',
-  channelId: birthdays.channelId,
+  channelId: '1437416481343406122', // Principal
 };
