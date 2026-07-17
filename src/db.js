@@ -598,6 +598,18 @@ export async function getActiveMutes() {
   return data ?? [];
 }
 
+export async function getPersistentMute(discord_id) {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('mutes')
+    .select('*')
+    .eq('user_id', String(discord_id))
+    .maybeSingle();
+
+  if (error) return null;
+  return data;
+}
+
 /**
  * MOTD (Message of the Day)
  */
