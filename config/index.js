@@ -15,6 +15,7 @@ export const STAFF_ROLE_IDS = {
 export const discord = {
   token: process.env.DISCORD_TOKEN,
   guildId: process.env.DISCORD_GUILD_ID,
+  applicationId: '1470608096056447006',
 };
 
 export const supabase = {
@@ -45,7 +46,7 @@ export const brawlhalla = {
 export const inactivePlayers = {
   inactiveRoleId: '1468593277363290304',
   channelId: '1468600851290521692',
-  messageEnabled: true,
+  messageEnabled: false,
   messageInterval: process.env.INACTIVE_MESSAGE_INTERVAL,
 };
 

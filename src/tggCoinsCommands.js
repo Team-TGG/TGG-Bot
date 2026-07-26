@@ -1755,42 +1755,43 @@ export const handleAddCoins = leaderOnly(async (message, args, client) => {
   const loading = await message.reply({ embeds: [createLoadingEmbed('💰 Adicionando moedas...')] });
 
   try {
-    const target = message.mentions.users.first();
-    if (!target) {
-      return loading.edit({
-        embeds: [createErrorEmbed('Erro', 'Mencione um usuário.')]
-      });
+    let targetId, target, type, description, amount;
+
+    if (message.interaction) {
+      // Slash: options tipadas direto
+      const u = message.interaction.options.getUser('usuario');
+      if (!u) {
+        return loading.edit({ embeds: [createErrorEmbed('Erro', 'Mencione um usuário.')] });
+      }
+      target = u;
+      targetId = u.id;
+      type = message.interaction.options.getString('tipo');
+      description = message.interaction.options.getString('descricao');
+      amount = message.interaction.options.getInteger('quantidade');
+    } else {
+      // Prefix fallback
+      target = message.mentions.users.first();
+      if (!target) {
+        return loading.edit({ embeds: [createErrorEmbed('Erro', 'Mencione um usuário.')] });
+      }
+      targetId = target.id;
+      const fullContent = message.content;
+      const match = fullContent.match(/\.addcoins\s+<@!?\d+>\s+(\w+)\s+"([^"]+)"\s+(-?\d+)/i);
+      if (!match) {
+        return loading.edit({
+          embeds: [createErrorEmbed('Formato inválido', 'Use:\n`.addcoins @usuario TIPO "descrição" quantidade`')]
+        });
+      }
+      [, type, description, amount] = match;
+      type = type.toUpperCase();
+      amount = parseInt(amount);
     }
-
-    const targetId = target.id;
-
-    // Junta tudo depois do comando original
-    const fullContent = message.content;
-
-    // Regex pra pegar tipo + "descrição" + quantidade
-    const match = fullContent.match(/\.addcoins\s+<@!?\d+>\s+(\w+)\s+"([^"]+)"\s+(-?\d+)/i);
-
-    if (!match) {
-      return loading.edit({
-        embeds: [
-          createErrorEmbed(
-            'Formato inválido',
-            'Use:\n`.addcoins @usuario TIPO "descrição" quantidade`'
-          )
-        ]
-      });
-    }
-
-    let [, type, description, amount] = match;
-
-    type = type.toUpperCase();
-    amount = parseInt(amount);
 
     if (isNaN(amount)) {
-      return loading.edit({
-        embeds: [createErrorEmbed('Erro', 'Quantidade inválida.')]
-      });
+      return loading.edit({ embeds: [createErrorEmbed('Erro', 'Quantidade inválida.')] });
     }
+
+    if (!type) type = 'COINS';
 
     // Verifica usuário
     const user = await getUserByDiscordId(targetId);

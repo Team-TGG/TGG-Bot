@@ -20,6 +20,9 @@ import { restoreMutes } from './src/services/muteManager.js';
 import { restoreTemporaryWarnings } from './src/services/warningManager.js';
 // Commands
 import { COMMAND_ALIASES, commands } from './src/commands.js';
+// Slash
+import { registerGuildCommands } from './src/slash/register.js';
+import { registerInteractionHandler } from './src/interactions.js';
 
 async function main() {
   if (!discordConfig.token || !discordConfig.guildId) {
@@ -32,6 +35,16 @@ async function main() {
 
   client.once(Events.ClientReady, async () => {
     console.log(`Logged in as ${client.user.tag}`);
+
+    // Registrar comandos slash (guild, instantâneo)
+    try {
+      await registerGuildCommands();
+    } catch (err) {
+      console.error('[Slash Register]', err);
+    }
+
+    // Listener interactionCreate (router slash; botões/menus continuam via collectors)
+    registerInteractionHandler(client);
 
     startCronJobs(client, {
       fetchBrawlhallaClanData,

@@ -14,17 +14,36 @@ export const ROLE_HIERARCHY = {
 export const LEADER_ID = '252249131202904074'; // ID do líder para acesso total
 
 // Canais permitidos para comandos do bot
-const ALLOWED_CHANNELS = [
+export const ALLOWED_CHANNELS = [
   '1437504463375175936', // Comandos Staff
   '1440865671150829648', // TGG-Geral
   '1437416406038872225', // Comandos
   '1468600851290521692'  // Players Inativos
 ];
 
-const ALLOWED_CATEGORIES = [
+export const ALLOWED_CATEGORIES = [
   '1460768037518180352', // Categoria de Cards
   '1437504178220961815'  // Categoria da Staff
 ];
+
+// Versão slash: reusa constantes. Sem delete (não há msg original), ephemeral em vez de canal hint.
+export async function checkInteractionChannelPermission(interaction) {
+  if (await isAdmin(interaction.user.id)) return true;
+
+  const channelId = interaction.channelId;
+  const categoryId = interaction.channel?.parentId;
+
+  if (ALLOWED_CHANNELS.includes(channelId) || ALLOWED_CATEGORIES.includes(categoryId)) {
+    return true;
+  }
+
+  await interaction.reply({
+    embeds: [createErrorEmbed('Canal Errado', `Use o canal <#1437416406038872225> para utilizar os comandos do bot.`)],
+    ephemeral: true,
+  }).catch(() => {});
+
+  return false;
+}
 
 export async function isAdmin(userId) {
   try {

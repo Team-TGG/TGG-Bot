@@ -1,5 +1,5 @@
 // admin.js - Comandos apenas para administradores
-import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, ComponentType } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, ComponentType, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 import { createClient, runSync, runEloSync } from './discord.js';
 import { fetchPlayerStats, getUserBrawlhallaId } from './brawlhalla.js';
 import { addWarning, getUserWarnings, removeWarning, removeLastWarning, editWarning, deleteExpiredWarnings, parseTime, formatTime as formatModTime } from './moderation.js';
@@ -294,37 +294,49 @@ export const handleEditWarn = adminOnly(async (message, args, client) => {
     const guild = client.guilds.cache.get(discordConfig.guildId);
     if (!guild) throw new Error('Guild não encontrada');
 
-    // Extrai menção ou ID
-    let targetId;
-    const mentionMatch = message.content.match(/<@!?(\d+)>/);
-    if (mentionMatch) {
-      targetId = mentionMatch[1];
+    let targetId, warningNumber, newReason;
+
+    if (message.interaction) {
+      // Slash: options tipadas
+      const u = message.interaction.options.getUser('usuario');
+      warningNumber = message.interaction.options.getInteger('numero');
+      newReason = message.interaction.options.getString('motivo');
+      if (!u || !warningNumber || !newReason) {
+        return message.reply({
+          embeds: [createErrorEmbed('Formato Inválido', 'Uso: `/edit-warn usuario:N número:N motivo:"..."`')]
+        });
+      }
+      targetId = u.id;
     } else {
-      const idMatch = args[0]?.match(/^\d+$/);
-      if (idMatch) targetId = args[0];
+      // Prefix fallback
+      const mentionMatch = message.content.match(/<@!?(\d+)>/);
+      if (mentionMatch) {
+        targetId = mentionMatch[1];
+      } else {
+        const idMatch = args[0]?.match(/^\d+$/);
+        if (idMatch) targetId = args[0];
+      }
+
+      if (!targetId) {
+        return message.reply({
+          embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.edit-warn <@user/ID> <número> "Motivo"`')]
+        });
+      }
+
+      const afterMention = mentionMatch
+        ? message.content.slice(message.content.indexOf(mentionMatch[0]) + mentionMatch[0].length).trim()
+        : args.slice(1).join(' ').trim();
+
+      const warnNumMatch = afterMention.match(/^(\d+)\s+/);
+      if (!warnNumMatch) {
+        return message.reply({
+          embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.edit-warn <@user/ID> <número> "Motivo"`')]
+        });
+      }
+
+      warningNumber = parseInt(warnNumMatch[1]);
+      newReason = afterMention.slice(warnNumMatch[0].length).replace(/^["']|["']$/g, '').trim();
     }
-
-    if (!targetId) {
-      return message.reply({
-        embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.edit-warn <@user/ID> <número> "Motivo"`')]
-      });
-    }
-
-    // Extrai o número do aviso e o novo motivo
-    // Sintaxe: .edit-warn @user <número> "Motivo"
-    const afterMention = mentionMatch
-      ? message.content.slice(message.content.indexOf(mentionMatch[0]) + mentionMatch[0].length).trim()
-      : args.slice(1).join(' ').trim();
-
-    const warnNumMatch = afterMention.match(/^(\d+)\s+/);
-    if (!warnNumMatch) {
-      return message.reply({
-        embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.edit-warn <@user/ID> <número> "Motivo"`')]
-      });
-    }
-
-    const warningNumber = parseInt(warnNumMatch[1]);
-    const newReason = afterMention.slice(warnNumMatch[0].length).replace(/^["']|["']$/g, '').trim();
 
     if (!newReason) {
       return message.reply({
@@ -1039,19 +1051,29 @@ export const handleConcluida = adminOnly(async (message, args, client) => {
 // .cadastrarMissao
 export const handleCadastrarMissao = adminOnly(async (message, args, client) => {
   try {
-    const input = message.content;
+    let mission, tip, target;
 
-    const match = input.match(/"([^"]+)"\s+"([^"]+)"\s+(\d+)/);
-
-    if (!match) {
-      return message.reply({
-        embeds: [createErrorEmbed('Missões', 'Formato inválido.\nUse: .cadastrarMissao "Nome" "Dica" <objetivo>\nUse aspas.\nObjetivo = valor final.')]
-      });
+    if (message.interaction) {
+      // Slash: options tipadas
+      mission = message.interaction.options.getString('nome');
+      tip = message.interaction.options.getString('dica');
+      target = message.interaction.options.getInteger('objetivo');
+      if (!mission || !tip || !target) {
+        return message.reply({ embeds: [createErrorEmbed('Missões', 'Parâmetros ausentes.')] });
+      }
+    } else {
+      // Prefix fallback
+      const input = message.content;
+      const match = input.match(/"([^"]+)"\s+"([^"]+)"\s+(\d+)/);
+      if (!match) {
+        return message.reply({
+          embeds: [createErrorEmbed('Missões', 'Formato inválido.\nUse: .cadastrarMissao "Nome" "Dica" <objetivo>\nUse aspas.\nObjetivo = valor final.')]
+        });
+      }
+      mission = match[1];
+      tip = match[2];
+      target = parseInt(match[3]);
     }
-
-    const mission = match[1];
-    const tip = match[2];
-    const target = parseInt(match[3]);
 
     const supabase = getClient();
 
@@ -1194,9 +1216,63 @@ export const handleEntrou = adminOnly(async (message, args, client) => {
 });
 
 // .escrever {json com https://discohook.org}
-export const handleEscrever = adminOnly(async (message, args) => {
-  try {
+export const handleEscrever = adminOnly(async (message, args, client) => {
+  if (message.interaction) {
+    // Slash: abre modal com 5 campos (2 obrigatórios, 3 opcionais)
+    const channel = message.interaction.options.getChannel('canal') || message.channel;
+    const modal = new ModalBuilder()
+      .setCustomId(`escrever_modal:${channel.id}`)
+      .setTitle('Escrever Embed');
 
+    const titulo = new TextInputBuilder()
+      .setCustomId('titulo')
+      .setLabel('Título')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setMaxLength(256);
+
+    const descricao = new TextInputBuilder()
+      .setCustomId('descricao')
+      .setLabel('Descrição (corpo do embed)')
+      .setStyle(TextInputStyle.Paragraph)
+      .setRequired(true)
+      .setMaxLength(4000);
+
+    const cor = new TextInputBuilder()
+      .setCustomId('cor')
+      .setLabel('Cor (hex: #FF0000) — opcional')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false)
+      .setMaxLength(20)
+      .setPlaceholder('#5865F2');
+
+    const imagem = new TextInputBuilder()
+      .setCustomId('imagem')
+      .setLabel('URL da imagem principal — opcional')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false)
+      .setMaxLength(500);
+
+    const thumbnail = new TextInputBuilder()
+      .setCustomId('thumbnail')
+      .setLabel('URL da miniatura (canto) — opcional')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false)
+      .setMaxLength(500);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(titulo),
+      new ActionRowBuilder().addComponents(descricao),
+      new ActionRowBuilder().addComponents(cor),
+      new ActionRowBuilder().addComponents(imagem),
+      new ActionRowBuilder().addComponents(thumbnail),
+    );
+
+    return message.interaction.showModal(modal);
+  }
+
+  // Prefix fallback: JSON inline (Discohook). Mantido durante teste até o corte do prefix.
+  try {
     const raw = args.join(" ").trim();
 
     if (!raw) {
@@ -1206,7 +1282,6 @@ export const handleEscrever = adminOnly(async (message, args) => {
     }
 
     let data;
-
     try {
       data = JSON.parse(raw);
     } catch (e) {
@@ -1215,106 +1290,105 @@ export const handleEscrever = adminOnly(async (message, args) => {
       });
     }
 
-    // Canal opcional
     let targetChannel = message.channel;
-
     if (data.channel_id) {
-      const channel = await message.client.channels
-        .fetch(String(data.channel_id))
-        .catch(() => null);
-
+      const channel = await client.channels.fetch(String(data.channel_id)).catch(() => null);
       if (!channel || !channel.isTextBased()) {
         return message.channel.send({
           embeds: [createErrorEmbed("Canal inválido", "channel_id não encontrado.")]
         });
       }
-
       targetChannel = channel;
     }
 
-    // Converter embeds JSON para EmbedBuilder
-    let embeds = [];
-
+    const payload = { content: data.content || undefined };
     if (Array.isArray(data.embeds)) {
-      embeds = data.embeds.map(embed => {
-
+      payload.embeds = data.embeds.map(embed => {
         const e = new EmbedBuilder();
-
-        if (embed.title) e.setTitle(embed.title); // Título
-        if (embed.description) e.setDescription(embed.description); // Descrição
-        if (embed.url) e.setURL(embed.url); // URL do título
-        if (embed.color) e.setColor(embed.color); // Cor da borda
-
-        // Timestamp opcional
-        if (embed.timestamp)
-          e.setTimestamp(
-            embed.timestamp === true ? new Date() : new Date(embed.timestamp)
-          );
-
-        // Autor opcional
-        if (embed.author) {
-          e.setAuthor({
-            name: embed.author.name,
-            iconURL: embed.author.icon_url,
-            url: embed.author.url
-          });
-        }
-
-        // Footer opcional
-        if (embed.footer) {
-          e.setFooter({
-            text: embed.footer.text,
-            iconURL: embed.footer.icon_url
-          });
-        }
-
-        // Imagens opcionais
-        if (embed.thumbnail?.url) {
-          e.setThumbnail(embed.thumbnail.url);
-        }
-
-        // Imagem principal opcional
-        if (embed.image?.url) {
-          e.setImage(embed.image.url);
-        }
-
-        // Campos opcionais
-        if (Array.isArray(embed.fields)) {
-          e.addFields(
-            embed.fields.map(f => ({
-              name: f.name,
-              value: f.value,
-              inline: !!f.inline
-            }))
-          );
-        }
-
+        if (embed.title) e.setTitle(embed.title);
+        if (embed.description) e.setDescription(embed.description);
+        if (embed.url) e.setURL(embed.url);
+        if (embed.color) e.setColor(embed.color);
+        if (embed.timestamp) e.setTimestamp(embed.timestamp === true ? new Date() : new Date(embed.timestamp));
+        if (embed.author) e.setAuthor({ name: embed.author.name, iconURL: embed.author.icon_url, url: embed.author.url });
+        if (embed.footer) e.setFooter({ text: embed.footer.text, iconURL: embed.footer.icon_url });
+        if (embed.thumbnail?.url) e.setThumbnail(embed.thumbnail.url);
+        if (embed.image?.url) e.setImage(embed.image.url);
+        if (Array.isArray(embed.fields)) e.addFields(embed.fields.map(f => ({ name: f.name, value: f.value, inline: !!f.inline })));
         return e;
       });
     }
-
-    // Payload completo estilo webhook
-    const payload = {
-      content: data.content || undefined,
-      embeds
-    };
-
-    // Attachments opcionais
-    if (
-      Array.isArray(data.attachments) &&
-      data.attachments.length
-    ) {
-      payload.files = data.attachments;
-    }
+    if (Array.isArray(data.attachments) && data.attachments.length) payload.files = data.attachments;
 
     await targetChannel.send(payload);
-
   } catch (err) {
-    await message.channel.send({
-      embeds: [createErrorEmbed("Erro ao enviar embed", err.message)]
-    });
+    await message.channel.send({ embeds: [createErrorEmbed("Erro ao enviar embed", err.message)] });
   }
 });
+
+// Parse de cor flexível — hex (#RGB/#RRGGBB), int, ou nome pt/EN básico.
+const COLOR_NAMES = {
+  red: 0xED4245, vermelho: 0xED4245,
+  green: 0x57F287, verde: 0x57F287,
+  blue: 0x3498DB, azul: 0x3498DB,
+  yellow: 0xFEE75C, amarelo: 0xFEE75C,
+  orange: 0xE67E22, laranja: 0xE67E22,
+  purple: 0x9B59B6, roxo: 0x9B59B6,
+  pink: 0xE91E63, rosa: 0xE91E63,
+  white: 0xFFFFFF, branco: 0xFFFFFF,
+  black: 0x000000, preto: 0x000000,
+  blurple: 0x5865F2, padrao: 0x5865F2, default: 0x5865F2,
+};
+
+function parseColor(raw) {
+  if (!raw) return 0x5865F2;
+  const s = raw.trim().toLowerCase();
+  if (COLOR_NAMES[s] !== undefined) return COLOR_NAMES[s];
+  if (/^#?[0-9a-f]{6}$/i.test(s)) return parseInt(s.replace('#', ''), 16);
+  if (/^#?[0-9a-f]{3}$/i.test(s)) {
+    const h = s.replace('#', '');
+    return parseInt(h[0] + h[0] + h[1] + h[1] + h[2] + h[2], 16);
+  }
+  if (/^\d+$/.test(s)) return parseInt(s, 10);
+  return 0x5865F2;
+}
+
+// Handler do submit do modal — chamado pelo router em interactions.js
+export async function handleEscreverModalSubmit(interaction, client) {
+  try {
+    const titulo = interaction.fields.getTextInputValue('titulo');
+    const descricao = interaction.fields.getTextInputValue('descricao');
+    const corRaw = interaction.fields.getTextInputValue('cor');
+    const imagem = interaction.fields.getTextInputValue('imagem');
+    const thumbnail = interaction.fields.getTextInputValue('thumbnail');
+
+    const channelId = interaction.customId.split(':')[1] || interaction.channelId;
+    const channel = interaction.channel || await client.channels.fetch(channelId).catch(() => null);
+    if (!channel || !channel.isTextBased()) {
+      return interaction.reply({ embeds: [createErrorEmbed('Canal inválido', `Não consegui enviar em <#${channelId}>.`)], ephemeral: true });
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle(titulo.slice(0, 256))
+      .setDescription(descricao.slice(0, 4096))
+      .setColor(parseColor(corRaw));
+
+    if (imagem?.trim()) embed.setImage(imagem.trim());
+    if (thumbnail?.trim()) embed.setThumbnail(thumbnail.trim());
+
+    await interaction.deferReply({ ephemeral: true });
+    await channel.send({ embeds: [embed] });
+    await interaction.editReply({ embeds: [createSuccessEmbed('Enviado', `Embed publicado em <#${channelId}>.`)] });
+  } catch (err) {
+    console.error('[Escrever Modal Error]', err);
+    const payload = { embeds: [createErrorEmbed('Erro ao enviar embed', err.message)], ephemeral: true };
+    if (interaction.replied || interaction.deferred) {
+      await interaction.editReply(payload).catch(() => {});
+    } else {
+      await interaction.reply(payload).catch(() => {});
+    }
+  }
+}
 
 // .organize-tickets (Organiza os tickets dentro da categoria de tickets, renomeando e reordenando baseado no número no final do nome do canal)
 export const handleOrganizeTickets = adminOnly(async (message, args, client) => {
