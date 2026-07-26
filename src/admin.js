@@ -1373,7 +1373,7 @@ export async function handleEscreverModalSubmit(interaction, client) {
     }
 
     const channelId = interaction.customId.split(':')[1] || interaction.channelId;
-    const channel = interaction.channel || await client.channels.fetch(channelId).catch(() => null);
+    const channel = await client.channels.fetch(channelId).catch(() => null);
     if (!channel || !channel.isTextBased?.()) {
       return interaction.reply({ embeds: [createErrorEmbed('Canal inválido', `Não consegui enviar em <#${channelId}>.`)], ephemeral: true });
     }
