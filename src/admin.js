@@ -1218,29 +1218,38 @@ export const handleEntrou = adminOnly(async (message, args, client) => {
 // .escrever {json com https://discohook.org}
 export const handleEscrever = adminOnly(async (message, args, client) => {
   if (message.interaction) {
-    // Slash: abre modal com 5 campos (2 obrigatórios, 3 opcionais)
-    const channel = message.interaction.options.getChannel('canal') || message.channel;
+    const interaction = message.interaction;
+    const canalOpt = interaction.options.getChannel('canal');
+    const channel = (canalOpt && canalOpt.isTextBased?.()) ? canalOpt : interaction.channel;
+
     const modal = new ModalBuilder()
       .setCustomId(`escrever_modal:${channel.id}`)
-      .setTitle('Escrever Embed');
+      .setTitle('Escrever Mensagem');
+
+    const conteudo = new TextInputBuilder()
+      .setCustomId('conteudo')
+      .setLabel('Conteúdo (texto puro, sem embed)')
+      .setStyle(TextInputStyle.Paragraph)
+      .setRequired(false)
+      .setMaxLength(2000);
 
     const titulo = new TextInputBuilder()
       .setCustomId('titulo')
-      .setLabel('Título')
+      .setLabel('Título do embed')
       .setStyle(TextInputStyle.Short)
-      .setRequired(true)
+      .setRequired(false)
       .setMaxLength(256);
 
     const descricao = new TextInputBuilder()
       .setCustomId('descricao')
-      .setLabel('Descrição (corpo do embed)')
+      .setLabel('Descrição do embed')
       .setStyle(TextInputStyle.Paragraph)
-      .setRequired(true)
+      .setRequired(false)
       .setMaxLength(4000);
 
     const cor = new TextInputBuilder()
       .setCustomId('cor')
-      .setLabel('Cor (hex: #FF0000) — opcional')
+      .setLabel('Cor (hex #FF0000 ou nome) — opcional')
       .setStyle(TextInputStyle.Short)
       .setRequired(false)
       .setMaxLength(20)
@@ -1248,27 +1257,20 @@ export const handleEscrever = adminOnly(async (message, args, client) => {
 
     const imagem = new TextInputBuilder()
       .setCustomId('imagem')
-      .setLabel('URL da imagem principal — opcional')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(false)
-      .setMaxLength(500);
-
-    const thumbnail = new TextInputBuilder()
-      .setCustomId('thumbnail')
-      .setLabel('URL da miniatura (canto) — opcional')
+      .setLabel('URL da imagem — opcional')
       .setStyle(TextInputStyle.Short)
       .setRequired(false)
       .setMaxLength(500);
 
     modal.addComponents(
+      new ActionRowBuilder().addComponents(conteudo),
       new ActionRowBuilder().addComponents(titulo),
       new ActionRowBuilder().addComponents(descricao),
       new ActionRowBuilder().addComponents(cor),
       new ActionRowBuilder().addComponents(imagem),
-      new ActionRowBuilder().addComponents(thumbnail),
     );
 
-    return message.interaction.showModal(modal);
+    return interaction.showModal(modal);
   }
 
   // Prefix fallback: JSON inline (Discohook). Mantido durante teste até o corte do prefix.
@@ -1356,32 +1358,44 @@ function parseColor(raw) {
 // Handler do submit do modal — chamado pelo router em interactions.js
 export async function handleEscreverModalSubmit(interaction, client) {
   try {
-    const titulo = interaction.fields.getTextInputValue('titulo');
-    const descricao = interaction.fields.getTextInputValue('descricao');
-    const corRaw = interaction.fields.getTextInputValue('cor');
-    const imagem = interaction.fields.getTextInputValue('imagem');
-    const thumbnail = interaction.fields.getTextInputValue('thumbnail');
+    const conteudo = interaction.fields.getTextInputValue('conteudo')?.trim();
+    const titulo = interaction.fields.getTextInputValue('titulo')?.trim();
+    const descricao = interaction.fields.getTextInputValue('descricao')?.trim();
+    const corRaw = interaction.fields.getTextInputValue('cor')?.trim();
+    const imagem = interaction.fields.getTextInputValue('imagem')?.trim();
+
+    // Validação: pelo menos 1 campo preenchido
+    if (!conteudo && !titulo && !descricao && !imagem) {
+      return interaction.reply({
+        embeds: [createErrorEmbed('Nada preenchido', 'Preencha pelo menos um dos campos (conteúdo, título, descrição ou imagem).')],
+        ephemeral: true,
+      });
+    }
 
     const channelId = interaction.customId.split(':')[1] || interaction.channelId;
     const channel = interaction.channel || await client.channels.fetch(channelId).catch(() => null);
-    if (!channel || !channel.isTextBased()) {
+    if (!channel || !channel.isTextBased?.()) {
       return interaction.reply({ embeds: [createErrorEmbed('Canal inválido', `Não consegui enviar em <#${channelId}>.`)], ephemeral: true });
     }
 
-    const embed = new EmbedBuilder()
-      .setTitle(titulo.slice(0, 256))
-      .setDescription(descricao.slice(0, 4096))
-      .setColor(parseColor(corRaw));
+    // Monta payload: content (texto puro) + embed (se tiver campos visuais)
+    const payload = {};
+    if (conteudo) payload.content = conteudo.slice(0, 2000);
 
-    if (imagem?.trim()) embed.setImage(imagem.trim());
-    if (thumbnail?.trim()) embed.setThumbnail(thumbnail.trim());
+    if (titulo || descricao || imagem) {
+      const embed = new EmbedBuilder().setColor(parseColor(corRaw));
+      if (titulo) embed.setTitle(titulo.slice(0, 256));
+      if (descricao) embed.setDescription(descricao.slice(0, 4096));
+      if (imagem) embed.setImage(imagem);
+      payload.embeds = [embed];
+    }
 
     await interaction.deferReply({ ephemeral: true });
-    await channel.send({ embeds: [embed] });
-    await interaction.editReply({ embeds: [createSuccessEmbed('Enviado', `Embed publicado em <#${channelId}>.`)] });
+    await channel.send(payload);
+    await interaction.editReply({ embeds: [createSuccessEmbed('Enviado', `Mensagem publicada em <#${channelId}>.`)] });
   } catch (err) {
     console.error('[Escrever Modal Error]', err);
-    const payload = { embeds: [createErrorEmbed('Erro ao enviar embed', err.message)], ephemeral: true };
+    const payload = { embeds: [createErrorEmbed('Erro ao enviar', err.message)], ephemeral: true };
     if (interaction.replied || interaction.deferred) {
       await interaction.editReply(payload).catch(() => {});
     } else {
