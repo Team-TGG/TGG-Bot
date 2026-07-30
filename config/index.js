@@ -24,20 +24,6 @@ export const supabase = {
   anonKey: process.env.SUPABASE_ANON_KEY,
 };
 
-
-export const guildActivity = {
-  baseUrl: process.env.TGG_API_URL,
-  endpoint: '/TGG/api/guild-report.php',
-  apiKey: process.env.TGG_API_KEY,
-  channelId: ''|| null,
-};
-
-export const movimentacao = {
-  baseUrl: process.env.TGG_API_URL,
-  endpoint: '/TGG/api/guild-movimentacao.php',
-  apiKey: process.env.TGG_API_KEY,
-};
-
 export const brawlhalla = {
   apiKey: process.env.BRAWLHALLA_API_KEY,
   clanId:'396943',
