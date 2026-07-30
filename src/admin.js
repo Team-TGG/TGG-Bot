@@ -678,6 +678,64 @@ export const handleUnmute = adminOnly(async (message, args, client) => {
   }
 });
 
+// .kick
+export const handleKick = adminOnly(async (message, args, client) => {
+  try {
+    if (!hasPermission(message.member, 3)) {
+      return message.reply({
+        embeds: [createErrorEmbed('Acesso Negado', 'Apenas supervisores ou superiores podem kickar.')]
+      });
+    }
+
+    const guild = client.guilds.cache.get(discordConfig.guildId);
+    if (!guild) throw new Error('Guild não encontrada');
+
+    let targetId;
+    if (message.interaction) {
+      const u = message.interaction.options.getUser('usuario');
+      if (!u) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Mencione um usuário.')] });
+      targetId = u.id;
+    } else {
+      const mentionMatch = message.content.match(/<@!?(\d+)>/);
+      if (mentionMatch) targetId = mentionMatch[1];
+      else {
+        const idMatch = args[0]?.match(/^\d+$/);
+        if (idMatch) targetId = args[0];
+      }
+      if (!targetId) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.kick <@user/ID> [motivo]`')] });
+    }
+
+    if (await isAdmin(targetId)) {
+      return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Você não pode kickar um administrador.')] });
+    }
+
+    let reason;
+    if (message.interaction) {
+      reason = message.interaction.options.getString('motivo') || 'Sem motivo especificado';
+    } else {
+      reason = message.content.includes('>')
+        ? message.content.split('>').slice(1).join('>').trim()
+        : args.slice(1).join(' ').trim() || 'Sem motivo especificado';
+    }
+
+    const member = await guild.members.fetch(targetId).catch(() => null);
+    if (!member) {
+      return message.reply({ embeds: [createErrorEmbed('Usuário Não Encontrado', 'Não foi possível encontrar o usuário na guild.')] });
+    }
+
+    // DM antes de kickar
+    await member.send({
+      embeds: [createWarningEmbed('Você foi expulso', `Você foi removido da guilda TGG.\n**Motivo:** ${reason}`)]
+    }).catch(() => console.log(`[Kick] Could not send DM to ${targetId}`));
+
+    await member.kick(reason);
+
+    await message.reply({ embeds: [createSuccessEmbed('Usuário Expulso', `${member.user.tag} foi kickado.\n**Motivo:** ${reason}`)] });
+  } catch (err) {
+    await message.reply({ embeds: [createErrorEmbed('Erro ao Kickar', err.message)] });
+  }
+});
+
 // .ban
 export const handleBan = adminOnly(async (message, args, client) => {
   try {

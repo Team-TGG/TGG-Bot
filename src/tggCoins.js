@@ -302,6 +302,30 @@ export async function getLeaderboard(page = 1, limit = 10) {
 }
 
 /**
+ * Leaderboard de streak diária (ordenado por streak desc)
+ */
+export async function getStreakLeaderboard(page = 1, limit = 10) {
+  const supabase = getClient();
+
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+
+  const { data, error, count } = await supabase
+    .from('tgg_coins_daily_streak')
+    .select('discord_id, streak', { count: 'exact' })
+    .gt('streak', 0)
+    .order('streak', { ascending: false })
+    .range(from, to);
+
+  if (error) throw error;
+
+  return {
+    data: data ?? [],
+    total: count ?? 0
+  };
+}
+
+/**
  * Pega leaderboard total (ordenado pelo total de TGG_coins ganho)
  */
 export async function getTotalCoinsLeaderboard(page = 1, limit = 10) {

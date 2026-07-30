@@ -75,6 +75,13 @@ export const adminCommands = [
     .addStringOption(o => o.setName('motivo').setDescription('Motivo do ban'))
     .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers),
 
+  new SlashCommandBuilder()
+    .setName('kick')
+    .setDescription('Expulsa um usuário da guilda')
+    .addUserOption(o => o.setName('usuario').setDescription('@user').setRequired(true))
+    .addStringOption(o => o.setName('motivo').setDescription('Motivo do kick'))
+    .setDefaultMemberPermissions(MOD_DEFAULT_PERMS),
+
   // ── Inativos ──
   new SlashCommandBuilder()
     .setName('inac-all')

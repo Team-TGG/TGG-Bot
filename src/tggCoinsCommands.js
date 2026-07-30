@@ -447,7 +447,7 @@ export async function handleLeaderboard(message) {
     let mode = 'COINS';
 
     // Guarda informação em um cache
-    const cache = {coins: null, totalCoins: null, tickets: null};
+    const cache = {coins: null, totalCoins: null, tickets: null, streak: null};
 
     // Carrega o leaderboard inteiro de uma vez
     cache.coins = await tggCoins.getLeaderboard(1, 9999);
@@ -460,14 +460,19 @@ export async function handleLeaderboard(message) {
       cache.tickets = await tggCoins.getEventLeaderboard(1, 9999);
     }
 
+    // Carrega leaderboard de streak sempre
+    cache.streak = await tggCoins.getStreakLeaderboard(1, 9999);
+
     async function generateEmbed(page) {
 
-      const source = 
+      const source =
         mode === 'TICKETS'
           ? cache.tickets
           : mode === 'TOTAL'
             ? cache.totalCoins
-            : cache.coins;
+            : mode === 'STREAK'
+              ? cache.streak
+              : cache.coins;
 
       const total = source.total;
       const totalPages = Math.ceil(total / limit) || 1;
@@ -502,12 +507,11 @@ export async function handleLeaderboard(message) {
             position === 3 ? '🥉' :
             `#${position}`;
 
-          const tickets = user.balance ?? 0;
-          const coins = user.balance ?? 0;
-
           const value = mode === 'TICKETS'
-            ? `${tickets.toLocaleString('pt-BR')} Tickets`
-            : `${coins.toLocaleString('pt-BR')} TGG-Coins`;
+            ? `${(user.balance ?? 0).toLocaleString('pt-BR')} Tickets`
+            : mode === 'STREAK'
+              ? `🔥 ${user.streak ?? 0} dia(s)`
+              : `${(user.balance ?? 0).toLocaleString('pt-BR')} TGG-Coins`;
 
           return `${medal} **${username}** — ${value}`;
         })
@@ -520,7 +524,9 @@ export async function handleLeaderboard(message) {
             ? '🎟️ Leaderboard de Tickets'
             : mode === 'TOTAL'
               ? '🏆 Leaderboard de Coins Totais'
-              : '🏆 Leaderboard'
+              : mode === 'STREAK'
+                ? '🔥 Leaderboard de Streak'
+                : '🏆 Leaderboard'
         )
         .setDescription(description.join('\n'))
         .setFooter({text: mode === 'TOTAL'
@@ -533,7 +539,7 @@ export async function handleLeaderboard(message) {
     await createPagination(message, {
       getEmbed: generateEmbed,
       getTotalPages: () => {
-        const source = mode === 'TICKETS' ? cache.tickets : mode === 'TOTAL' ? cache.totalCoins : cache.coins;
+        const source = mode === 'TICKETS' ? cache.tickets : mode === 'TOTAL' ? cache.totalCoins : mode === 'STREAK' ? cache.streak : cache.coins;
         return Math.ceil(source.total / limit) || 1;
       },
       prevId: 'prev_lb',
@@ -543,6 +549,11 @@ export async function handleLeaderboard(message) {
           .setCustomId('toggle_total')
           .setLabel(mode === 'TOTAL' ? 'Ver Atuais' : 'Ver Totais')
           .setEmoji(EMOJIS.TGGcoin)
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId('toggle_streak')
+          .setLabel(mode === 'STREAK' ? 'Ver Coins' : 'Ver Streak')
+          .setEmoji('🔥')
           .setStyle(ButtonStyle.Secondary),
         ...(hasEvent ? [
           new ButtonBuilder()
@@ -555,6 +566,10 @@ export async function handleLeaderboard(message) {
       onExtra: async (interaction, page) => {
         if (interaction.customId === 'toggle_total') {
           mode = mode === 'TOTAL' ? 'COINS' : 'TOTAL';
+          return 1;
+        }
+        if (interaction.customId === 'toggle_streak') {
+          mode = mode === 'STREAK' ? 'COINS' : 'STREAK';
           return 1;
         }
         if (interaction.customId === 'toggle_mode') {
