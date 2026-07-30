@@ -1,11 +1,28 @@
 import {
   ApplicationCommandOptionType,
   Collection,
+  MessageFlags,
 } from 'discord.js';
 
 // Ponytail: handlers continuam com assinatura (message, args, client).
 // Adapter monta message-shim a partir de interaction.options. reply() retorna Message real
-// (fetchReply: true) pra collectors e .edit() funcionarem nativos.
+// pra collectors e .edit() funcionarem nativos.
+
+const COMMANDS_WITH_INITIAL_INTERACTION_RESPONSE = new Set(['escrever']);
+
+function normalizeInteractionPayload(payload) {
+  if (!payload || typeof payload === 'string') return payload;
+  if (!Object.prototype.hasOwnProperty.call(payload, 'ephemeral')) return payload;
+
+  const { ephemeral, flags, ...rest } = payload;
+  if (!ephemeral) return { ...rest, flags };
+  const normalizedFlags = Array.isArray(flags) ? flags : flags ? [flags] : [];
+
+  return {
+    ...rest,
+    flags: [...normalizedFlags, MessageFlags.Ephemeral],
+  };
+}
 
 function buildArgsAndContent(interaction) {
   const args = [];
@@ -64,8 +81,6 @@ function buildArgsAndContent(interaction) {
 }
 
 function buildMessageShim(interaction, content, mentions, attachments) {
-  const replyCount = { n: 0 };
-
   return {
     // identify como mensagem do Discord p/ libs que checam instanceof (não usamos aqui)
     author: interaction.user,
@@ -81,13 +96,19 @@ function buildMessageShim(interaction, content, mentions, attachments) {
     createdAt: new Date(),
     createdTimestamp: Date.now(),
     deletable: false,
-    // reply segue o fluxo interaction.reply → followUp. fetchReply:true p/ ter Message real.
+    // reply: 1a chamada vai pra interaction.reply (ou editReply se deferred), demais pra followUp.
+    // Baseado no estado real da interaction, não em contador — robusto a falhas.
     async reply(payload) {
-      replyCount.n += 1;
-      if (replyCount.n === 1 && !interaction.deferred && !interaction.replied) {
-        return interaction.reply({ ...payload, fetchReply: true });
+      const normalizedPayload = normalizeInteractionPayload(payload);
+
+      if (interaction.deferred && !interaction.replied) {
+        return interaction.editReply(normalizedPayload);
       }
-      return interaction.followUp({ ...payload, fetchReply: true });
+      if (!interaction.replied) {
+        await interaction.reply(normalizedPayload);
+        return interaction.fetchReply();
+      }
+      return interaction.followUp(normalizedPayload);
     },
     async delete() {
       return;
@@ -99,6 +120,14 @@ function buildMessageShim(interaction, content, mentions, attachments) {
 }
 
 export async function runAsSlash(handler, interaction, client) {
+  if (
+    !COMMANDS_WITH_INITIAL_INTERACTION_RESPONSE.has(interaction.commandName)
+    && !interaction.deferred
+    && !interaction.replied
+  ) {
+    await interaction.deferReply();
+  }
+
   const { args, content, mentions, attachments } = buildArgsAndContent(interaction);
   const messageShim = buildMessageShim(interaction, content, mentions, attachments);
   await handler(messageShim, args, client);
