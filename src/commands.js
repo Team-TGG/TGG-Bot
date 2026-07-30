@@ -1,6 +1,6 @@
 // Handlers
 import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleEditWarn, handleMute, handleUnmute, handleBan, handleBam, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleAbrirTickets, handleFecharTickets, handleWam, handleJustificativas, handleResumo } from './admin.js';
-import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes, handleDuel, handleCrz } from './public.js';
+import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes, handleDuel, handleCrz, handleVideoGuilda } from './public.js';
 import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins, handleAddAccount, handleQuiz, handleInventory } from './tggCoinsCommands.js';
 
 // Command Aliases
@@ -177,6 +177,18 @@ export const COMMAND_ALIASES = {
   'mentira': 'justificativas',
   'desculpas': 'justificativas',
   'desculpa': 'justificativas',
+  'video-guilda': 'video-guilda',
+  'vídeo-guilda': 'video-guilda',
+  'videoguilda': 'video-guilda',
+  'vídeoguilda': 'video-guilda',
+  'vídeo-ticket': 'video-guilda',
+  'video-ticket': 'video-guilda',
+  'vídeoticket': 'video-guilda',
+  'videoticket': 'video-guilda',
+  'explicacao': 'video-guilda',
+  'explicação': 'video-guilda',
+  'explicaçao': 'video-guilda',
+  'explicacão': 'video-guilda',
   'resumo': 'resumo',
   'resumao': 'resumo',
   'resumão': 'resumo',
@@ -198,6 +210,7 @@ export const commands = {
   'corrigir-id': handleCorrigirID,
   redes: handleRedes,
   duel: handleDuel,
+  'video-guilda': handleVideoGuilda,
   crz: handleCrz,
 
   // Admin

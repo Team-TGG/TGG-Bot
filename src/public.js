@@ -3,7 +3,7 @@ import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuil
 import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getMonthWeekStartDateTime, getCurrentSeason, getSeasonWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID, incrementCrz } from './db.js';
 import { getGuildWeeklyGuildPoints, getDuelGuildWeeklyGuildPoints, getPlayerWeeklyGuildPoints } from './guild.js';
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI, fetchPlayerGuildStatsNewAPI } from './brawlhalla.js';
-import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../config/index.js';
+import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, videoGuilda as videoGuildaConfig } from '../config/index.js';
 import { calculateGames } from './handlers/publicHandlers.js';
 
 import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage } from '../utils/discordUtils.js';
@@ -47,6 +47,7 @@ export async function handleHelp(message, args, client) {
       { name: `${EMOJIS.arrowRight} .motd <mensagem>`, value: 'Salvar uma mensagem para ser sorteada no site (1x por semana)', inline: false },
       { name: `${EMOJIS.arrowRight} .birthday DD/MM`, value: 'Registrar seu aniversário para receber parabéns no dia!', inline: false },
       { name: `${EMOJIS.arrowRight} .redes`, value: 'Verificar as redes sociais da TGG', inline: false },
+      { name: `${EMOJIS.arrowRight} .video-guilda (.explicacao)`, value: 'Vídeo explicando como funciona a guilda', inline: false },
       { name: `${EMOJIS.arrowRight} .help`, value: 'Mostrar esta mensagem', inline: false }
     )
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
@@ -1097,6 +1098,50 @@ export async function handleRedes(message) {
       components: [buildButtons(type)]
     });
   });
+}
+
+// .video-guilda
+export async function handleVideoGuilda(message, args, client) {
+  try {
+    const titulo = `🎬 **Vídeo explicativo da guilda**`;
+    const { message: sourceMessage, url, file } = videoGuildaConfig;
+
+    if (sourceMessage?.channelId && sourceMessage?.messageId) {
+      const channel = await (client ?? message.client).channels
+        .fetch(sourceMessage.channelId)
+        .catch(() => null);
+
+      const videoMsg = channel?.isTextBased()
+        ? await channel.messages.fetch(sourceMessage.messageId).catch(() => null)
+        : null;
+
+      if (!videoMsg) {
+        return message.reply({
+          embeds: [createErrorEmbed('Vídeo Não Encontrado', 'Não consegui acessar a mensagem configurada em `videoGuilda.message`.')]
+        });
+      }
+
+      const videoUrl = videoMsg.attachments.first()?.url || videoMsg.content.trim();
+
+      if (!videoUrl) {
+        return message.reply({
+          embeds: [createErrorEmbed('Vídeo Não Encontrado', 'A mensagem configurada não tem nenhum vídeo anexado.')]
+        });
+      }
+
+      return message.reply({ content: `${titulo}\n${videoUrl}` });
+    }
+
+    return message.reply({
+      embeds: [createErrorEmbed('Vídeo Não Configurado', 'Nenhuma fonte definida em `videoGuilda` (config/index.js).')]
+    });
+
+  } catch (err) {
+    console.error('[VideoGuilda Error]', err);
+    await message.reply({
+      embeds: [createErrorEmbed('Erro ao Enviar Vídeo', err.message)]
+    }).catch(() => { });
+  }
 }
 
 // .duel

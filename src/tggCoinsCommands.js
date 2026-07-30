@@ -1243,6 +1243,14 @@ export async function handleConquistas(message) {
 
     const user = await getUserByDiscordId(discordId);
 
+    if (!user) {
+      return loading.edit({
+        embeds: [
+          createErrorEmbed('Acesso Negado', 'Você não está na guilda.')
+        ]
+      });
+    }
+
     // Garante que os aliases estão carregados
     await loadAliases();
 
@@ -1253,14 +1261,6 @@ export async function handleConquistas(message) {
 
     // Pega todas as contas do usuário (caso ele tenha mais de uma conta vinculada) para mostrar as missões de todas as contas
     const accountIds = await tggCoins.getAllAccounts(user.brawlhalla_id);
-
-    if (!user) {
-      return loading.edit({
-        embeds: [
-          createErrorEmbed('Acesso Negado', 'Você não está na guilda.')
-        ]
-      });
-    }
 
     const weekStart = getMissionWeekStart();
     const weekEnd = getMissionWeekEnd();
@@ -1274,6 +1274,28 @@ export async function handleConquistas(message) {
           createErrorEmbed(
             'Nenhuma missão encontrada',
             'Ainda não há missões cadastradas para esta semana.'
+          )
+        ]
+      });
+    }
+
+    // Sem os dados iniciais da semana não existe base de comparação: o progresso seria calculado
+    // contra 0 e todas as conquistas seriam pagas de uma vez. O cron do site cria esse registro
+    // de 15 em 15 minutos, então quem acabou de entrar precisa esperar a próxima execução.
+    const weeklyInfo = await tggCoins.getPlayerMissionProgress(accountIds, weekStart);
+    const registeredIds = new Set((weeklyInfo || []).map(row => String(row.brawlhalla_id)));
+    const missingIds = accountIds.filter(id => !registeredIds.has(String(id)));
+
+    if (missingIds.length > 0) {
+      const isPlural = missingIds.length > 1;
+
+      return loading.edit({
+        embeds: [
+          createErrorEmbed(
+            'Sem Registro Nesta Semana',
+            `Ainda não há dados iniciais desta semana para ${isPlural ? 'as contas' : 'a conta'} **${missingIds.join(', ')}**, ` +
+            `então não é possível calcular o progresso das conquistas.\n\n` +
+            `O registro é criado automaticamente a cada 15 minutos. Tente novamente mais tarde.`
           )
         ]
       });
@@ -1486,12 +1508,28 @@ export async function handleAddAccount(message, args) {
       });
     }
 
+    // Cria o registro inicial da semana para a alt, senão as conquistas ficam sem base de comparação
+    // até o próximo cron (e todo o histórico da conta contaria como progresso da semana)
+    let weeklyInfoNote = '';
+
+    try {
+      const weeklyInfo = await tggCoins.ensurePlayerWeeklyInfo(altId);
+
+      weeklyInfoNote = weeklyInfo.created
+        ? '\n\n📊 Dados iniciais da semana registrados — as conquistas já contam essa conta.'
+        : '\n\n📊 Esta conta já tinha dados iniciais registrados nesta semana.';
+
+    } catch (err) {
+      console.error('[AddAccount] Erro ao registrar dados iniciais:', err);
+      weeklyInfoNote = '\n\n⚠️ Não foi possível registrar os dados iniciais da semana agora. Eles serão criados automaticamente em até 15 minutos.';
+    }
+
     return loading.edit({
       embeds: [
         new EmbedBuilder()
           .setColor(0x00ff99)
           .setTitle('✅ Conta vinculada')
-          .setDescription(`A conta **${result.name} (${altId})** foi vinculada com sucesso.`)
+          .setDescription(`A conta **${result.name} (${altId})** foi vinculada com sucesso.${weeklyInfoNote}`)
       ]
     });
 

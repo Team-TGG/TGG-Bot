@@ -69,3 +69,11 @@ export const motd = {
   url: 'https://teamtgg.com.br/api/motd.php',
   channelId: '1437416481343406122', // Principal
 };
+
+// Vídeo explicativo da guilda (.video-guilda / .explicacao)
+export const videoGuilda = {
+  message: {
+    channelId: '1448392117410857092',
+    messageId: '1532359890855530626',
+  },
+};

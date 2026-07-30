@@ -1,8 +1,8 @@
-import { getClient, formatDateTime } from './db.js';
+import { getClient, formatDateTime, getMissionWeekStart } from './db.js';
 import { TGG_COINS_ROLES } from './tggCoinsCommands.js';
 import { tggCoinsEvents } from '../config/index.js';
 import { SYSTEM_ROLES} from './discord.js';
-import { fetchPlayerStats} from './brawlhalla.js';
+import { fetchPlayerStats, fetchPlayerStatsNoResolve, fetchPlayerGuildStatsNewAPI } from './brawlhalla.js';
 
 /**
  * Adiciona transação
@@ -794,6 +794,77 @@ export async function getPlayerMissionProgress(brawlhallaID, week_start) {
   if (error && error.code !== 'PGRST116') throw error;
 
   return data;
+}
+
+/**
+ * Cria o registro inicial da semana em player_weekly_info, caso ainda não exista.
+ * O cron do site preenche essa tabela de 15 em 15 minutos. Quem entra na guilda (ou vincula uma alt)
+ * entre duas execuções fica sem base de comparação: os valores iniciais viram 0 e o total de vitórias
+ * da conta inteira passa a contar como progresso da semana, concluindo todas as conquistas de uma vez.
+ */
+export async function ensurePlayerWeeklyInfo(brawlhallaId) {
+  const supabase = getClient();
+
+  const id = String(brawlhallaId);
+  const weekStart = getMissionWeekStart();
+
+  const { data: existing, error: existingError } = await supabase
+    .from('player_weekly_info')
+    .select('id')
+    .eq('brawlhalla_id', id)
+    .eq('week_start', weekStart)
+    .maybeSingle();
+
+  if (existingError) throw existingError;
+
+  // Já registrado (pelo cron ou por outro comando)
+  if (existing) return { created: false, weekStart };
+
+  // NoResolve: para alts precisamos das estatísticas da própria conta, não da main
+  const stats = await fetchPlayerStatsNoResolve(id);
+
+  if (!stats) throw new Error(`Não foi possível buscar as estatísticas da conta ${id}`);
+
+  const data1v1 = extractModeData(stats, '1v1');
+  const data2v2 = extractModeData(stats, '2v2');
+  const data3v3 = extractModeData(stats, '3v3');
+
+  // Guild points do jogador. Falha na API não deve impedir a criação do registro
+  let guildPoints = 0;
+
+  try {
+    const guildStats = await fetchPlayerGuildStatsNewAPI(id);
+    guildPoints = Number(guildStats?.personal_points || 0);
+  } catch (err) {
+    console.warn(`[WeeklyInfo] Guild points indisponíveis para ${id}:`, err.message);
+  }
+
+  const { error: insertError } = await supabase
+    .from('player_weekly_info')
+    .insert({
+      brawlhalla_id: id,
+      week_start: weekStart,
+      created_at: formatDateTime(new Date()),
+      games: Number(stats.games || 0),
+      guild_xp: Number(stats.clan?.personal_xp || 0),
+      guild_points: guildPoints,
+      initial_elo_1v1: data1v1.elo,
+      initial_games_1v1: data1v1.games,
+      initial_wins_1v1: data1v1.wins,
+      // Sem partidas em 2v2/3v3 o cron grava 1200 (elo base). Mantido para não divergir da tabela
+      initial_elo_2v2: data2v2.elo || 1200,
+      initial_games_2v2: data2v2.games,
+      initial_wins_2v2: data2v2.wins,
+      initial_elo_3v3: data3v3.elo || 1200,
+      initial_games_3v3: data3v3.games,
+      initial_wins_3v3: data3v3.wins,
+    });
+
+  if (insertError) throw insertError;
+
+  console.log(`[WeeklyInfo] Registro inicial criado para ${id} (semana ${weekStart})`);
+
+  return { created: true, weekStart };
 }
 
 /**

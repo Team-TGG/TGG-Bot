@@ -57,4 +57,8 @@ export const publicCommands = [
   new SlashCommandBuilder()
     .setName('duel')
     .setDescription('Informações do duelo atual contra outra guilda'),
+
+  new SlashCommandBuilder()
+    .setName('video-guilda')
+    .setDescription('Vídeo explicando como funciona a guilda'),
 ];

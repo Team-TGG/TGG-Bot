@@ -12,6 +12,7 @@ import { isAdmin, adminOnly, hasPermission, getMemberLevel} from '../utils/permi
 import { EMOJIS } from '../config/emojis.js';
 import { scheduleTemporaryWarningRemoval } from './services/warningManager.js';
 import { scheduleMuteRenewal } from './services/muteManager.js';
+import { ensurePlayerWeeklyInfo } from './tggCoins.js';
 
 // Funções auxiliares
 
@@ -1197,12 +1198,28 @@ export const handleEntrou = adminOnly(async (message, args, client) => {
       if (!member.roles.cache.has(roleId)) await member.roles.add(roleId);
     }
 
+    // Cria os dados iniciais da semana. Sem eles o .conquistas não tem base de comparação e o jogador só entraria na contagem depois do próximo cron do site
+    let weeklyInfoNote = '';
+
+    try {
+      const weeklyInfo = await ensurePlayerWeeklyInfo(finalBhid);
+
+      weeklyInfoNote = weeklyInfo.created
+        ? `📊 **Semana:** dados iniciais registrados`
+        : `📊 **Semana:** dados iniciais já existiam`;
+
+    } catch (err) {
+      console.error('[Entrou] Erro ao registrar dados iniciais da semana:', err);
+      weeklyInfoNote = `⚠️ **Semana:** não foi possível registrar os dados iniciais (serão criados pelo cron em até 15 min)`;
+    }
+
     const successEmbed = createSuccessEmbed(
       result.reactivated ? 'Usuário Reativado' : 'Usuário Adicionado',
       `${member.user.tag} foi ${result.reactivated ? 'reativado' : 'adicionado'} ao banco de dados.\n\n` +
       `🎮 **Brawlhalla ID:** ${finalBhid}\n` +
       `🏷️ **Nome:** ${playerName}\n` +
-      `🎖️ **Cargo:** Recruit\n\n` +
+      `🎖️ **Cargo:** Recruit\n` +
+      `${weeklyInfoNote}\n\n` +
       `Cargos atualizados com sucesso!`
     );
     return interaction.update({ embeds: [successEmbed], components: [] });

@@ -73,12 +73,12 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 - [x] Adicionar Aurus às estatísticas de lendas.
 
 ### Correções e Ajustes
-- [ ] Caso o usuário não tenha registro para a semana, mostrar esse erro no `.conquistas`.
-- [ ] `.add-account` deve adicionar registro em `player_weekly_info`.
-- [ ] `.entrou` deve adicionar registro em `player_weekly_info`.
+- [x] Caso o usuário não tenha registro para a semana, mostrar esse erro no `.conquistas`.
+- [x] `.add-account` deve adicionar registro em `player_weekly_info`.
+- [x] `.entrou` deve adicionar registro em `player_weekly_info`.
 
 ### Novos Comandos
-- [ ] Criar `.resumão` com um resumo grande e detalhado da guilda.
+- [x] Criar `.resumão` com um resumo grande e detalhado da guilda.
 - [ ] Criar `.scan` com visão de staff sobre um membro: justificativas, jogos da semana atual/passada, histórico de saída da guilda e outros dados relevantes.
 - [ ] Criar `.alts`.
 - [ ] Adicionar a tabela de warns em um comando do bot, bloqueado em canais que não sejam da staff.
@@ -86,12 +86,12 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 - [ ] Criar `.registrarmissão` com dropdown para registrar missão por clique.
 
 ### Sistemas e Melhorias
-- [ ] Discutir com staff/helpers os preços e o que incluir no Coach.
-- [ ] Melhorar a automação do histórico da guilda, deixando mais rápido e criando views para evitar ler muitas linhas.
+- [x] Discutir com staff/helpers os preços e o que incluir no Coach.
+- [x] Melhorar a automação do histórico da guilda, deixando mais rápido e criando views para evitar ler muitas linhas.
 - [ ] Criação de uma aba no Leaderboard para streaks
 
 ### Futuro
-- [ ] Comandos slash.
+- [x] Comandos slash.
 - [ ] Criar um Brawdle.
 - [ ] Criar leilões no TGG Coins, com lances para itens pagos ou exclusivos.
 - [ ] StarTGG.
