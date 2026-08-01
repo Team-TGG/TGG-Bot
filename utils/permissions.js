@@ -1,6 +1,7 @@
 import { getUserByDiscordId } from '../src/db.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from './discordUtils.js';
 import { STAFF_ROLE_IDS } from '../config/index.js';
+import { MessageFlags } from 'discord.js';
 
 export const ROLE_HIERARCHY = {
   [STAFF_ROLE_IDS.helper]: 1,
@@ -18,13 +19,30 @@ export const ALLOWED_CHANNELS = [
   '1437504463375175936', // Comandos Staff
   '1440865671150829648', // TGG-Geral
   '1437416406038872225', // Comandos
-  '1468600851290521692'  // Players Inativos
+  '1468600851290521692', // Players Inativos
+  '1437416481343406122', // Principal (com cooldown de 60s)
 ];
 
 export const ALLOWED_CATEGORIES = [
   '1460768037518180352', // Categoria de Cards
   '1437504178220961815'  // Categoria da Staff
 ];
+
+// Canal Principal tem cooldown extra de 60s por usuário (staff isento, igual rate limit global)
+export const PRINCIPAL_CHANNEL_ID = '1437416481343406122';
+const PRINCIPAL_COOLDOWN_MS = 60_000;
+const principalCooldownMap = new Map();
+
+async function checkPrincipalCooldown(userId, isStaff) {
+  if (isStaff) return true;
+  const now = Date.now();
+  const last = principalCooldownMap.get(userId);
+  if (last && now - last < PRINCIPAL_COOLDOWN_MS) {
+    return Math.ceil((PRINCIPAL_COOLDOWN_MS - (now - last)) / 1000);
+  }
+  principalCooldownMap.set(userId, now);
+  return true;
+}
 
 // Versão slash: reusa constantes. Sem delete (não há msg original), ephemeral em vez de canal hint.
 export async function checkInteractionChannelPermission(interaction) {
@@ -33,16 +51,28 @@ export async function checkInteractionChannelPermission(interaction) {
   const channelId = interaction.channelId;
   const categoryId = interaction.channel?.parentId;
 
-  if (ALLOWED_CHANNELS.includes(channelId) || ALLOWED_CATEGORIES.includes(categoryId)) {
-    return true;
+  if (!ALLOWED_CHANNELS.includes(channelId) && !ALLOWED_CATEGORIES.includes(categoryId)) {
+    await interaction.reply({
+      embeds: [createErrorEmbed('Canal Errado', `Use o canal <#1437416406038872225> para utilizar os comandos do bot.`)],
+      flags: MessageFlags.Ephemeral,
+    }).catch(() => {});
+    return false;
   }
 
-  await interaction.reply({
-    embeds: [createErrorEmbed('Canal Errado', `Use o canal <#1437416406038872225> para utilizar os comandos do bot.`)],
-    ephemeral: true,
-  }).catch(() => {});
+  // Cooldown de 60s no canal Principal (staff isento)
+  if (channelId === PRINCIPAL_CHANNEL_ID) {
+    const isStaff = interaction.member?.roles?.cache?.some(r => Object.values(STAFF_ROLE_IDS).includes(r.id));
+    const wait = await checkPrincipalCooldown(interaction.user.id, isStaff);
+    if (wait !== true) {
+      await interaction.reply({
+        embeds: [createErrorEmbed('Calma lá!', `Comandos no <#${PRINCIPAL_CHANNEL_ID}> têm cooldown de **60s**. Aguarde **${wait}s**.`)],
+        flags: MessageFlags.Ephemeral,
+      }).catch(() => {});
+      return false;
+    }
+  }
 
-  return false;
+  return true;
 }
 
 export async function isAdmin(userId) {
@@ -126,25 +156,32 @@ export async function checkChannelPermission(message) {
   const channelId = message.channel.id;
   const categoryId = message.channel.parentId;
 
-  // Permite se estiver na lista de canais ou dentro da categoria
-  if (ALLOWED_CHANNELS.includes(channelId) || ALLOWED_CATEGORIES.includes(categoryId)) {
-    return true;
+  // Fora de canais permitidos: apaga msg + hint
+  if (!ALLOWED_CHANNELS.includes(channelId) && !ALLOWED_CATEGORIES.includes(categoryId)) {
+    try {
+      await message.delete().catch(() => {});
+      const msg = await message.channel.send({
+        content: `${message.author}, use o canal <#1437416406038872225> para utilizar os comandos do bot.`
+      });
+      setTimeout(() => { msg.delete().catch(() => {}); }, 5000);
+    } catch (err) {
+      console.error('Erro ao verificar canal:', err);
+    }
+    return false;
   }
 
-  try {
-    await message.delete().catch(() => {});
-
-    const msg = await message.channel.send({
-      content: `${message.author}, use o canal <#1437416406038872225> para utilizar os comandos do bot.`
-    });
-
-    setTimeout(() => {
-      msg.delete().catch(() => {});
-    }, 5000);
-
-  } catch (err) {
-    console.error('Erro ao verificar canal:', err);
+  // Cooldown de 60s no canal Principal (staff isento)
+  if (channelId === PRINCIPAL_CHANNEL_ID) {
+    const isStaff = message.member?.roles?.cache?.some(r => Object.values(STAFF_ROLE_IDS).includes(r.id));
+    const wait = await checkPrincipalCooldown(message.author.id, isStaff);
+    if (wait !== true) {
+      await message.delete().catch(() => {});
+      await message.reply({
+        embeds: [createErrorEmbed('Calma lá!', `Comandos no <#${PRINCIPAL_CHANNEL_ID}> têm cooldown de **60s**. Aguarde **${wait}s**.`)]
+      }).then(m => setTimeout(() => m.delete().catch(() => {}), 5000)).catch(() => {});
+      return false;
+    }
   }
 
-  return false;
+  return true;
 }
