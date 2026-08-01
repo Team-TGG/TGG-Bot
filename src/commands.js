@@ -81,6 +81,8 @@ export const COMMAND_ALIASES = {
   'a-sol-falou-que-me-amava-e-eu-tenho-certeza-de-que-foi-tudo-coisa-da-minha-cabeça...': 'daily', // Kay
   'resenha': 'daily', // Brraga
   '121322313212321312213': 'daily', // Dekkosun
+  'porracaralhomerdabostacacetefilhodaputaarrombadodisgraçadofedorendoxexelentoseubostinhaboiolinhapipipopofodasepaunocu': 'daily',
+  'pneumoultramicroscopicossilicovulcanoconiotico': 'daily',
   'porra': 'daily', // GGhost_storm
   'balance': 'balance',
   'bal': 'balance',
