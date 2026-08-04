@@ -1,9 +1,10 @@
 // admin.js - Comandos apenas para administradores
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, ComponentType, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 import { createClient, runSync, runEloSync } from './discord.js';
-import { fetchPlayerStats, getUserBrawlhallaId } from './brawlhalla.js';
+import { fetchPlayerStats, getUserBrawlhallaId, fetchPlayerGuildStatsNewAPI } from './brawlhalla.js';
+import { calculateGames } from './handlers/publicHandlers.js';
 import { addWarning, getUserWarnings, removeWarning, removeLastWarning, editWarning, deleteExpiredWarnings, parseTime, formatTime as formatModTime } from './moderation.js';
-import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getMissionWeekStart, getActiveUser, getMemberJustifications, formatDateBR } from './db.js';
+import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getMissionWeekStart, getActiveUser, getMemberJustifications, formatDateBR, getMembershipHistory, getPreviousMissionWeekStart, getWeeklyInitial, getMissionWeekStartDateTime, formatCreatedAtBR, loadAliases, resolveBrawlhallaId } from './db.js';
 import { discord as discordConfig, STAFF_ROLE_IDS, inactivePlayers as inactivePlayersConfig, tickets as ticketsConfig } from '../config/index.js';
 import { loadCustomNicknames } from './customNicknames.js';
 import { syncNicknames, updateMemberNicknameDiscordPortion, parseNickname, buildNickname, fetchBrawlhallaClanData, loadClanCache } from './nicknameSync.js';
@@ -2061,4 +2062,362 @@ export const handleResumo = adminOnly(async (message, args) => {
       components: []
     }).catch(() => {});
   });
+});
+
+// Data em que os guild points passaram a existir. Serve de piso pra média semanal
+// do .scan: dividir pelo tempo total de guilda achataria quem é membro antigo.
+const GUILD_POINTS_DESDE = new Date(2025, 11, 3); // 03/12/2025 (mês é 0-indexado)
+
+// .scan <@usuario/id> — visão de staff sobre um membro, em abas
+export const handleScan = adminOnly(async (message, args, client) => {
+  let loadingMsg = null;
+
+  try {
+    // Slash entrega o usuário tipado; no prefixo cai na menção ou no ID solto
+    let targetUserId = null;
+
+    if (message.interaction) {
+      targetUserId = message.interaction.options.getUser('usuario')?.id ?? null;
+    } else {
+      const mention = message.content.match(/<@!?(\d+)>/);
+      if (mention) targetUserId = mention[1];
+      else if (args[0]?.match(/^\d+$/)) targetUserId = args[0];
+    }
+
+    if (!targetUserId) {
+      return await message.reply({
+        embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.scan <@usuario/ID>`')]
+      });
+    }
+
+    const user = await getUserByDiscordId(targetUserId);
+
+    if (!user || !user.brawlhalla_id) {
+      return await message.reply({
+        embeds: [createErrorEmbed('Sem Cadastro', 'Este usuário não tem Brawlhalla ID registrado.')]
+      });
+    }
+
+    loadingMsg = await message.reply({
+      embeds: [createLoadingEmbed('Escaneando...', `${EMOJIS.loading} Juntando os dados de <@${targetUserId}>.`)]
+    });
+
+    await loadAliases();
+    const brawlhallaId = String(user.brawlhalla_id);
+
+    const weekStart = getMissionWeekStartDateTime();
+    const prevWeekStart = getPreviousMissionWeekStart();
+
+    const [history, justificativas, semanaAtual, semanaPassada] = await Promise.all([
+      getMembershipHistory(brawlhallaId),
+      getMemberJustifications(brawlhallaId),
+      getWeeklyInitial(brawlhallaId, weekStart),
+      getWeeklyInitial(brawlhallaId, prevWeekStart)
+    ]);
+
+    // API externa não pode derrubar o comando: sem ela as abas mostram o que dá
+    const stats = await fetchPlayerStats(brawlhallaId).catch((err) => {
+      console.warn(`[SCAN] Stats indisponiveis para ${brawlhallaId}:`, err.message);
+      return null;
+    });
+
+    const guildStats = await fetchPlayerGuildStatsNewAPI(brawlhallaId).catch((err) => {
+      console.warn(`[SCAN] Guild points indisponiveis para ${brawlhallaId}:`, err.message);
+      return null;
+    });
+
+    // ─── Cálculos ──────────────────────────────────────────────────────────────
+    const entradas = history.filter((h) => h.action === 'entrou');
+    const saidas = history.filter((h) => h.action === 'saiu');
+    const promocoes = history.filter((h) => h.action === 'promovido');
+    const rebaixamentos = history.filter((h) => h.action === 'rebaixado');
+
+    // history vem do mais recente para o mais antigo
+    const ultimaEntrada = entradas[0] ?? null;
+    const primeiraEntrada = entradas[entradas.length - 1] ?? null;
+    const ultimaSaida = saidas[0] ?? null;
+
+    // Tempo de casa (só exibição no Geral) — conta desde a entrada, sem piso
+    let semanasNaGuilda = null;
+    if (ultimaEntrada) {
+      const dias = (Date.now() - new Date(ultimaEntrada.occurred_at).getTime()) / 86400000;
+      semanasNaGuilda = Math.max(1, Math.floor(dias / 7));
+    }
+
+    // Divisor da média: guild points só passaram a existir em 03/12/2025, então semana
+    // anterior a isso não conta. Quem entrou depois conta a partir da própria entrada.
+    const entradaMs = ultimaEntrada ? new Date(ultimaEntrada.occurred_at).getTime() : 0;
+    const inicioContagem = Math.max(entradaMs, GUILD_POINTS_DESDE.getTime());
+
+    const divisorSemanas = Math.max(1, Math.floor((Date.now() - inicioContagem) / (7 * 86400000)));
+    const baseDivisor = inicioContagem === GUILD_POINTS_DESDE.getTime()
+      ? 'semanas desde 03/12/2025 (inicio dos guild points)'
+      : 'semanas desde a entrada na guilda';
+
+    const pontosTotais = guildStats?.personal_points ?? null;
+
+    // guild_points em player_weekly_info é a linha de base do início da semana.
+    // O ganho da semana passada é a diferença entre a base desta semana e a da anterior.
+    let pontosSemanaPassada = null;
+    if (semanaAtual?.guild_points > 0 && semanaPassada?.guild_points > 0) {
+      pontosSemanaPassada = semanaAtual.guild_points - semanaPassada.guild_points;
+    }
+
+    const mediaSemanal = pontosTotais != null ? Math.round(pontosTotais / divisorSemanas) : null;
+
+    const jogosAtual = stats && semanaAtual ? calculateGames(stats, stats.ranked, semanaAtual) : null;
+
+    let jogosPassada = null;
+    if (semanaPassada && semanaPassada.final_games > 0) {
+      jogosPassada = {
+        totalGames: (semanaPassada.final_games ?? 0) - (semanaPassada.games ?? 0),
+        games1v1: (semanaPassada.final_games_1v1 ?? 0) - (semanaPassada.initial_games_1v1 ?? 0),
+        games2v2: (semanaPassada.final_games_2v2 ?? 0) - (semanaPassada.initial_games_2v2 ?? 0),
+        games3v3: (semanaPassada.final_games_3v3 ?? 0) - (semanaPassada.initial_games_3v3 ?? 0)
+      };
+    }
+
+    const nomeJogo = stats?.name ?? ultimaEntrada?.nome ?? user.username ?? 'Desconhecido';
+
+    // ─── Abas ──────────────────────────────────────────────────────────────────
+    const JUST_POR_PAGINA = 5;
+    const totalPaginasJust = Math.max(1, Math.ceil(justificativas.length / JUST_POR_PAGINA));
+
+    let aba = 'geral';
+    let paginaJust = 0;
+
+    function embedGeral() {
+      const embed = new EmbedBuilder()
+        .setColor(0x5865f2)
+        .setTitle(`🔎 Scan — ${nomeJogo}`)
+        .setDescription(`<@${targetUserId}> • \`${brawlhallaId}\``)
+        .addFields(
+          { name: '🏷️ Cargo no bot', value: `\`${user.role ?? '—'}\``, inline: true },
+          { name: '📌 Status', value: user.active ? '`ativo`' : '`inativo`', inline: true },
+          { name: '🎖️ Rank na guilda', value: `\`${guildStats?.rank ?? ultimaEntrada?.rank ?? '—'}\``, inline: true }
+        );
+
+      if (ultimaEntrada) {
+        embed.addFields({
+          name: '📥 Entrou na guilda',
+          value: `${formatCreatedAtBR(ultimaEntrada.occurred_at)}${semanasNaGuilda ? ` — ha ~${semanasNaGuilda} semana(s)` : ''}`,
+          inline: false
+        });
+
+        if (entradas.length > 1 && primeiraEntrada) {
+          embed.addFields({
+            name: '↩️ Primeira entrada',
+            value: `${formatCreatedAtBR(primeiraEntrada.occurred_at)} — ${entradas.length} entradas no total`,
+            inline: false
+          });
+        }
+      } else {
+        embed.addFields({
+          name: '📥 Entrou na guilda',
+          value: 'Sem registro em `guild_membership_history`',
+          inline: false
+        });
+      }
+
+      embed.addFields({
+        name: '🚪 Já saiu da guilda',
+        value: saidas.length
+          ? `**${saidas.length}x** — a ultima em ${formatCreatedAtBR(ultimaSaida.occurred_at)}`
+          : 'Nunca saiu',
+        inline: false
+      });
+
+      if (promocoes.length || rebaixamentos.length) {
+        embed.addFields({
+          name: '📊 Movimentação',
+          value: `⬆️ ${promocoes.length} promoção(ões) • ⬇️ ${rebaixamentos.length} rebaixamento(s)`,
+          inline: false
+        });
+      }
+
+      return embed;
+    }
+
+    function embedJogos() {
+      const embed = new EmbedBuilder()
+        .setColor(0x57f287)
+        .setTitle(`🎮 Jogos — ${nomeJogo}`);
+
+      if (jogosAtual) {
+        embed.addFields({
+          name: `📅 Esta semana (desde ${formatDateBR(weekStart)})`,
+          value:
+            `Total: \`${jogosAtual.totalGames}\` • Casuais: \`${jogosAtual.casualGames}\`\n` +
+            `1v1: \`${jogosAtual.games1v1}\` • 2v2: \`${jogosAtual.games2v2}\` • 3v3: \`${jogosAtual.games3v3}\``,
+          inline: false
+        });
+      } else {
+        embed.addFields({
+          name: '📅 Esta semana',
+          value: stats ? 'Sem registro semanal para esta semana.' : 'Estatisticas indisponiveis (API fora do ar).',
+          inline: false
+        });
+      }
+
+      if (jogosPassada) {
+        embed.addFields({
+          name: `🕓 Semana passada (${formatDateBR(prevWeekStart)})`,
+          value:
+            `Total: \`${jogosPassada.totalGames}\`\n` +
+            `1v1: \`${jogosPassada.games1v1}\` • 2v2: \`${jogosPassada.games2v2}\` • 3v3: \`${jogosPassada.games3v3}\``,
+          inline: false
+        });
+      } else {
+        embed.addFields({
+          name: '🕓 Semana passada',
+          value: 'Sem fechamento gravado para a semana passada.',
+          inline: false
+        });
+      }
+
+      return embed;
+    }
+
+    function embedPontos() {
+      const embed = new EmbedBuilder()
+        .setColor(0xfaa61a)
+        .setTitle(`⭐ Guild Points — ${nomeJogo}`)
+        .addFields(
+          {
+            name: '🏆 Total acumulado',
+            value: pontosTotais != null ? `\`${pontosTotais.toLocaleString('pt-BR')}\`` : 'Indisponivel (API fora do ar)',
+            inline: true
+          },
+          {
+            name: '🕓 Semana passada',
+            value: pontosSemanaPassada != null ? `\`${pontosSemanaPassada.toLocaleString('pt-BR')}\`` : 'Sem base gravada',
+            inline: true
+          },
+          {
+            name: '📈 Média por semana',
+            value: mediaSemanal != null ? `\`${mediaSemanal.toLocaleString('pt-BR')}\`` : '—',
+            inline: true
+          }
+        );
+
+      if (mediaSemanal != null) {
+        embed.setFooter({ text: `Media sobre ${divisorSemanas} ${baseDivisor}` });
+      }
+
+      return embed;
+    }
+
+    function embedJustificativas() {
+      if (!justificativas.length) {
+        return new EmbedBuilder()
+          .setColor(0x95a5a6)
+          .setTitle(`📋 Justificativas — ${nomeJogo}`)
+          .setDescription('Nunca foi marcado como inativo.');
+      }
+
+      const comNota = justificativas.filter((j) => j.note).length;
+      const inicio = paginaJust * JUST_POR_PAGINA;
+      const itens = justificativas.slice(inicio, inicio + JUST_POR_PAGINA);
+
+      const descricao = itens
+        .map((item, i) => {
+          const quando = item.created_at ? formatDateBR(item.created_at) : '—';
+          const semana = item.week_reference ? formatDateBR(item.week_reference) : '—';
+          const texto = item.note || '_ainda sem justificativa nessa semana_';
+          return `**${inicio + i + 1}.** 🗓️ semana de ${semana} • 🕒 ${quando}\n${texto}`;
+        })
+        .join('\n\n');
+
+      return new EmbedBuilder()
+        .setColor(0xed4245)
+        .setTitle(`📋 Justificativas — ${nomeJogo}`)
+        .setDescription(descricao)
+        .setFooter({
+          text: `${comNota} justificada(s) de ${justificativas.length} semana(s) inativo • pagina ${paginaJust + 1}/${totalPaginasJust}`
+        });
+    }
+
+    function montarEmbed() {
+      if (aba === 'jogos') return embedJogos();
+      if (aba === 'pontos') return embedPontos();
+      if (aba === 'just') return embedJustificativas();
+      return embedGeral();
+    }
+
+    function montarComponentes() {
+      const abas = [
+        { id: 'geral', label: 'Geral' },
+        { id: 'jogos', label: 'Jogos' },
+        { id: 'pontos', label: 'Guild Points' },
+        { id: 'just', label: `Justificativas${justificativas.length ? ` (${justificativas.length})` : ''}` }
+      ];
+
+      const linhas = [
+        new ActionRowBuilder().addComponents(
+          abas.map((item) =>
+            new ButtonBuilder()
+              .setCustomId(`scan_${item.id}`)
+              .setLabel(item.label)
+              .setStyle(aba === item.id ? ButtonStyle.Primary : ButtonStyle.Secondary)
+          )
+        )
+      ];
+
+      // Setas só aparecem na aba de justificativas, e só se houver mais de uma página
+      if (aba === 'just' && totalPaginasJust > 1) {
+        linhas.push(
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId('scan_j_prev')
+              .setLabel('⬅️')
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(paginaJust === 0),
+            new ButtonBuilder()
+              .setCustomId('scan_j_next')
+              .setLabel('➡️')
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(paginaJust >= totalPaginasJust - 1)
+          )
+        );
+      }
+
+      return linhas;
+    }
+
+    const sent = await sendCleanMessage(loadingMsg, {
+      embeds: [montarEmbed()],
+      components: montarComponentes()
+    });
+
+    const collector = sent.createMessageComponentCollector({
+      filter: (i) => i.user.id === message.author.id,
+      time: 180000
+    });
+
+    collector.on('collect', async (interaction) => {
+      try {
+        if (interaction.customId === 'scan_j_prev') paginaJust = Math.max(0, paginaJust - 1);
+        else if (interaction.customId === 'scan_j_next') paginaJust = Math.min(totalPaginasJust - 1, paginaJust + 1);
+        else aba = interaction.customId.replace('scan_', '');
+
+        await interaction.update({
+          embeds: [montarEmbed()],
+          components: montarComponentes()
+        });
+      } catch (err) {
+        console.error('[SCAN] Erro no botao:', err);
+      }
+    });
+
+    collector.on('end', async () => {
+      await sent.edit({ components: [] }).catch(() => {});
+    });
+
+  } catch (err) {
+    console.error('[SCAN]', err);
+    const errorEmbed = createErrorEmbed('Erro no scan', err.message);
+
+    if (loadingMsg) await sendCleanMessage(loadingMsg, { embeds: [errorEmbed] });
+    else await message.reply({ embeds: [errorEmbed] });
+  }
 });

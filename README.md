@@ -79,7 +79,7 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 
 ### Novos Comandos
 - [x] Criar `.resumão` com um resumo grande e detalhado da guilda.
-- [ ] Criar `.scan` com visão de staff sobre um membro: justificativas, jogos da semana atual/passada, histórico de saída da guilda e outros dados relevantes.
+- [x] Criar `.scan` com visão de staff sobre um membro: justificativas, jogos da semana atual/passada, histórico de saída da guilda e outros dados relevantes.
 - [ ] Criar `.alts`.
 - [ ] Adicionar a tabela de warns em um comando do bot, bloqueado em canais que não sejam da staff.
 - [ ] Criar `.refund`, restrito ao dono.

@@ -362,6 +362,33 @@ export async function getUsersByBrawlhallaIds(brawlhallaIds) {
 }
 
 
+/**
+ * Histórico de entradas/saídas/promoções na guilda do jogo.
+ * Tabela preenchida pelo cron do site (fora deste repo) — o bot só lê.
+ * action é um de: entrou, saiu, promovido, rebaixado.
+ */
+export async function getMembershipHistory(brawlhallaId) {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('guild_membership_history')
+    .select('nome, rank, action, occurred_at')
+    .eq('brawlhalla_id', String(brawlhallaId))
+    .order('occurred_at', { ascending: false });
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
+ * Início da semana de missões anterior (quinta 06:00 da semana passada).
+ * Mesmo cálculo que o botão "Semana passada" do .games faz inline.
+ */
+export function getPreviousMissionWeekStart() {
+  const prev = new Date(getMissionWeekStartDateTime());
+  prev.setDate(prev.getDate() - 7);
+  return formatDateTime(prev);
+}
+
 export async function getUserByDiscordId(discord_id) {
   const supabase = getClient();
   const { data, error } = await supabase
