@@ -78,8 +78,35 @@ Separar os dois contadores é pré-requisito para qualquer comando que varra a g
 | `nicknameSync.js:55` | `/clan/{id}` | `/v1/guild/members` |
 | `fetchLegends` (132) | `/legend/all` | `/v1/static/legends` |
 
-**Prioridade:** `brawlhalla.js:608`. A função é "nova" mas depende de uma chamada v0 para o 2v2, e
-lança exceção se qualquer uma das 4 falhar — o dia em que a v0 sair do ar, `.stats` cai junto.
+### As duas rotas de membro não devolvem a mesma coisa — cuidado ao trocar
+
+Medido em 04/08/2026:
+
+| Rota | Devolve | Quantidade |
+| :-- | :-- | :-- |
+| `/clan/{id}` (v0) | **só quem está na guilda hoje** | 200 (o teto real da guilda é 200) |
+| `/v1/guild/members` | **todo mundo que já passou pela guilda**, incluindo quem saiu | 629 |
+
+Os 200 da v0 são um subconjunto exato dos 629. Não é corte nem paginação da API velha: 200 é o tamanho
+máximo da guilda no jogo.
+
+**Não existe campo que separe atual de ex-membro na resposta v1.** Os dois grupos têm exatamente a
+mesma forma (`brawlhalla_id, name, rank, join_date, xp, guild_points`). O que denuncia a mistura é a
+distribuição: entre os 429 que só aparecem na v1 há **29 "Leader"** (a guilda tem um), e 38 registros
+vêm com `rank` ausente.
+
+Consequência para a migração: **`syncNicknames` e qualquer coisa que precise do plantel atual não podem
+simplesmente trocar `/clan/{id}` por `/v1/guild/members`** — passariam a renomear e contabilizar quem já
+saiu. Hoje o único jeito de obter o plantel atual é a rota v0, que é depreciada. Alternativa quando ela
+morrer: derivar de `guild_membership_history` no Supabase (quem tem `entrou` sem um `saiu` posterior).
+
+Serve de alerta para análises: tratar os 629 como "membros da guilda" infla a base em mais de 3x.
+
+**Prioridade da migração:**
+1. `brawlhalla.js:608` — a função é "nova" mas depende de uma chamada v0 para o 2v2 e lança exceção se
+   qualquer uma das 4 falhar; o dia em que a v0 sair do ar, `.stats` cai junto.
+2. `fetchPlayerStats`, `fetchPlayerStatsNoResolve`, `fetchLegends` (atenção à paginação).
+3. `/clan/{id}` fica por último: depende de resolver antes como identificar o plantel atual.
 
 ## Schemas (resumo do que o bot consome)
 

@@ -18,32 +18,38 @@ if (!existsSync(CACHE_DIR)) {
   }
 }
 
-// limitador de req
-const RATE_LIMIT = 180;
-const RATE_WINDOW = 15 * 60 * 1000;
-const requestLog = [];
+// Dois limitadores independentes: a v1 aceita 2000 req/5min, a API clássica (v0,
+// depreciada) fica em 180 req/15min. Um contador só estrangulava as chamadas v1 no
+// ritmo da API velha. Ver docs/brawlhalla-api.md.
+const RATE_LIMITS = {
+  v1: { max: 2000, window: 5 * 60 * 1000, log: [], label: 'v1' },
+  legacy: { max: 180, window: 15 * 60 * 1000, log: [], label: 'v0' },
+};
 
-function canRequest() {
-  const now = Date.now();
-  while (requestLog.length && now - requestLog[0] > RATE_WINDOW) requestLog.shift();
-  return requestLog.length < RATE_LIMIT;
+// Toda URL da v1 tem '/v1/' no caminho; o resto é API clássica
+function limitFor(url) {
+  return url.includes('/v1/') ? RATE_LIMITS.v1 : RATE_LIMITS.legacy;
 }
 
-function recordRequest() {
-  requestLog.push(Date.now());
-}
-
-function rateLimitWait() {
+// Descarta o que saiu da janela e devolve quanto falta esperar (0 = pode seguir)
+function rateLimitWait(limit) {
   const now = Date.now();
-  while (requestLog.length && now - requestLog[0] > RATE_WINDOW) requestLog.shift();
-  if (requestLog.length < RATE_LIMIT) return 0;
-  return RATE_WINDOW - (now - requestLog[0]) + 50;
+  while (limit.log.length && now - limit.log[0] > limit.window) limit.log.shift();
+  if (limit.log.length < limit.max) return 0;
+  return limit.window - (now - limit.log[0]) + 50;
 }
 
 async function apiFetch(url) {
-  const wait = rateLimitWait();
-  if (wait > 0) await new Promise(r => setTimeout(r, wait));
-  recordRequest();
+  const limit = limitFor(url);
+  const wait = rateLimitWait(limit);
+
+  if (wait > 0) {
+    console.warn(`[Brawlhalla] Rate limit ${limit.label} atingido, aguardando ${Math.ceil(wait / 1000)}s`);
+    await new Promise(r => setTimeout(r, wait));
+    rateLimitWait(limit); // reaproveita a limpeza da janela após a espera
+  }
+
+  limit.log.push(Date.now());
   const res = await fetch(url);
   if (!res.ok) {
     const contentType = res.headers.get('content-type') || '';
