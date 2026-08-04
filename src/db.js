@@ -363,6 +363,36 @@ export async function getUsersByBrawlhallaIds(brawlhallaIds) {
 
 
 /**
+ * Contas vinculadas a uma conta da guilda, para o .alts.
+ *
+ * As duas tabelas guardam a relação em sentidos opostos, porque resolvem problemas
+ * diferentes do cross progression do jogo (o ID que entra na guilda é o do dispositivo,
+ * não o da conta que a pessoa realmente usa):
+ *
+ * - `alt_ids`   (.corrigir-id): alt_id = conta da guilda, main_id = conta principal real
+ * - `tgg_coins_achievements_alts` (.add-account): main_id = conta da guilda, alt_id = alternativas
+ *
+ * Por isso as duas consultas partem do mesmo ID da guilda mas em campos diferentes.
+ */
+export async function getContasVinculadas(guildBrawlhallaId) {
+  const supabase = getClient();
+  const id = String(guildBrawlhallaId);
+
+  const [principal, alternativas] = await Promise.all([
+    supabase.from('alt_ids').select('main_id').eq('alt_id', id).maybeSingle(),
+    supabase.from('tgg_coins_achievements_alts').select('alt_id').eq('main_id', id),
+  ]);
+
+  if (principal.error) throw principal.error;
+  if (alternativas.error) throw alternativas.error;
+
+  return {
+    mainReal: principal.data?.main_id ? String(principal.data.main_id) : null,
+    alts: (alternativas.data ?? []).map((r) => String(r.alt_id)),
+  };
+}
+
+/**
  * Histórico de entradas/saídas/promoções na guilda do jogo.
  * Tabela preenchida pelo cron do site (fora deste repo) — o bot só lê.
  * action é um de: entrou, saiu, promovido, rebaixado.

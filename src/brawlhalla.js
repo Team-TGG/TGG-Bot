@@ -732,6 +732,40 @@ export async function fetchPlayerStatsNewAPI(brawlhallaId) {
 }
 
 // NEW PLAYER GUILD STATS
+/**
+ * Dados básicos de UMA conta pela v1, sem resolver alt → main.
+ *
+ * O .alts precisa dos dados de cada conta separadamente, então resolver seria o
+ * oposto do que se quer. Uma requisição por conta não pressiona a cota: o limitador
+ * da v1 aceita 2000 req/5min (ver docs/brawlhalla-api.md) e um jogador tem poucas contas.
+ */
+export async function fetchPlayerBasicNewAPI(brawlhallaId) {
+  const key = `player_basic:${brawlhallaId}`;
+  const hit = getCached(key);
+
+  if (hit) return hit;
+
+  const data = await apiFetch(
+    `https://api.brawlhalla.com/v1/player/stats?brawlhalla_id=${brawlhallaId}`
+  );
+
+  if (!data || typeof data !== 'object' || !data.brawlhalla_id) {
+    throw new Error(`Resposta inválida para a conta ${brawlhallaId}`);
+  }
+
+  const basico = {
+    brawlhalla_id: String(data.brawlhalla_id),
+    name: normalizeUnicode(data.name || 'Desconhecido'),
+    level: Number(data.level || 0),
+    xp: Number(data.xp || 0),
+    games: Number(data.games || 0),
+    wins: Number(data.wins || 0),
+  };
+
+  setCached(key, basico);
+  return basico;
+}
+
 export async function fetchPlayerGuildStatsNewAPI(brawlhallaId) {
 
   const key = `player_guild:${brawlhallaId}`;

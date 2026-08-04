@@ -1,6 +1,6 @@
 // Handlers
 import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleEditWarn, handleMute, handleUnmute, handleBan, handleKick, handleBam, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleAbrirTickets, handleFecharTickets, handleWam, handleJustificativas, handleResumo, handleScan } from './admin.js';
-import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes, handleDuel, handleCrz, handleVideoGuilda } from './public.js';
+import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes, handleDuel, handleCrz, handleVideoGuilda, handleAlts } from './public.js';
 import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins, handleAddAccount, handleQuiz, handleInventory } from './tggCoinsCommands.js';
 
 // Command Aliases
@@ -89,7 +89,7 @@ export const COMMAND_ALIASES = {
   'baal': 'balance',
   'coins': 'balance',
   'moedas': 'balance',
-  'saldo  ': 'balance',
+  'saldo': 'balance',
   'historico': 'historico',
   'histórico': 'historico',
   'history': 'historico',
@@ -132,8 +132,8 @@ export const COMMAND_ALIASES = {
   'addcoins': 'addcoins',
   'escrever': 'escrever',
   'write': 'escrever',
-  'organizarTickets': 'organize-tickets',
-  'arrumarTickets': 'organize-tickets',
+  'organizartickets': 'organize-tickets',
+  'arrumartickets': 'organize-tickets',
   'organizar-tickets': 'organize-tickets',
   'arrumar-tickets': 'organize-tickets',
   'corrigirid': 'corrigir-id',
@@ -198,6 +198,9 @@ export const COMMAND_ALIASES = {
   'resumão': 'resumo',
   'crz': 'crz',
   'scan': 'scan',
+  'alts': 'alts',
+  'alt': 'alts',
+  'contas': 'alts',
 };
 
 // Lista de comandos
@@ -217,6 +220,7 @@ export const commands = {
   duel: handleDuel,
   'video-guilda': handleVideoGuilda,
   crz: handleCrz,
+  alts: handleAlts,
 
   // Admin
   sync: handleSync,

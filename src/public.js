@@ -1,8 +1,8 @@
 // public.js - Comandos públicos
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
-import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getMonthWeekStartDateTime, getCurrentSeason, getSeasonWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID, incrementCrz } from './db.js';
+import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getMonthWeekStartDateTime, getCurrentSeason, getSeasonWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID, incrementCrz, getUserByDiscordId, getContasVinculadas } from './db.js';
 import { getGuildWeeklyGuildPoints, getDuelGuildWeeklyGuildPoints, getPlayerWeeklyGuildPoints } from './guild.js';
-import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI, fetchPlayerGuildStatsNewAPI } from './brawlhalla.js';
+import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI, fetchPlayerGuildStatsNewAPI, fetchPlayerBasicNewAPI } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, videoGuilda as videoGuildaConfig } from '../config/index.js';
 import { calculateGames } from './handlers/publicHandlers.js';
 
@@ -1235,5 +1235,123 @@ export async function handleDuel(message, args, client) {
     console.error(err);
 
     return message.reply('Erro ao buscar informações do duelo.');
+  }
+}
+
+// .alts [@usuario/id] — contas vinculadas pelo .corrigir-id e pelo .add-account
+export async function handleAlts(message, args) {
+  let loadingMsg = null;
+
+  try {
+    let targetUserId = message.author.id;
+    let outroUsuario = false;
+
+    if (message.interaction) {
+      const u = message.interaction.options.getUser('usuario');
+      if (u) { targetUserId = u.id; outroUsuario = true; }
+    } else if (args.length > 0) {
+      const mencao = args[0].match(/^<@!?(\d+)>$/);
+      if (mencao) { targetUserId = mencao[1]; outroUsuario = true; }
+      else if (/^\d+$/.test(args[0])) { targetUserId = args[0]; outroUsuario = true; }
+    }
+
+    if (outroUsuario && !(await isAdmin(message.author.id))) {
+      return await message.reply({
+        embeds: [createErrorEmbed('Acesso negado', 'Você só pode ver as suas próprias contas.')]
+      });
+    }
+
+    const user = await getUserByDiscordId(targetUserId);
+
+    if (!user || !user.brawlhalla_id) {
+      return await message.reply({
+        embeds: [createErrorEmbed('Sem cadastro', 'Este usuário não tem Brawlhalla ID registrado.')]
+      });
+    }
+
+    loadingMsg = await message.reply({
+      embeds: [createLoadingEmbed(null, `${EMOJIS.loading} Buscando as contas vinculadas...`)]
+    });
+
+    // A conta da guilda é o ID cru, sem resolve: é ela que está no clã
+    const contaGuilda = String(user.brawlhalla_id);
+    const { mainReal, alts } = await getContasVinculadas(contaGuilda);
+
+    // Ordem de exibição: guilda, principal, alternativas. Sem repetir ID.
+    const contas = [];
+    const vistos = new Set();
+
+    const adicionar = (id, rotulo) => {
+      if (!id || vistos.has(id)) return;
+      vistos.add(id);
+      contas.push({ id, rotulo });
+    };
+
+    adicionar(contaGuilda, 'guilda');
+    adicionar(mainReal, 'main');
+    alts.forEach((id) => adicionar(id, 'alt'));
+
+    // Uma requisição por conta na v1 — cota de 2000/5min, jogador tem poucas contas.
+    // Falha de uma conta não derruba a listagem: ela aparece sem os dados.
+    const dados = await Promise.all(
+      contas.map(async (c) => {
+        try {
+          return { ...c, info: await fetchPlayerBasicNewAPI(c.id) };
+        } catch (err) {
+          console.warn(`[ALTS] Dados indisponíveis para ${c.id}:`, err.message);
+          return { ...c, info: null };
+        }
+      })
+    );
+
+    const linha = (c) => {
+      if (!c.info) return `\`${c.id}\` — _dados indisponíveis na API_`;
+      const { name, level, games, wins } = c.info;
+      return `\`${c.id}\` **${name}** — Nv ${level} · ${games.toLocaleString('pt-BR')} jogos · ${wins.toLocaleString('pt-BR')} vitórias`;
+    };
+
+    const daGuilda = dados.find((c) => c.rotulo === 'guilda');
+    const principal = dados.find((c) => c.rotulo === 'main');
+    const alternativas = dados.filter((c) => c.rotulo === 'alt');
+
+    const partes = [
+      `${EMOJIS.greaterthan || '›'} **Conta da guilda**`,
+      linha(daGuilda),
+    ];
+
+    if (principal) {
+      partes.push('', '⭐ **Conta principal** — registrada com `.corrigir-id`', linha(principal));
+    }
+
+    if (alternativas.length) {
+      partes.push('', `🎮 **Contas alternativas** (${alternativas.length}) — registradas com \`.add-account\``);
+      alternativas.forEach((c) => partes.push(linha(c)));
+    }
+
+    if (!principal && !alternativas.length) {
+      partes.push('', '_Nenhuma outra conta vinculada._',
+        'Use `.corrigir-id <id>` se você joga em outra conta, ou `.add-account <id>` para somar o progresso de uma conta alternativa nas conquistas.');
+    }
+
+    const nomeExibido = daGuilda?.info?.name ?? user.username ?? 'Conta';
+
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle(`🔗 Contas de ${nomeExibido}`)
+      .setDescription(`<@${targetUserId}>\n\n${partes.join('\n')}`)
+      .setFooter({
+        text: contas.length > 1
+          ? `${contas.length} contas vinculadas • o ID da guilda é o do dispositivo em que você entrou`
+          : 'O ID da guilda é o do dispositivo em que você entrou no jogo'
+      });
+
+    return await sendCleanMessage(loadingMsg, { embeds: [embed] });
+
+  } catch (err) {
+    console.error('[ALTS]', err);
+    const erro = createErrorEmbed('Erro ao buscar contas', err.message);
+
+    if (loadingMsg) return await sendCleanMessage(loadingMsg, { embeds: [erro] });
+    return await message.reply({ embeds: [erro] });
   }
 }
