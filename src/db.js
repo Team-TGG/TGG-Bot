@@ -569,6 +569,53 @@ export async function getWeeklyMissions() {
 }
 
 
+/**
+ * Missões já cadastradas para uma semana. `weekStart` aqui é só a data ('YYYY-MM-DD'),
+ * que é como o site grava — a coluna é `date`, por isso a consulta do bot com hora
+ * (`getMissionWeekStart`) também casa.
+ */
+export async function getMissionsByWeekStart(weekStart) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('weekly_missions')
+    .select('id, mission, tip, target')
+    .eq('week_start', weekStart)
+    .order('created_at', { ascending: true });
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
+ * Cadastra as missões de uma semana.
+ *
+ * O `created_at` é escalonado em 3 segundos por missão de propósito: tanto o
+ * cadastro do site quanto `getWeeklyMissions` ordenam por ele, então é o que fixa
+ * a ordem em que as quatro aparecem. Sem isso a ordem fica indefinida.
+ */
+export async function insertWeeklyMissions(weekStart, missoes) {
+  const supabase = getClient();
+  const base = Date.now();
+
+  const linhas = missoes.map((m, i) => ({
+    week_start: weekStart,
+    mission: m.mission,
+    tip: m.tip,
+    target: m.target,
+    status: null,
+    created_at: formatDateTime(new Date(base + i * 3000)),
+  }));
+
+  const { data, error } = await supabase
+    .from('weekly_missions')
+    .insert(linhas)
+    .select();
+
+  if (error) throw error;
+  return data ?? [];
+}
+
 export async function reactivateOrAddUser(discord_id, brawlhalla_id, username) {
   const supabase = getClient();
   

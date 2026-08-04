@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { discord as discordConfig } from '../../config/index.js';
 import { processBirthdays, removeBirthdayRole } from '../services/birthdayService.js';
 import { publishMotd } from '../services/motdService.js';
+import { registrarMissoesDaSemana } from '../services/weeklyMissionsService.js';
 
 export function startCronJobs(client, services) {
   const {
@@ -55,6 +56,17 @@ export function startCronJobs(client, services) {
   // MOTD - 00:00
   cron.schedule('0 6 * * *', async () => {
     await publishMotd(client);
+  }, {
+    timezone: 'America/Sao_Paulo'
+  });
+
+  // Missões da semana - quinta 06:00, quando a semana vira
+  cron.schedule('0 6 * * 4', async () => {
+    try {
+      await registrarMissoesDaSemana(client);
+    } catch (err) {
+      console.error('[CRON ERROR - Missoes]', err);
+    }
   }, {
     timezone: 'America/Sao_Paulo'
   });

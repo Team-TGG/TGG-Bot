@@ -70,6 +70,13 @@ export const tggCoinsEvents = {
   anunciosChannelId: '1437415122837573695', // Canal de anúncios
 };
 
+// Cadastro automático das missões, toda quinta 06:00 (ver src/services/weeklyMissionsService.js).
+// Sem channelId as missões continuam sendo cadastradas — só o anúncio é pulado.
+export const weeklyMissions = {
+  channelId: '1448392117410857092', // canal de helper
+  mention: '@here',                 // vazio = anuncia sem marcar ninguém
+};
+
 export const motd = {
   url: 'https://teamtgg.com.br/api/motd.php',
   channelId: '1437416481343406122', // Principal

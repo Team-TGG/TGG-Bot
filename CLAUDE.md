@@ -162,6 +162,10 @@ Todos registrados no `ClientReady`:
 - Cron `0 * * * *` — refresh do clã + `runSync` + `runEloSync` + `syncNicknames` (só `need_update`).
 - Cron `0 3 * * *` — full sync (todos os ativos).
 - Cron `0 0 * * *` — cargos de aniversário; `0 6 * * *` — publica MOTD (buscado de `teamtgg.com.br/api/motd.php`).
+- Cron `0 6 * * 4` — cadastra as 4 missões da semana e anuncia no canal
+  ([src/services/weeklyMissionsService.js](src/services/weeklyMissionsService.js)). Cada posição tem seu
+  ciclo (12, 1, 2 e 3 semanas), ancorado em 06/08/2026. Não sobrescreve semana que já tem missão.
+  Os textos espelham `$missionTemplates` de `cadastro_missao.php`, no repo do site — mudou lá, mude aqui.
 - `setInterval` — lembrete de inativos (3h por padrão, `INACTIVE_MESSAGE_INTERVAL`).
 - `restoreMutes` / `restoreTemporaryWarnings` — reagendam expirações persistidas em `mutes` / `warnings`
   depois de um restart.
