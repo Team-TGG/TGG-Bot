@@ -123,6 +123,21 @@ que só insere se não existir. O bot também escreve nela via `ensurePlayerWeek
 - Convenção do cron: `initial_elo_1v1` = 0 quando não há partidas, mas `initial_elo_2v2`/`initial_elo_3v3` = **1200**.
 - `games` = `stats.games`; `guild_xp` = `clan.personal_xp`; `guild_points` = `personal_points` da API nova.
 
+### API do Brawlhalla
+
+Referência completa em [docs/brawlhalla-api.md](docs/brawlhalla-api.md): endpoints, schemas, o que ainda
+está na v0 depreciada e as pegadinhas. Dois pontos que atravessam o código todo:
+
+- **Contribuição = guild points**, ganhos nas missões semanais. É o que a staff avalia e é a unidade do
+  limiar de inatividade (1.000/semana). **XP não conta como contribuição** — ganha-se em qualquer
+  partida, inclusive contra bots, e serve só para medir volume de jogo.
+- **Guild points acumulam.** A doc diz "resets weekly", mas isso é comportamento in-game; a API devolve
+  o total acumulado. Ganho de uma semana é sempre **diferença entre duas capturas** de
+  `player_weekly_info`, nunca o valor lido direto.
+
+O histórico de guild points anterior a **agosto/2026 não é confiável** (a API devolvia valores errados,
+corrigida pouco antes de 04/08/2026). Não monte análise de membro em cima dele.
+
 ### Cache
 
 Dois caches em disco, ambos no `.gitignore`:
