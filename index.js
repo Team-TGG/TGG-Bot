@@ -8,7 +8,7 @@ if (process.env.IGNORE_SSL_ERRORS === 'true') {
 import { EmbedBuilder, Events } from 'discord.js';
 import { createClient, runSync, runEloSync } from './src/discord.js';
 import { syncNicknames, fetchBrawlhallaClanData } from './src/nicknameSync.js';
-import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, STAFF_ROLE_IDS } from './config/index.js';
+import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, STAFF_ROLE_IDS, runtime } from './config/index.js';
 import { startCronJobs } from './src/scheduler/cron.js';
 import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo } from './src/db.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from './utils/discordUtils.js';
@@ -24,6 +24,26 @@ import { COMMAND_ALIASES, commands } from './src/commands.js';
 import { registerGuildCommands } from './src/slash/register.js';
 import { registerInteractionHandler } from './src/interactions.js';
 
+// Deixa explícito no boot o que aquele processo vai fazer. Em dev o risco é subir
+// achando que está isolado e descobrir pelo ping dos inativos que não estava.
+function logRuntimeMode(registrouSlash) {
+  if (!runtime.isDev) {
+    console.log('[MODE] PRODUCAO — slash commands, crons e lembrete de inativos ATIVOS');
+    return;
+  }
+
+  const linha = '='.repeat(60);
+  console.log(`\n${linha}`);
+  console.log('  MODO DEV — nada que afete o servidor real vai rodar');
+  console.log(linha);
+  console.log('  pulado : lembrete de inativos (ping no canal + DM)');
+  console.log('  pulado : crons (cargos, ELO, apelidos, aniversarios, MOTD)');
+  console.log('  pulado : restauracao de mutes e warns temporarios');
+  console.log(`  ${registrouSlash ? 'ATIVO  : registro de slash commands (--register-commands)' : 'pulado : registro de slash commands'}`);
+  console.log('  ativo  : comandos por prefixo e slash ja registrados na guilda');
+  console.log(`${linha}\n`);
+}
+
 async function main() {
   if (!discordConfig.token || !discordConfig.guildId) {
     console.error('Set DISCORD_TOKEN and DISCORD_GUILD_ID in .env');
@@ -36,15 +56,25 @@ async function main() {
   client.once(Events.ClientReady, async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
-    // Registrar comandos slash (guild, instantâneo)
-    try {
-      await registerGuildCommands();
-    } catch (err) {
-      console.error('[Slash Register]', err);
+    // O PUT reescreve os slash commands da guilda — em dev só com --register-commands
+    const vaiRegistrarSlash = !runtime.isDev || runtime.registerCommandsInDev;
+    logRuntimeMode(vaiRegistrarSlash);
+
+    if (vaiRegistrarSlash) {
+      try {
+        await registerGuildCommands();
+      } catch (err) {
+        console.error('[Slash Register]', err);
+      }
     }
 
-    // Listener interactionCreate (router slash; botões/menus continuam via collectors)
+    // Listener interactionCreate (router slash; botões/menus continuam via collectors).
+    // Vale nos dois modos: é assim que os slash já registrados chegam aos handlers.
     registerInteractionHandler(client);
+
+    // Daqui pra baixo é tudo efeito no servidor real: cron mexe em cargo e apelido,
+    // o lembrete pinga e manda DM, e restaurar mutes/warns reagenda expiracoes.
+    if (runtime.isDev) return;
 
     startCronJobs(client, {
       fetchBrawlhallaClanData,

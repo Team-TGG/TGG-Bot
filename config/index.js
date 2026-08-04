@@ -12,6 +12,25 @@ export const STAFF_ROLE_IDS = {
   leader: '1437427830286717009',
 }
 
+// Modo dev: sobe o bot sem nada que afete o servidor real — sem registrar slash
+// commands, sem crons, sem lembrete de inativos, sem restaurar mutes/warns.
+//
+//   npm start      -> produção (a VM usa esse, nunca precisa de ajuste)
+//   npm run dev    -> desenvolvimento
+//
+// Aceita a flag --dev ou BOT_MODE=dev no ambiente. Sem nenhum dos dois, é produção.
+// Ver docs/modo-dev.md.
+const devPorFlag = process.argv.includes('--dev');
+const devPorEnv = (process.env.BOT_MODE || '').trim().toLowerCase() === 'dev';
+
+export const runtime = {
+  isDev: devPorFlag || devPorEnv,
+  // Escotilha para testar comando novo: registra os slash commands mesmo em dev.
+  // Em produção o registro acontece sempre.
+  registerCommandsInDev:
+    process.argv.includes('--register-commands') || process.env.DEV_REGISTER_COMMANDS === 'true',
+};
+
 export const discord = {
   token: process.env.DISCORD_TOKEN,
   guildId: process.env.DISCORD_GUILD_ID,

@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "sync": "node index.js",
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "node index.js --dev",
+    "dev:slash": "node index.js --dev --register-commands"
   },
   "engines": {
     "node": ">=18"

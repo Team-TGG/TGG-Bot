@@ -5,7 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Comandos
 
 ```bash
-npm start        # sobe o bot (node index.js) — mesmo que `npm run sync`
+npm start        # sobe o bot (node index.js) — mesmo que `npm run sync`. Produção.
+npm run dev      # sobe sem efeito no servidor real (ver docs/modo-dev.md)
+npm run dev:slash # idem, mas registra os slash commands (PUT sobrescreve a lista da guilda)
 ```
 
 Não há suíte de testes, linter ou build. Verificação = rodar o bot e usar o comando no Discord.
@@ -18,9 +20,14 @@ Opcionais: `BRAWLHALLA_CLAN_ID` (default `'396943'` no código), `INACTIVE_MESSA
 O `.env` ainda tem `TGG_API_URL`, `TGG_API_KEY` e `GUILD_ACTIVITY_CHANNEL_ID` — sobras dos módulos removidos,
 nenhum código lê essas três.
 
-Subir o bot **registra os slash commands na guild via PUT** ([src/slash/register.js](src/slash/register.js)) e
-dispara `startInactiveReminder` 5s depois do ready — ou seja, rodar localmente com o token de produção
-afeta o servidor real. Considere isso antes de sugerir "é só rodar pra testar".
+`npm start` **registra os slash commands na guild via PUT** ([src/slash/register.js](src/slash/register.js)),
+dispara `startInactiveReminder` 5s depois do ready (ping no canal + DM para cada inativo) e liga os crons.
+Rodar isso localmente com o token de produção afeta o servidor real — use `npm run dev`, que pula os
+quatro efeitos e imprime um quadro no boot dizendo o que foi desligado.
+
+O modo dev **não** isola do servidor: o bot segue conectado à guilda real e comando que escreve no banco
+escreve de verdade. E como dois processos com o mesmo token recebem os mesmos eventos, **pare o bot da VM
+antes de subir local**, senão cada comando é respondido duas vezes.
 
 ## Arquitetura
 
