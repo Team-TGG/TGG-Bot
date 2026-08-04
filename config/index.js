@@ -74,7 +74,7 @@ export const tggCoinsEvents = {
 // Sem channelId as missões continuam sendo cadastradas — só o anúncio é pulado.
 export const weeklyMissions = {
   channelId: '1448392117410857092', // canal de helper
-  mention: '@here',                 // vazio = anuncia sem marcar ninguém
+  correcaoUrl: 'https://teamtgg.com.br/cadastro_usuario', // onde corrigir divergência
 };
 
 export const motd = {

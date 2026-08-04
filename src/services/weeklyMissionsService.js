@@ -161,6 +161,25 @@ function montarEmbed(weekStart, missoes) {
   return embed;
 }
 
+/** Monta o payload do anúncio. Exportado para dar pra conferir sem enviar nada. */
+export function montarAnuncio(weekStart, missoes) {
+  const payload = {
+    embeds: [montarEmbed(weekStart, missoes)],
+    // parse vazio garante que o anúncio nunca notifica ninguém, mesmo que o texto
+    // venha a conter algo parecido com menção.
+    allowedMentions: { parse: [] },
+  };
+
+  // As missões são cadastradas pelo ciclo, sem ninguém conferir contra o jogo, então
+  // divergência é possível — o aviso diz onde corrigir sem depender de alguém lembrar
+  // do endereço.
+  if (config.correcaoUrl) {
+    payload.content = `Encontrou alguma divergência? Corrija em ${config.correcaoUrl}`;
+  }
+
+  return payload;
+}
+
 async function anunciar(client, weekStart, missoes) {
   if (!config.channelId) {
     console.warn('[MISSOES] channelId não configurado — missões cadastradas, anúncio pulado');
@@ -174,16 +193,7 @@ async function anunciar(client, weekStart, missoes) {
     return false;
   }
 
-  const payload = { embeds: [montarEmbed(weekStart, missoes)] };
-
-  if (config.mention) {
-    payload.content = config.mention;
-    // @here e @everyone só notificam de verdade com 'everyone' no parse; sem isso
-    // o Discord entrega o texto sem gerar notificação nenhuma.
-    payload.allowedMentions = { parse: ['everyone'] };
-  }
-
-  await canal.send(payload);
+  await canal.send(montarAnuncio(weekStart, missoes));
   return true;
 }
 
