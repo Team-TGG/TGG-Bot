@@ -102,11 +102,58 @@ morrer: derivar de `guild_membership_history` no Supabase (quem tem `entrou` sem
 
 Serve de alerta para análises: tratar os 629 como "membros da guilda" infla a base em mais de 3x.
 
-**Prioridade da migração:**
-1. `brawlhalla.js:608` — a função é "nova" mas depende de uma chamada v0 para o 2v2 e lança exceção se
-   qualquer uma das 4 falhar; o dia em que a v0 sair do ar, `.stats` cai junto.
-2. `fetchPlayerStats`, `fetchPlayerStatsNoResolve`, `fetchLegends` (atenção à paginação).
-3. `/clan/{id}` fica por último: depende de resolver antes como identificar o plantel atual.
+## Bloqueios da migração (medidos em 04/08/2026)
+
+Nenhuma das pendências da v0 é troca direta. Cada uma esbarra em algo do lado da API ou em acoplamento
+com o cron do site. **Não migre nenhuma sem reler esta seção.**
+
+### 2v2 — a v1 só mostra time que fechou a md10
+
+`/v1/player/teams` funciona (o erro 500 que travou a tentativa anterior não acontece mais), mas devolve
+**só times com 10+ jogos**, ou seja, que completaram a colocação. Medido em 14 jogadores: 40 times na v1,
+menor contagem de jogos = 10, nenhum abaixo disso, e **nenhum** time da v0 com ≥10 jogos ficou de fora.
+A v0 também traz um registro fantasma com `brawlhalla_id_two: 0` e `teamname` igual ao nome do jogador.
+
+O impedimento real é outro: `player_weekly_info.initial_games_2v2` é gravado pelo **cron do site**, com
+números da v0. O bot calcula `atual − base`. Trocar só o lado do bot produz **jogos negativos**:
+
+| jogador | base (v0) | atual v0 | atual v1 | hoje | se migrar |
+| --: | --: | --: | --: | --: | --: |
+| 82796827 | 444 | 505 | 146 | 61 | **−298** |
+| 124479891 | 329 | 386 | 298 | 57 | **−31** |
+| 8195450 | 90 | 106 | 78 | 16 | **−12** |
+
+7 de 10 jogadores ficariam negativos, sem erro nenhum aparecer — só número errado no `.games`, nas
+missões e nas conquistas. **Bot e cron do site têm que trocar juntos, numa virada de quinta 06:00.**
+
+Enquanto isso, a v0 se sustenta: base e atual saem da mesma fonte, então o delta continua coerente.
+
+Mudanças de formato para quando for a hora: `region` virou string (`"BRZ"` em vez de `5`), sumiu
+`teamname` (dá para compor de `username_one` + `username_two`), apareceu `region_ranks`.
+
+### Lendas — a v1 está sem o Aurus
+
+`/v1/static/legends?max_results=100` traz as 69 numa página só (`total_pages: 1`), então a paginação
+não chega a ser problema. Os atributos e as armas batem com a v0. Mas comparando por `legend_id`:
+
+- **falta `legend_id 71` (`aurus`)** — a lenda mais nova, justamente a que foi adicionada às estatísticas
+- **sobra `legend_id 2` (`RANDOM`)**, um placeholder com `weapon_one` e `weapon_two` vazios
+
+Migrar agora perderia o mapeamento de armas do Aurus silenciosamente.
+
+Além disso a chave mudou de natureza: v0 usa `legend_name_key` (`bodvar`, `redraptor`), v1 usa
+`legend_name` em caixa alta e com acento (`BÖDVAR`, `RED RAPTOR`). Como o array `legends` das
+estatísticas do jogador é indexado por `legend_name_key`, **se um dia migrar, faça o join por
+`legend_id`**, que é estável nas duas versões — não tente normalizar nome.
+
+### Resumo do que trava o quê
+
+| Item | Trava |
+| :-- | :-- |
+| 2v2 (`brawlhalla.js:608`) | cron do site precisa migrar junto; senão jogos negativos |
+| `fetchLegends` | v1 sem o Aurus |
+| `fetchPlayerStats` / `NoResolve` | mesmo acoplamento de baseline do 2v2 |
+| `/clan/{id}` | v1 não separa plantel atual de ex-membro |
 
 ## Schemas (resumo do que o bot consome)
 
