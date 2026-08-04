@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, AttachmentBuilder } from 'discord.js';
 
-// Comandos públicos (12)
+// Comandos públicos
 export const publicCommands = [
   new SlashCommandBuilder()
     .setName('help')

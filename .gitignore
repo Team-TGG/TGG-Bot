@@ -3,3 +3,4 @@ cache/
 .brawlhalla-clan-cache.json
 brawlhalla_cache.json
 .env
+.claude/settings.local.json

@@ -48,8 +48,11 @@ Adicionar um comando exige **três** edições: o handler no módulo corresponde
 [src/slash/builders/](src/slash/builders/) (`public.js` / `admin.js` / `economy.js`). Esquecer o builder
 faz o comando existir só por prefixo. Limite de 100 slash commands por guild.
 
-Hoje são **52 handlers em `commands` para 49 builders**: `crz`, `wam` e `bam` existem só por prefixo.
-São comandos de brincadeira/interno — não assuma que é esquecimento e não crie builder pra eles sem pedir.
+Três comandos existem **só por prefixo**, de propósito: `crz`, `wam` e `bam` (brincadeira/interno).
+Não assuma que é esquecimento e não crie builder pra eles sem pedir.
+
+Para saber quantos comandos existem, rode `node .claude/skills/checar/check.mjs` — **não confie nos
+comentários de contagem** nos arquivos de builder, eles desatualizam a cada comando novo.
 
 Os aliases incluem dezenas de typos e apelidos internos de membros (`.deiucu`, `.pizzolho` → `daily`).
 Isso é intencional, não sujeira — não "limpe" sem pedir.
@@ -62,7 +65,7 @@ Isso é intencional, não sujeira — não "limpe" sem pedir.
 | Roteamento | [src/commands.js](src/commands.js) | mapa alias → nome → handler |
 | Handlers | [src/public.js](src/public.js), [src/admin.js](src/admin.js), [src/tggCoinsCommands.js](src/tggCoinsCommands.js) | um handler por comando, monta embeds e collectors |
 | Lógica de apoio | [src/handlers/](src/handlers/) | ramos de compra (`buyHandlers`), cálculo de missões, quiz — extraído dos handlers grandes |
-| Dados | [src/db.js](src/db.js), [src/tggCoins.js](src/tggCoins.js), [src/guild.js](src/guild.js) | acesso Supabase; **nenhum handler chama Supabase direto sem passar por aqui** |
+| Dados | [src/db.js](src/db.js), [src/tggCoins.js](src/tggCoins.js), [src/guild.js](src/guild.js), [src/moderation.js](src/moderation.js) | acesso Supabase — handler novo deve passar por aqui (o `admin.js` ainda tem 3 chamadas diretas legadas) |
 | APIs externas | [src/brawlhalla.js](src/brawlhalla.js), [src/nicknameSync.js](src/nicknameSync.js) | Brawlhalla API (stats, clã, guild points) |
 | Sincronização | [src/discord.js](src/discord.js) | mapas de cargo e a lógica de aplicar cargos por rank/ELO |
 | Agendamento | [src/scheduler/cron.js](src/scheduler/cron.js), [src/services/](src/services/) | crons e loops de fundo |
@@ -140,6 +143,15 @@ Todos registrados no `ClientReady`:
 - `setInterval` — lembrete de inativos (3h por padrão, `INACTIVE_MESSAGE_INTERVAL`).
 - `restoreMutes` / `restoreTemporaryWarnings` — reagendam expirações persistidas em `mutes` / `warnings`
   depois de um restart.
+
+## Skills do projeto
+
+Em [.claude/skills/](.claude/skills/), versionadas junto com o código:
+
+- **`checar`** — checagem estática (`node .claude/skills/checar/check.mjs`). Única verificação que roda
+  sem subir o bot. Use antes de commitar e depois de mexer em comando.
+- **`novo-comando`** — as três edições obrigatórias para adicionar um comando, no padrão do repo.
+- **`publicar`** — checagem + commit no padrão + checkbox do roadmap do README.
 
 ## Banco (Supabase)
 
