@@ -86,8 +86,10 @@ Isso é intencional, não sujeira — não "limpe" sem pedir.
 2. **`adminOnly(handler)` / `leaderOnly(handler)`** — wrappers que checam o **banco** (`users.role` =
    `admin`/`officer` e `active`), não os cargos do Discord. Quase todo handler em `admin.js` é
    `export const handleX = adminOnly(async (message, args, client) => {...})`.
-3. **`hasPermission(member, nível)`** — hierarquia por cargo do Discord (`ROLE_HIERARCHY`, 1=helper …
-   6=leader), usada *dentro* dos handlers para graduar ações (warn exige 2, ban exige 3).
+3. **`hasPermission(member, nível)`** — hierarquia por cargo do Discord (`ROLE_HIERARCHY`,
+   1=assistant/helper … 6=leader), usada *dentro* dos handlers para graduar ações (warn exige 2,
+   ban exige 3). `assistant` e `helper` dividem o nível 1 de propósito — `getMemberLevel` usa
+   `Math.max`, então empate não é problema.
 
 `LEADER_ID` e `ALLOWED_USER_IDS` são IDs fixos no código. `ALLOWED_USER_IDS` está marcado como deprecated.
 

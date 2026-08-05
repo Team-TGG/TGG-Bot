@@ -12,7 +12,7 @@ export const publicCommands = [
 
   new SlashCommandBuilder()
     .setName('motd')
-    .setDescription('Salva uma mensagem para ser sorteada no site (1x por semana)')
+    .setDescription('Salva uma mensagem para ser sorteada (1x por semana)')
     .addStringOption(o => o.setName('mensagem').setDescription('A mensagem (máx 255 chars)').setRequired(true).setMaxLength(255)),
 
   new SlashCommandBuilder()

@@ -23,6 +23,7 @@ export async function handleHelp(message, args, client) {
       { name: `${EMOJIS.arrowRight} .guild`, value: 'Ver informações da guilda Team TGG', inline: false },
       { name: `${EMOJIS.arrowRight} .duel`, value: 'Ver informações do duelo atual contra outra guilda', inline: false },
       { name: `${EMOJIS.arrowRight} .corrigir-id`, value: 'Caso esteja na guilda com alguma alt, pode vincular o id da sua conta principal', inline: false },
+      { name: `${EMOJIS.arrowRight} .alts`, value: 'Ver suas contas alternativas vinculadas', inline: false },
     )
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
     .setTimestamp();
@@ -44,7 +45,7 @@ export async function handleHelp(message, args, client) {
     .setTitle(`${EMOJIS.clipboard} Informações`)
     .addFields(
       { name: `${EMOJIS.arrowRight} .regras`, value: 'Mostrar regras da guild', inline: false },
-      { name: `${EMOJIS.arrowRight} .motd <mensagem>`, value: 'Salvar uma mensagem para ser sorteada no site (1x por semana)', inline: false },
+      { name: `${EMOJIS.arrowRight} .motd <mensagem>`, value: 'Salvar uma mensagem para ser sorteada (1x por semana)', inline: false },
       { name: `${EMOJIS.arrowRight} .birthday DD/MM`, value: 'Registrar seu aniversário para receber parabéns no dia!', inline: false },
       { name: `${EMOJIS.arrowRight} .redes`, value: 'Verificar as redes sociais da TGG', inline: false },
       { name: `${EMOJIS.arrowRight} .video-guilda (.explicacao)`, value: 'Vídeo explicando como funciona a guilda', inline: false },
@@ -78,7 +79,8 @@ export async function handleHelp(message, args, client) {
       { name: `${EMOJIS.arrowRight} .active <justificativa>`, value: 'Se remover da lista de inativos', inline: false },
       { name: `${EMOJIS.arrowRight} .active [@user] <justificativa>`, value: 'Remover jogador da lista de inativos', inline: false },
       { name: `${EMOJIS.arrowRight} .inac-list`, value: 'Listar todos os jogadores inativos desta semana', inline: false },
-      { name: `${EMOJIS.arrowRight} .justificativas [@user]`, value: 'Listar todos os jogadores inativos desta semana', inline: false }
+      { name: `${EMOJIS.arrowRight} .justificativas [@user]`, value: 'Listar todas as justificativas de um jogador inativo', inline: false },
+      { name: `${EMOJIS.arrowRight} .scan [@user]`, value: 'Verificar informações gerais de um jogador inativo', inline: false }
     )
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
     .setTimestamp();
@@ -272,7 +274,7 @@ export async function handleMotd(message, args, client) {
     const embed = new EmbedBuilder()
       .setColor(0x00ff00)
       .setTitle('📢 Mensagem do Dia')
-      .setDescription('Sua mensagem foi salva com sucesso e será sorteada no site!')
+      .setDescription('Sua mensagem foi salva com sucesso e será sorteada em breve!')
       .addFields({ name: 'Mensagem', value: `"${motdMessage}"` })
       .setFooter({ text: 'TGG Bot • MOTD' })
       .setTimestamp();

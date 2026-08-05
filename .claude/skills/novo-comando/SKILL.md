@@ -15,7 +15,7 @@ Descubra do usuário, se ele não disse:
 
 1. **Nome e aliases** — inclusive typos e apelidos internos, que aqui são intencionais.
 2. **Quem pode usar** — público, `adminOnly` (checa `users.role` no banco) ou `leaderOnly`.
-   Se for graduado por cargo do Discord, qual nível de `ROLE_HIERARCHY` (1=helper … 6=leader).
+   Se for graduado por cargo do Discord, qual nível de `ROLE_HIERARCHY` (1=assistant/helper … 6=leader).
 3. **Que dados ele mostra** — de qual tabela ou de qual endpoint da API do Brawlhalla.
 4. **Se recebe argumentos** e de que tipo (usuário, número, texto).
 
