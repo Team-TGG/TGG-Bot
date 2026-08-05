@@ -3,7 +3,7 @@ import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuil
 import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getMonthWeekStartDateTime, getCurrentSeason, getSeasonWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID, incrementCrz, getUserByDiscordId, getContasVinculadas } from './db.js';
 import { getGuildWeeklyGuildPoints, getDuelGuildWeeklyGuildPoints, getPlayerWeeklyGuildPoints } from './guild.js';
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI, fetchPlayerGuildStatsNewAPI, fetchPlayerBasicNewAPI } from './brawlhalla.js';
-import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, videoGuilda as videoGuildaConfig } from '../config/index.js';
+import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, videoGuilda as videoGuildaConfig, guildDuel as guildDuelConfig } from '../config/index.js';
 import { calculateGames } from './handlers/publicHandlers.js';
 
 import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage } from '../utils/discordUtils.js';
@@ -1149,7 +1149,7 @@ export async function handleVideoGuilda(message, args, client) {
 // .duel
 export async function handleDuel(message, args, client) {
   try {
-    const OUR_GUILD_ID = 396943;
+    const OUR_GUILD_ID = guildDuelConfig.ourGuildId;
 
     // Busca os dados da nossa guilda pela API
     const ourGuild = await fetchGuildStatsNewAPI(OUR_GUILD_ID);

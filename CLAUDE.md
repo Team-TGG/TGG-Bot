@@ -157,6 +157,24 @@ normalmente quando consultados sozinhos. É a explicação mais provável para o
 já que o cron do site percorre centenas de contas por essa rota a cada 15 min. `ensurePlayerWeeklyInfo`
 também usa o lote primeiro, caindo na rota individual só para conta fora da guilda (alt).
 
+### Duelo semanal de guildas
+
+O jogo pareia 1º×2º, 3º×4º, 5º×6º pela classificação corrente. **O campo `rank` de
+`/v1/guild/stats` é essa posição** — não é o acumulado de guild points: medido em 05/08/2026,
+BURLA tinha mais pontos que WSE (5,0M × 4,4M) e rank muito pior (178º × 39º), e a guilda dos
+próprios devs aparece em 27.614º. O que explica as inversões é atividade recente.
+
+Não existe endpoint de ranking de guildas (13 caminhos sondados, todos 404) e o espaço de
+`guild_id` é esparso demais para varrer (3 guildas em ~80 IDs sondados; nem os vizinhos de
+396943 respondem). Por isso o topo é mantido à mão em **`guild_registry`** (só `guild_id`)
+e o oponente sai de uma leitura do `rank` de cada monitorada.
+
+O cron roda **quarta 07:00**: as missões fecham 06:00 e na quarta não dá mais para farmar ponto,
+então o valor lido é o fechamento da semana **e** a linha de base da seguinte. Grava com
+`week_start` da **quinta seguinte** — é assim que as linhas manuais sempre foram feitas.
+Não sobrescreve semana já cadastrada. Sem oponente no rank alvo (guilda nova no topo), avisa a
+staff chamando o líder em vez de gravar palpite.
+
 ### API do Brawlhalla
 
 Referência completa em [docs/brawlhalla-api.md](docs/brawlhalla-api.md): endpoints, schemas, o que ainda
@@ -193,6 +211,8 @@ Todos registrados no `ClientReady`:
   ([src/services/weeklyMissionsService.js](src/services/weeklyMissionsService.js)). Cada posição tem seu
   ciclo (12, 1, 2 e 3 semanas), ancorado em 06/08/2026. Não sobrescreve semana que já tem missão.
   Os textos espelham `$missionTemplates` de `cadastro_missao.php`, no repo do site — mudou lá, mude aqui.
+- Cron `0 7 * * 3` — cadastra o duelo da semana seguinte
+  ([src/services/guildDuelService.js](src/services/guildDuelService.js)). Ver abaixo.
 - `setInterval` — lembrete de inativos (3h por padrão, `INACTIVE_MESSAGE_INTERVAL`).
 - `restoreMutes` / `restoreTemporaryWarnings` — reagendam expirações persistidas em `mutes` / `warnings`
   depois de um restart.

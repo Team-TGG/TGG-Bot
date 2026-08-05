@@ -3,6 +3,7 @@ import { discord as discordConfig } from '../../config/index.js';
 import { processBirthdays, removeBirthdayRole } from '../services/birthdayService.js';
 import { publishMotd } from '../services/motdService.js';
 import { registrarMissoesDaSemana } from '../services/weeklyMissionsService.js';
+import { registrarDueloDaSemana } from '../services/guildDuelService.js';
 
 export function startCronJobs(client, services) {
   const {
@@ -66,6 +67,17 @@ export function startCronJobs(client, services) {
       await registrarMissoesDaSemana(client);
     } catch (err) {
       console.error('[CRON ERROR - Missoes]', err);
+    }
+  }, {
+    timezone: 'America/Sao_Paulo'
+  });
+
+  // Duelo da semana - quarta 07:00. As missões fecham 06:00 e na quarta não dá mais para farmar, então o valor lido aqui é o fechamento da semana e a linha de base da seguinte.
+  cron.schedule('0 7 * * 3', async () => {
+    try {
+      await registrarDueloDaSemana(client);
+    } catch (err) {
+      console.error('[CRON ERROR - Duelo]', err);
     }
   }, {
     timezone: 'America/Sao_Paulo'

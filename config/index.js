@@ -78,6 +78,12 @@ export const weeklyMissions = {
   correcaoUrl: 'https://teamtgg.com.br/cadastro_usuario', // onde corrigir divergência
 };
 
+// Duelo semanal de guildas, cadastrado sozinho na quarta 07:00 (ver src/services/guildDuelService.js).
+export const guildDuel = {
+  ourGuildId: '396943',
+  channelId: '1448392117410857092', // canal de helper
+};
+
 export const motd = {
   url: 'https://teamtgg.com.br/api/motd.php',
   channelId: '1437416481343406122', // Principal
