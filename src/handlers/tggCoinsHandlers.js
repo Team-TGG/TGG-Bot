@@ -847,8 +847,31 @@ export const typeConfig = {
     getInitial: i => i.initial_games,
     getProgress: (c, i) => c.games - i.initial_games,
     format: target => `Jogar **${target} partidas**`
+  },
+  CONTRIBUICAO: {
+    icon: '🛡️',
+    getCurrent: c => c.guildPoints,
+    getInitial: i => i.initial_guild_points,
+    getProgress: (c, i) => Math.max(0, c.guildPoints - i.initial_guild_points),
+    format: target => `Conseguir **${formatPontos(target)} de contribuição**`,
+    formatValue: v => formatPontos(v)
   }
 };
+
+function formatPontos(valor) {
+  return Number(valor || 0).toLocaleString('pt-BR');
+}
+
+export function normalizeMissionType(type) {
+  return String(type || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toUpperCase();
+}
+
+export function getTypeConfig(type) {
+  return typeConfig[normalizeMissionType(type)];
+}
 
 // Gera o header da missão com base no índice, modo e recompensa
 export function buildHeader(index, mode, reward, hasEvent = false) {
@@ -860,8 +883,16 @@ export function buildHeader(index, mode, reward, hasEvent = false) {
 }
 
 // Gera o texto completo da missão, verificando progresso e conclusão
-export async function buildMissionText({tierMissions, mode, type, allStats, user, discordId, groupIndex }) {
-  const config = typeConfig[type];
+export async function buildMissionText({tierMissions, mode, type, allStats, user, discordId, groupIndex, guildPointsByAccount = new Map() }) {
+  const config = getTypeConfig(type);
+
+  if (!config) {
+    console.warn(`[Conquistas] Tipo de missão desconhecido: ${type}`);
+    return '';
+  }
+
+  const isContribuicao = normalizeMissionType(type) === 'CONTRIBUICAO';
+  const fmt = config.formatValue || (v => v);
   const fields = tggCoins.getModeFields(mode);
 
   const extraHint =
@@ -880,6 +911,13 @@ export async function buildMissionText({tierMissions, mode, type, allStats, user
   let initial_elo = 0;
   let initial_games = 0;
   let initial_wins = 0;
+  let initial_guild_points = 0;
+  let baseContribuicaoAusente = false;
+
+  // week_start vem como 'YYYY-MM-DD HH:mm:ss'; join_date da API é epoch em segundos
+  const inicioSemanaEmSegundos = Math.floor(
+    new Date(String(week_start).replace(' ', 'T')).getTime() / 1000
+  );
 
   for (const row of progressRows) {
     const elo = row?.[fields.elo] || 0;
@@ -892,9 +930,26 @@ export async function buildMissionText({tierMissions, mode, type, allStats, user
 
     initial_games += games;
     initial_wins += wins;
+
+    // Só entra na base a conta cujo valor atual foi confirmado na guilda da TGG. Somar a base de uma conta que não está aqui (ou cuja consulta falhou) deixaria o progresso negativo.
+    const conta = guildPointsByAccount.get(String(row?.brawlhalla_id));
+
+    if (conta) {
+      const base = row?.guild_points;
+      // Base 0 é legítima para quem entrou na guilda durante a semana — começou do zero mesmo.
+      // Para quem já estava aqui, 0 significa base não registrada: usar esse 0 faria o acumulado inteiro virar "progresso da semana" e pagar a conquista na hora.
+      const entrouNestaSemana = conta.joinDate > 0 && conta.joinDate >= inicioSemanaEmSegundos;
+      const baseZeradaIndevida = Number(base) === 0 && conta.points > 0 && !entrouNestaSemana;
+
+      if (base === null || base === undefined || baseZeradaIndevida) {
+        baseContribuicaoAusente = true;
+      } else {
+        initial_guild_points += Number(base);
+      }
+    }
   }
 
-  const initial = { initial_elo, initial_games, initial_wins };
+  const initial = { initial_elo, initial_games, initial_wins, initial_guild_points };
 
   let current_elo = 0;
   let current_games = 0;
@@ -911,7 +966,33 @@ export async function buildMissionText({tierMissions, mode, type, allStats, user
     current_wins += data.wins;
   }
 
-  const current = { elo: current_elo, games: current_games, wins: current_wins };
+  let current_guild_points = 0;
+
+  for (const conta of guildPointsByAccount.values()) {
+    current_guild_points += Number(conta?.points || 0);
+  }
+
+  const current = {
+    elo: current_elo,
+    games: current_games,
+    wins: current_wins,
+    guildPoints: current_guild_points
+  };
+
+  // Sem valor atual ou sem base não há como calcular contribuição. Mostrar "0 / alvo" faria
+  // parecer semana zerada, e calcular contra base ausente pagaria a conquista indevidamente.
+  if (isContribuicao && (guildPointsByAccount.size === 0 || baseContribuicaoAusente)) {
+    const m = tierMissions[0];
+    const motivo = baseContribuicaoAusente
+      ? 'A contribuição inicial desta semana não foi registrada para a conta, então o progresso só pode ser contado a partir da próxima semana.'
+      : 'Contribuição indisponível agora (API da guilda). Tente de novo mais tarde.';
+
+    let text = buildHeader(groupIndex, mode, m.reward, !!activeEvent);
+    text += `${config.icon} ${config.format(m.target, extraHint)}\n`;
+    text += `⚠️ ${motivo}\n\n`;
+    return text;
+  }
+
   const progressValue = config.getProgress(current, initial);
 
   // Missões de 1 tier
@@ -927,6 +1008,7 @@ export async function buildMissionText({tierMissions, mode, type, allStats, user
       final_elo: current.elo,
       final_games: current.games,
       final_wins: current.wins,
+      final_guild_points: current.guildPoints,
       target: m.target
     });
 
@@ -944,7 +1026,7 @@ export async function buildMissionText({tierMissions, mode, type, allStats, user
         text += `✅ Concluído\n\n`;
       }
     } else {
-      text += `Progresso: ${progressValue} / ${m.target}\n`;
+      text += `Progresso: ${fmt(progressValue)} / ${fmt(m.target)}\n`;
       text += `⏳ Em progresso\n`;
       if (result.tip) text += `${result.tip}\n`;
       text += `\n`;
@@ -966,6 +1048,7 @@ export async function buildMissionText({tierMissions, mode, type, allStats, user
       final_elo: current.elo,
       final_games: current.games,
       final_wins: current.wins,
+      final_guild_points: current.guildPoints,
       target: tier.target
     });
 
@@ -987,7 +1070,7 @@ export async function buildMissionText({tierMissions, mode, type, allStats, user
   let text = buildHeader(groupIndex, mode, currentMission.reward, !!activeEvent);
   text += `${config.icon} ${config.format(currentMission.target, extraHint)}\n`;
 
-  text += `Progresso: ${progressValue} / ${currentMission.target}\n`;
+  text += `Progresso: ${fmt(progressValue)} / ${fmt(currentMission.target)}\n`;
   text += `Tier: ${currentTier} / ${tierMissions.length}\n`;
 
   if (rewards.length) {

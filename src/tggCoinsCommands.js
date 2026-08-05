@@ -2,12 +2,12 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder, ButtonStyle, ComponentType } from 'discord.js';
 import * as tggCoins from './tggCoins.js';
 import { getUserByDiscordId, getMissionWeekStart, formatDateBR, getMissionWeekEnd, resolveBrawlhallaId, loadAliases } from './db.js';
-import { fetchPlayerStats, fetchPlayerStatsNoResolve } from './brawlhalla.js';
+import { fetchPlayerStats, fetchPlayerStatsNoResolve, fetchPlayerGuildStatsNewAPI } from './brawlhalla.js';
 import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage, createPagination, awaitConfirmation } from '../utils/discordUtils.js';
 import { adminOnly, leaderOnly, ROLE_HIERARCHY } from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
 import { STAFF_ROLE_IDS } from '../config/index.js';
-import { buyHandlers, typeConfig, buildHeader, buildMissionText, getDailyReward, QUIZ_REWARD, quizQuestions, shuffleArray, OPTION_LETTERS } from './handlers/tggCoinsHandlers.js';
+import { buyHandlers, typeConfig, getTypeConfig, buildHeader, buildMissionText, getDailyReward, QUIZ_REWARD, quizQuestions, shuffleArray, OPTION_LETTERS } from './handlers/tggCoinsHandlers.js';
 
 // Cargos relacionados às TGG-Coins (IDs dos cargos no Discord)
 export const TGG_COINS_ROLES = {
@@ -1319,6 +1319,32 @@ export async function handleConquistas(message) {
     // Pega as estatísticas de todas as contas do usuário em paralelo para otimizar o tempo de resposta
     const allStats = [];
 
+    // Contribuição (guild points) não vem nas estatísticas do jogador. Vem da rota em lote da
+    // guilda: uma chamada só (com cache de 5 min) para todas as contas. A rota individual
+    // (/v1/player/guild) devolve 404 de forma intermitente quando é chamada em sequência.
+    const guildPointsByAccount = new Map();
+
+    try {
+      const guildMembers = await fetchGuildMembersNewAPI();
+      const membroPorId = new Map(
+        (guildMembers.guild_members ?? []).map(m => [String(m.brawlhalla_id), m])
+      );
+
+      for (const id of accountIds) {
+        const membro = membroPorId.get(String(id));
+
+        if (membro) {
+          // join_date separa base 0 legítima (entrou nesta semana) de base 0 não registrada
+          guildPointsByAccount.set(String(id), {
+            points: Number(membro.guild_points || 0),
+            joinDate: Number(membro.join_date || 0)
+          });
+        }
+      }
+    } catch (err) {
+      console.warn(`[Conquistas] Não foi possível buscar os membros da guilda: ${err.message}`);
+    }
+
     for (const id of accountIds) {
       try {
         const stats = await fetchPlayerStatsNoResolve(id);
@@ -1347,7 +1373,7 @@ export async function handleConquistas(message) {
       const tierMissions = grouped[key].sort((a, b) => a.target - b.target);
       const { mode, type } = tierMissions[0];
 
-      activeText += await buildMissionText({tierMissions, mode, type, allStats, user, discordId, groupIndex: index++ });
+      activeText += await buildMissionText({tierMissions, mode, type, allStats, user, discordId, guildPointsByAccount, groupIndex: index++ });
     }
 
     // Mostrar as conquistas concluídas do usuário (histórico)
@@ -1370,7 +1396,9 @@ export async function handleConquistas(message) {
         if (!mission) return;
 
         const index = start + i;
-        const config = typeConfig[mission.type];
+        const config = getTypeConfig(mission.type);
+
+        if (!config) return;
 
         text += `**${index + 1}. ${mission.mode}**\n`;
 

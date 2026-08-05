@@ -132,6 +132,31 @@ que só insere se não existir. O bot também escreve nela via `ensurePlayerWeek
 - Convenção do cron: `initial_elo_1v1` = 0 quando não há partidas, mas `initial_elo_2v2`/`initial_elo_3v3` = **1200**.
 - `games` = `stats.games`; `guild_xp` = `clan.personal_xp`; `guild_points` = `personal_points` da API nova.
 
+### Tipos de conquista (`tgg_coins_achievements.type`)
+
+`ELO`, `WINS`, `GAMES` e `CONTRIBUICAO`. As linhas são cadastradas fora do bot (painel do site); o bot
+só lê. Cada tipo tem uma entrada em `typeConfig` ([src/handlers/tggCoinsHandlers.js](src/handlers/tggCoinsHandlers.js))
+e um ramo em `checkMissionCompletion` ([src/tggCoins.js](src/tggCoins.js)) — tipo novo exige os dois.
+`getTypeConfig` normaliza acento e caixa, então `CONTRIBUIÇÃO` e `contribuicao` resolvem igual.
+
+`CONTRIBUICAO` = guild points ganhos na semana, medidos como `personal_points` atual menos
+`player_weekly_info.guild_points`. O `mode` é só rótulo (ex.: `Guilda`), não passa por `getModeFields`.
+Conta alt só entra se estiver na guilda da TGG (compara `guild_id` com `BRAWLHALLA_CLAN_ID`), nos dois
+lados da conta.
+
+**Base 0 tem dois significados** e a diferença é o `join_date`: quem entrou na guilda **durante a semana**
+começou do zero de verdade e o progresso conta normal; para quem já estava na guilda, 0 quer dizer *base
+não registrada* — aí o progresso não é calculado, porque somar contra 0 leria o acumulado inteiro (dezenas
+de milhares) como ganho da semana e pagaria a conquista na hora. Medido em 05/08/2026: 20 membros ativos
+nessa situação, 9 deles passariam de um alvo de 10k instantaneamente.
+
+**O valor atual sai de `/v1/guild/members` (rota em lote), não de `/v1/player/guild`.** Uma chamada com
+cache resolve todas as contas, e a rota individual devolve **404 intermitente** quando é chamada conta a
+conta — num lote de 77 consultas seguidas ela falhou na maioria, inclusive para membros que respondem
+normalmente quando consultados sozinhos. É a explicação mais provável para os zeros em `player_weekly_info`,
+já que o cron do site percorre centenas de contas por essa rota a cada 15 min. `ensurePlayerWeeklyInfo`
+também usa o lote primeiro, caindo na rota individual só para conta fora da guilda (alt).
+
 ### API do Brawlhalla
 
 Referência completa em [docs/brawlhalla-api.md](docs/brawlhalla-api.md): endpoints, schemas, o que ainda

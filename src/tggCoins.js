@@ -2,7 +2,7 @@ import { getClient, formatDateTime, getMissionWeekStart } from './db.js';
 import { TGG_COINS_ROLES } from './tggCoinsCommands.js';
 import { tggCoinsEvents } from '../config/index.js';
 import { SYSTEM_ROLES} from './discord.js';
-import { fetchPlayerStats, fetchPlayerStatsNoResolve, fetchPlayerGuildStatsNewAPI } from './brawlhalla.js';
+import { fetchPlayerStats, fetchPlayerStatsNoResolve, fetchPlayerGuildStatsNewAPI, fetchGuildMembersNewAPI } from './brawlhalla.js';
 
 /**
  * Adiciona transação
@@ -746,8 +746,12 @@ export async function getAllAccounts(mainId) {
 /**
  * Verificar o progresso do usuário em uma missão específica (usado para as conquistas)
  */
-export function checkMissionCompletion({type, initial_elo, initial_games, initial_wins, final_elo, final_games, final_wins, target}) {
-  const typeNormalized = type.toLowerCase();
+export function checkMissionCompletion({type, initial_elo, initial_games, initial_wins, initial_guild_points, final_elo, final_games, final_wins, final_guild_points, target}) {
+  // O tipo vem do banco e pode chegar acentuado ("CONTRIBUIÇÃO"). Tira o acento para não depender de como a linha foi cadastrada.
+  const typeNormalized = String(type || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase();
 
   // Missões do tipo "elo"
   if (typeNormalized === 'elo') {
@@ -789,6 +793,19 @@ export function checkMissionCompletion({type, initial_elo, initial_games, initia
     return {
       completed: progress >= target,
       tip: `💡 Jogue mais ${Math.max(0, target - progress)} partidas`
+    };
+  }
+
+  // Missões do tipo "contribuição"
+  if (typeNormalized === 'contribuicao') {
+    const inicial = Number(initial_guild_points || 0);
+    const atual = Number(final_guild_points || 0);
+    const progress = atual - inicial;
+    const falta = Math.max(0, target - progress);
+
+    return {
+      completed: progress >= target,
+      tip: `💡 Faça mais ${falta.toLocaleString('pt-BR')} de contribuição nas missões da guilda`
     };
   }
 
@@ -857,8 +874,16 @@ export async function ensurePlayerWeeklyInfo(brawlhallaId) {
   let guildPoints = 0;
 
   try {
-    const guildStats = await fetchPlayerGuildStatsNewAPI(id);
-    guildPoints = Number(guildStats?.personal_points || 0);
+    const guildMembers = await fetchGuildMembersNewAPI();
+    const membro = (guildMembers.guild_members ?? []).find(m => String(m.brawlhalla_id) === id);
+
+    if (membro) {
+      guildPoints = Number(membro.guild_points || 0);
+    } else {
+      // Não está na guilda (alt, normalmente): tenta a rota individual antes de desistir
+      const guildStats = await fetchPlayerGuildStatsNewAPI(id);
+      guildPoints = Number(guildStats?.personal_points || 0);
+    }
   } catch (err) {
     console.warn(`[WeeklyInfo] Guild points indisponíveis para ${id}:`, err.message);
   }
