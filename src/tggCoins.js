@@ -764,7 +764,7 @@ export function checkMissionCompletion({type, initial_elo, initial_games, initia
     if (final_games < 10) {
       tip = '💡 Termine a MD10'; // Se não tiver feito a md10
     } else if (final_elo < target) {
-      tip = `💡 Atinga ${target} de elo`; // Se tiver feito a md10 mas não tiver atingido o elo alvo, mostra a dica de ganhar partidas
+      tip = `💡 Atinja ${target} de elo`; // Se tiver feito a md10 mas não tiver atingido o elo alvo, mostra a dica de ganhar partidas
     } else {
       tip = '💡 Vença 1 partida'; // Se tiver o elo, ganhar 1 partida
     }

@@ -46,7 +46,7 @@ export async function handleBuyService(ctx) {
       const member = await message.guild.members.fetch(p.discord_id);
 
       options.push({
-        label: member.user.username,
+        label: member.displayName,
         value: p.discord_id
       });
       } catch {
