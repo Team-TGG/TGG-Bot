@@ -47,6 +47,77 @@ export async function getPlayerWeeklyGuildPoints(brawlhallaId) {
 }
 
 /**
+ * Guildas monitoradas para achar o oponente do duelo.
+ *
+ * A API não tem ranking de guildas e o espaço de guild_id é esparso demais para varrer, então o
+ * plantel do topo é mantido à mão nessa tabela. O `rank` de /v1/guild/stats é a posição corrente
+ * (não o acumulado), então basta ler o rank de cada uma para saber quem está no lugar do par.
+ */
+export async function getGuildRegistry() {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('guild_registry')
+    .select('guild_id');
+
+  if (error) throw error;
+
+  return (data ?? []).map(row => String(row.guild_id));
+}
+
+/**
+ * Linha de base já gravada para a semana informada (ou null).
+ * Em guild_weekly_guild_points o `created_at` guarda o início da semana, não o instante do insert.
+ */
+export async function getGuildWeeklyPointsByWeek(weekStart) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('guild_weekly_guild_points')
+    .select('id, total_guild_points')
+    .eq('created_at', weekStart)
+    .limit(1);
+
+  if (error) throw error;
+
+  return data?.[0] || null;
+}
+
+export async function getGuildDuelByWeek(weekStart) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('guild_duels')
+    .select('id, guild_id, guild_points')
+    .eq('week_start', weekStart)
+    .limit(1);
+
+  if (error) throw error;
+
+  return data?.[0] || null;
+}
+
+export async function saveGuildWeeklyPoints(weekStart, totalGuildPoints) {
+  const supabase = getClient();
+
+  const { error } = await supabase
+    .from('guild_weekly_guild_points')
+    .insert({ created_at: weekStart, total_guild_points: Number(totalGuildPoints) });
+
+  if (error) throw error;
+}
+
+export async function saveGuildDuel(weekStart, guildId, guildPoints) {
+  const supabase = getClient();
+
+  const { error } = await supabase
+    .from('guild_duels')
+    .insert({ week_start: weekStart, guild_id: String(guildId), guild_points: Number(guildPoints) });
+
+  if (error) throw error;
+}
+
+/**
  * Puxa os guild points semanal da guilda oponente no duelo semanal
  */
 export async function getDuelGuildWeeklyGuildPoints() {

@@ -4,6 +4,7 @@ export const ALLOWED_USER_IDS = ['1447168951963353209', '252249131202904074', '1
 
 // Staff Roles ID's
 export const STAFF_ROLE_IDS = {
+  assistant: '1514285348971085864', // mesmo nível do helper
   helper: '1467177078204924168',
   moderator: '1461777581983535289',
   supervisor: '1437445763721592892',
@@ -75,6 +76,12 @@ export const tggCoinsEvents = {
 export const weeklyMissions = {
   channelId: '1448392117410857092', // canal de helper
   correcaoUrl: 'https://teamtgg.com.br/cadastro_usuario', // onde corrigir divergência
+};
+
+// Duelo semanal de guildas, cadastrado sozinho na quarta 07:00 (ver src/services/guildDuelService.js).
+export const guildDuel = {
+  ourGuildId: '396943',
+  channelId: '1448392117410857092', // canal de helper
 };
 
 export const motd = {

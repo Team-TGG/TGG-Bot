@@ -114,7 +114,7 @@ async function main() {
     const allowed = await checkChannelPermission(message);
     if (!allowed) return;
 
-    // Verifica se usuário possui cargo helper+
+    // Verifica se usuário possui cargo de staff (assistant/helper+)
     const isStaff = message.member?.roles?.cache?.some(
       role => Object.values(STAFF_ROLE_IDS).includes(role.id)
     );

@@ -4,6 +4,7 @@ import { STAFF_ROLE_IDS } from '../config/index.js';
 import { MessageFlags } from 'discord.js';
 
 export const ROLE_HIERARCHY = {
+  [STAFF_ROLE_IDS.assistant]: 1,
   [STAFF_ROLE_IDS.helper]: 1,
   [STAFF_ROLE_IDS.moderator]: 2,
   [STAFF_ROLE_IDS.supervisor]: 3,

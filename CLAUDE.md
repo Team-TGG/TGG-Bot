@@ -86,8 +86,10 @@ Isso é intencional, não sujeira — não "limpe" sem pedir.
 2. **`adminOnly(handler)` / `leaderOnly(handler)`** — wrappers que checam o **banco** (`users.role` =
    `admin`/`officer` e `active`), não os cargos do Discord. Quase todo handler em `admin.js` é
    `export const handleX = adminOnly(async (message, args, client) => {...})`.
-3. **`hasPermission(member, nível)`** — hierarquia por cargo do Discord (`ROLE_HIERARCHY`, 1=helper …
-   6=leader), usada *dentro* dos handlers para graduar ações (warn exige 2, ban exige 3).
+3. **`hasPermission(member, nível)`** — hierarquia por cargo do Discord (`ROLE_HIERARCHY`,
+   1=assistant/helper … 6=leader), usada *dentro* dos handlers para graduar ações (warn exige 2,
+   ban exige 3). `assistant` e `helper` dividem o nível 1 de propósito — `getMemberLevel` usa
+   `Math.max`, então empate não é problema.
 
 `LEADER_ID` e `ALLOWED_USER_IDS` são IDs fixos no código. `ALLOWED_USER_IDS` está marcado como deprecated.
 
@@ -130,6 +132,49 @@ que só insere se não existir. O bot também escreve nela via `ensurePlayerWeek
 - Convenção do cron: `initial_elo_1v1` = 0 quando não há partidas, mas `initial_elo_2v2`/`initial_elo_3v3` = **1200**.
 - `games` = `stats.games`; `guild_xp` = `clan.personal_xp`; `guild_points` = `personal_points` da API nova.
 
+### Tipos de conquista (`tgg_coins_achievements.type`)
+
+`ELO`, `WINS`, `GAMES` e `CONTRIBUICAO`. As linhas são cadastradas fora do bot (painel do site); o bot
+só lê. Cada tipo tem uma entrada em `typeConfig` ([src/handlers/tggCoinsHandlers.js](src/handlers/tggCoinsHandlers.js))
+e um ramo em `checkMissionCompletion` ([src/tggCoins.js](src/tggCoins.js)) — tipo novo exige os dois.
+`getTypeConfig` normaliza acento e caixa, então `CONTRIBUIÇÃO` e `contribuicao` resolvem igual.
+
+`CONTRIBUICAO` = guild points ganhos na semana, medidos como `personal_points` atual menos
+`player_weekly_info.guild_points`. O `mode` é só rótulo (ex.: `Guilda`), não passa por `getModeFields`.
+Conta alt só entra se estiver na guilda da TGG (compara `guild_id` com `BRAWLHALLA_CLAN_ID`), nos dois
+lados da conta.
+
+**Base 0 tem dois significados** e a diferença é o `join_date`: quem entrou na guilda **durante a semana**
+começou do zero de verdade e o progresso conta normal; para quem já estava na guilda, 0 quer dizer *base
+não registrada* — aí o progresso não é calculado, porque somar contra 0 leria o acumulado inteiro (dezenas
+de milhares) como ganho da semana e pagaria a conquista na hora. Medido em 05/08/2026: 20 membros ativos
+nessa situação, 9 deles passariam de um alvo de 10k instantaneamente.
+
+**O valor atual sai de `/v1/guild/members` (rota em lote), não de `/v1/player/guild`.** Uma chamada com
+cache resolve todas as contas, e a rota individual devolve **404 intermitente** quando é chamada conta a
+conta — num lote de 77 consultas seguidas ela falhou na maioria, inclusive para membros que respondem
+normalmente quando consultados sozinhos. É a explicação mais provável para os zeros em `player_weekly_info`,
+já que o cron do site percorre centenas de contas por essa rota a cada 15 min. `ensurePlayerWeeklyInfo`
+também usa o lote primeiro, caindo na rota individual só para conta fora da guilda (alt).
+
+### Duelo semanal de guildas
+
+O jogo pareia 1º×2º, 3º×4º, 5º×6º pela classificação corrente. **O campo `rank` de
+`/v1/guild/stats` é essa posição** — não é o acumulado de guild points: medido em 05/08/2026,
+BURLA tinha mais pontos que WSE (5,0M × 4,4M) e rank muito pior (178º × 39º), e a guilda dos
+próprios devs aparece em 27.614º. O que explica as inversões é atividade recente.
+
+Não existe endpoint de ranking de guildas (13 caminhos sondados, todos 404) e o espaço de
+`guild_id` é esparso demais para varrer (3 guildas em ~80 IDs sondados; nem os vizinhos de
+396943 respondem). Por isso o topo é mantido à mão em **`guild_registry`** (só `guild_id`)
+e o oponente sai de uma leitura do `rank` de cada monitorada.
+
+O cron roda **quarta 07:00**: as missões fecham 06:00 e na quarta não dá mais para farmar ponto,
+então o valor lido é o fechamento da semana **e** a linha de base da seguinte. Grava com
+`week_start` da **quinta seguinte** — é assim que as linhas manuais sempre foram feitas.
+Não sobrescreve semana já cadastrada. Sem oponente no rank alvo (guilda nova no topo), avisa a
+staff chamando o líder em vez de gravar palpite.
+
 ### API do Brawlhalla
 
 Referência completa em [docs/brawlhalla-api.md](docs/brawlhalla-api.md): endpoints, schemas, o que ainda
@@ -166,6 +211,8 @@ Todos registrados no `ClientReady`:
   ([src/services/weeklyMissionsService.js](src/services/weeklyMissionsService.js)). Cada posição tem seu
   ciclo (12, 1, 2 e 3 semanas), ancorado em 06/08/2026. Não sobrescreve semana que já tem missão.
   Os textos espelham `$missionTemplates` de `cadastro_missao.php`, no repo do site — mudou lá, mude aqui.
+- Cron `0 7 * * 3` — cadastra o duelo da semana seguinte
+  ([src/services/guildDuelService.js](src/services/guildDuelService.js)). Ver abaixo.
 - `setInterval` — lembrete de inativos (3h por padrão, `INACTIVE_MESSAGE_INTERVAL`).
 - `restoreMutes` / `restoreTemporaryWarnings` — reagendam expirações persistidas em `mutes` / `warnings`
   depois de um restart.
