@@ -4,7 +4,7 @@ import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, ge
 import { getGuildWeeklyGuildPoints, getDuelGuildWeeklyGuildPoints, getPlayerWeeklyGuildPoints } from './guild.js';
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI, fetchPlayerGuildStatsNewAPI, fetchPlayerBasicNewAPI } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, videoGuilda as videoGuildaConfig, guildDuel as guildDuelConfig } from '../config/index.js';
-import { calculateGames } from './handlers/publicHandlers.js';
+import { calculateGames, calculateGamesFromClosedWeek } from './handlers/publicHandlers.js';
 
 import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage } from '../utils/discordUtils.js';
 import { isAdmin, adminOnly } from '../utils/permissions.js';
@@ -519,21 +519,20 @@ export async function handleGames(message, args) {
             });
           }
 
-          // Usa os dados atuais - os dados da semana passada para calcular os jogos da semana anterior
-          const totalGamesPrev = (data.final_games ?? 0) - (data.games ?? 0);
-          const games1v1Prev = (data.final_games_1v1 ?? 0) - (data.initial_games_1v1 ?? 0);
-          const games2v2Prev = (data.final_games_2v2 ?? 0) - (data.initial_games_2v2 ?? 0);
-          const games3v3Prev = (data.final_games_3v3 ?? 0) - (data.initial_games_3v3 ?? 0);
+          // Fecha a semana pelos campos final_*, com a mesma composição da semana atual
+          const prevResult = calculateGamesFromClosedWeek(data);
           const gainedXp = (stats.clan?.personal_xp ?? 0) - (data.guild_xp ?? 0);
 
           const prevEmbed = new EmbedBuilder()
             .setColor(0xed4245)
             .setTitle(`🕓 Semana passada - ${stats.name}`)
             .addFields(
-              { name: 'Jogos totais (Casuais)', value: `\`${totalGamesPrev}\``, inline: false },
-              { name: 'Ranked 1v1', value: `\`${games1v1Prev}\``, inline: true },
-              { name: 'Ranked 2v2', value: `\`${games2v2Prev}\``, inline: true },
-              { name: 'Ranked 3v3', value: `\`${games3v3Prev}\``, inline: true },
+              { name: 'Jogos Totais', value: `\`${prevResult.totalGames}\``, inline: true },
+              { name: 'Jogos Casuais', value: `\`${prevResult.casualGames}\``, inline: true },
+              { name: '​', value: '​', inline: true }, // espaço pra fechar a linha
+              { name: 'Ranked 1v1', value: `\`${prevResult.games1v1}\``, inline: true },
+              { name: 'Ranked 2v2', value: `\`${prevResult.games2v2}\``, inline: true },
+              { name: 'Ranked 3v3', value: `\`${prevResult.games3v3}\``, inline: true },
               { name: 'XP da guilda', value: `\`${gainedXp}\``, inline: false }
             )
             .setFooter({

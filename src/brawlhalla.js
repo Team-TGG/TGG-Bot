@@ -1,6 +1,6 @@
 import { EmbedBuilder } from 'discord.js';
 import { getGuildWeeklyGuildPoints, getPlayerWeeklyGuildPoints } from './guild.js';
-import { getUserByDiscordId, resolveBrawlhallaId, loadAliases, getMissionWeekEnd, getMissionWeekStart } from './db.js';
+import { getUserByDiscordId, resolveBrawlhallaId, loadAliases, getMissionWeekEnd, getMissionWeekStart, getMembershipHistory } from './db.js';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs';
 import { resolve } from 'path';
 
@@ -362,6 +362,15 @@ function cleanLegendName(name) {
 function getRankIcon(tier) {
   if (!tier) return '❓';
   return RANK_ICONS[tier.toLowerCase().replace(/\s+/g, '')] || '❓';
+}
+
+// occurred_at chega do Supabase em ISO ("2026-08-05T12:34:56"); só a data interessa aqui
+function formatDataGuilda(valor) {
+  if (!valor) return null;
+  const [dia] = String(valor).split(/[T ]/);
+  const [ano, mes, d] = dia.split('-');
+  if (!ano || !mes || !d) return null;
+  return `${d}/${mes}/${ano}`;
 }
 
 function normalizeUnicode(str) {
@@ -1007,6 +1016,19 @@ export async function createStatsEmbed(playerData) {
   const lastGuildPoints = Number(lastGuildPointsData || 0);
   const weeklyGuildPoints = Math.max(0, totalGuildPoints - lastGuildPoints);
 
+  const historicoGuilda = await getMembershipHistory(stats.brawlhalla_id).catch((err) => {
+    console.warn(`[Stats] Historico de guilda indisponivel para ${stats.brawlhalla_id}: ${err.message}`);
+    return [];
+  });
+
+  const ultimoMovimento = historicoGuilda.find(h => h.action === 'entrou' || h.action === 'saiu') ?? null;
+
+  const linhasGuilda = [];
+  if (ultimoMovimento) {
+    const rotulo = ultimoMovimento.action === 'entrou' ? '📥 Entrou em' : '🚪 Saiu em';
+    linhasGuilda.push(`${rotulo}: \`${formatDataGuilda(ultimoMovimento.occurred_at)}\``);
+  }
+
   const embedFields = [
     {
       name: '📊 Main Stats',
@@ -1021,13 +1043,18 @@ export async function createStatsEmbed(playerData) {
       value: `\`${formatNumber(wins)} W\` · \`${formatNumber(losses)} L\` · \`${formatNumber(games)} games\` (\`${winRatio}%\`)`,
       inline: false
     },
-   ...(lastGuildPointsData ? [{
+   
+   ...((lastGuildPointsData || linhasGuilda.length) ? [{
       name: '🏰 Guild Record',
-      value:
-        `Total GP: \`${formatNumber(totalGuildPoints)}\`` + (guildPosition ? ` · \`#${guildPosition}\`` : '') +`\n` +
-        `Weekly GP: \`${formatNumber(weeklyGuildPoints)}\`` +
+      value: [
+        ...(lastGuildPointsData ? [
+          `Total GP: \`${formatNumber(totalGuildPoints)}\`` + (guildPosition ? ` · \`#${guildPosition}\`` : ''),
+          `Weekly GP: \`${formatNumber(weeklyGuildPoints)}\``
+        ] : []),
+        ...linhasGuilda
+      ].join('\n') +
 
-        (weeklyGuildPoints < 1000
+        (lastGuildPointsData && weeklyGuildPoints < 1000
           ? `\n\n🔴 **Alerta de Inatividade**\n` +
             `Você precisa fazer mais \`${formatNumber(1000 - weeklyGuildPoints)}\` de contribuição para não ficar inativo.`
           : ''),

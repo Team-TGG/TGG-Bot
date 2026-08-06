@@ -2,7 +2,7 @@
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, ComponentType, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 import { createClient, runSync, runEloSync } from './discord.js';
 import { fetchPlayerStats, getUserBrawlhallaId, fetchPlayerGuildStatsNewAPI } from './brawlhalla.js';
-import { calculateGames } from './handlers/publicHandlers.js';
+import { calculateGames, calculateGamesFromClosedWeek } from './handlers/publicHandlers.js';
 import { addWarning, getUserWarnings, removeWarning, removeLastWarning, editWarning, deleteExpiredWarnings, parseTime, formatTime as formatModTime } from './moderation.js';
 import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getMissionWeekStart, getActiveUser, getMemberJustifications, formatDateBR, getMembershipHistory, getPreviousMissionWeekStart, getWeeklyInitial, getMissionWeekStartDateTime, formatCreatedAtBR, loadAliases, resolveBrawlhallaId } from './db.js';
 import { discord as discordConfig, STAFF_ROLE_IDS, inactivePlayers as inactivePlayersConfig, tickets as ticketsConfig } from '../config/index.js';
@@ -2084,17 +2084,19 @@ export const handleScan = adminOnly(async (message, args, client) => {
       else if (args[0]?.match(/^\d+$/)) targetUserId = args[0];
     }
 
-    if (!targetUserId) {
-      return await message.reply({
-        embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.scan <@usuario/ID>`')]
-      });
-    }
+    const escaneandoSiMesmo = !targetUserId;
+    if (!targetUserId) targetUserId = message.author.id;
 
     const user = await getUserByDiscordId(targetUserId);
 
     if (!user || !user.brawlhalla_id) {
       return await message.reply({
-        embeds: [createErrorEmbed('Sem Cadastro', 'Este usuário não tem Brawlhalla ID registrado.')]
+        embeds: [createErrorEmbed(
+          'Sem Cadastro',
+          escaneandoSiMesmo
+            ? 'Você não tem Brawlhalla ID registrado.'
+            : 'Este usuário não tem Brawlhalla ID registrado.'
+        )]
       });
     }
 
@@ -2169,12 +2171,7 @@ export const handleScan = adminOnly(async (message, args, client) => {
 
     let jogosPassada = null;
     if (semanaPassada && semanaPassada.final_games > 0) {
-      jogosPassada = {
-        totalGames: (semanaPassada.final_games ?? 0) - (semanaPassada.games ?? 0),
-        games1v1: (semanaPassada.final_games_1v1 ?? 0) - (semanaPassada.initial_games_1v1 ?? 0),
-        games2v2: (semanaPassada.final_games_2v2 ?? 0) - (semanaPassada.initial_games_2v2 ?? 0),
-        games3v3: (semanaPassada.final_games_3v3 ?? 0) - (semanaPassada.initial_games_3v3 ?? 0)
-      };
+      jogosPassada = calculateGamesFromClosedWeek(semanaPassada);
     }
 
     const nomeJogo = stats?.name ?? ultimaEntrada?.nome ?? user.username ?? 'Desconhecido';
@@ -2263,7 +2260,7 @@ export const handleScan = adminOnly(async (message, args, client) => {
         embed.addFields({
           name: `🕓 Semana passada (${formatDateBR(prevWeekStart)})`,
           value:
-            `Total: \`${jogosPassada.totalGames}\`\n` +
+            `Total: \`${jogosPassada.totalGames}\` • Casuais: \`${jogosPassada.casualGames}\`\n` +
             `1v1: \`${jogosPassada.games1v1}\` • 2v2: \`${jogosPassada.games2v2}\` • 3v3: \`${jogosPassada.games3v3}\``,
           inline: false
         });

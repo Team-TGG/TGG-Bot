@@ -30,3 +30,21 @@ export function calculateGames(stats, ranked, initial) {
 
   return {totalGames, casualGames, games1v1, games2v2, games3v3};
 }
+
+/**
+ * Mesma conta do `calculateGames`, mas para uma semana já fechada: em vez dos dados
+ * atuais da API usa os campos `final_*` que o cron do site grava no fechamento.
+ *
+ * O `games` da tabela (e o `final_games`) conta **só partida casual** — os jogos ranked
+ * entram por fora, somados modo a modo.
+ */
+export function calculateGamesFromClosedWeek(week) {
+  const games1v1 = (week.final_games_1v1 ?? 0) - (week.initial_games_1v1 ?? 0);
+  const games2v2 = (week.final_games_2v2 ?? 0) - (week.initial_games_2v2 ?? 0);
+  const games3v3 = (week.final_games_3v3 ?? 0) - (week.initial_games_3v3 ?? 0);
+
+  const casualGames = (week.final_games ?? 0) - (week.games ?? 0);
+  const totalGames = casualGames + games1v1 + games2v2 + games3v3;
+
+  return {totalGames, casualGames, games1v1, games2v2, games3v3};
+}

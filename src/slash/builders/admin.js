@@ -152,6 +152,6 @@ export const adminCommands = [
   new SlashCommandBuilder()
     .setName('scan')
     .setDescription('Visão de staff sobre um membro: entrada, saídas, jogos, guild points e justificativas')
-    .addUserOption(o => o.setName('usuario').setDescription('Membro a escanear').setRequired(true))
+    .addUserOption(o => o.setName('usuario').setDescription('Membro a escanear (vazio = você mesmo)').setRequired(false))
     .setDefaultMemberPermissions(MOD_DEFAULT_PERMS),
 ];
