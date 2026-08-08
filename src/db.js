@@ -183,6 +183,23 @@ export async function getAllUsers() {
   return data ?? [];
 }
 
+/**
+ * Todos os membros ativos com a conta da guilda, para cálculos que percorrem a guilda inteira
+ * (MVP da semana). Diferente de `getAllUsers`, que não traz o brawlhalla_id.
+ */
+export async function getActiveUsersWithBrawlhallaId() {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('discord_id, brawlhalla_id, username, role')
+    .eq('active', true);
+
+  if (error) throw error;
+
+  return (data ?? []).filter(u => u.discord_id && u.brawlhalla_id);
+}
+
 export async function getActiveUser(discordId) {
   const supabase = getClient();
 

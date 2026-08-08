@@ -4,6 +4,7 @@ import { processBirthdays, removeBirthdayRole } from '../services/birthdayServic
 import { publishMotd } from '../services/motdService.js';
 import { registrarMissoesDaSemana } from '../services/weeklyMissionsService.js';
 import { registrarDueloDaSemana } from '../services/guildDuelService.js';
+import { trocarMvpsDaSemana } from '../services/weeklyMvpService.js';
 
 export function startCronJobs(client, services) {
   const {
@@ -67,6 +68,17 @@ export function startCronJobs(client, services) {
       await registrarMissoesDaSemana(client);
     } catch (err) {
       console.error('[CRON ERROR - Missoes]', err);
+    }
+  }, {
+    timezone: 'America/Sao_Paulo'
+  });
+
+  // MVPs da semana - quarta 06:00, quando as missões fecham. O valor lido é o fechamento da semana.
+  cron.schedule('0 6 * * 3', async () => {
+    try {
+      await trocarMvpsDaSemana(client);
+    } catch (err) {
+      console.error('[CRON ERROR - MVP]', err);
     }
   }, {
     timezone: 'America/Sao_Paulo'

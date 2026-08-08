@@ -1529,7 +1529,7 @@ export const handleOrganizeTickets = adminOnly(async (message, args, client) => 
 
       // envia mensagem no ticket
       await channel.send({
-        content: `Prioridade ajustada, consulte a sua posição na fila de espera no nome do seu ticket\nLembrando que conforme a sua interação no servidor, seja por calls ou mensagens, sua prioridade será maior`
+        content: `Prioridade ajustada, consulte a sua posição na fila de espera no nome do seu ticket\nLembrando que conforme a sua interação no servidor, seja por calls ou mensagens, sua prioridade será maior.\n\nPriority adjusted, check your position in the waiting queue in your ticket name\nRemember that according to your interaction on the server, whether by calls or messages, your priority will be higher.`
       }).catch(() => {});
     }
 

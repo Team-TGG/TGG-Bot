@@ -78,6 +78,16 @@ export const weeklyMissions = {
   correcaoUrl: 'https://teamtgg.com.br/cadastro_usuario', // onde corrigir divergência
 };
 
+// MVP da semana, trocado sozinho na quarta 06:00 (ver src/services/weeklyMvpService.js).
+// `limite` são as vagas de contagem: officers/admins e o líder recebem o cargo enquanto a
+// contagem corre, mas não ocupam vaga. Sem channelId o cargo continua sendo trocado — só o
+// anúncio é pulado.
+export const weeklyMvp = {
+  roleId: '1448466041997889769',
+  channelId: '1448392117410857092', // canal de helper
+  limite: 14,
+};
+
 // Duelo semanal de guildas, cadastrado sozinho na quarta 07:00 (ver src/services/guildDuelService.js).
 export const guildDuel = {
   ourGuildId: '396943',
