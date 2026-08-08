@@ -513,7 +513,7 @@ export async function handleLeaderboard(message) {
               ? `🔥 ${user.streak ?? 0} dia(s)`
               : `${(user.balance ?? 0).toLocaleString('pt-BR')} TGG-Coins`;
 
-          return `${medal} **${username}** — ${value}`;
+          return `${medal} **${username}** - ${value}`;
         })
       );
 
@@ -1559,7 +1559,7 @@ export async function handleAddAccount(message, args) {
       const weeklyInfo = await tggCoins.ensurePlayerWeeklyInfo(altId);
 
       weeklyInfoNote = weeklyInfo.created
-        ? '\n\n📊 Dados iniciais da semana registrados — as conquistas já contam essa conta.'
+        ? '\n\n📊 Dados iniciais da semana registrados - as conquistas já contam essa conta.'
         : '\n\n📊 Esta conta já tinha dados iniciais registrados nesta semana.';
 
     } catch (err) {

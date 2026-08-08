@@ -147,7 +147,7 @@ function montarEmbed(weekStart, missoes) {
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle('📋 Missões da semana')
-    .setDescription(`Semana de **${dia}/${mes}/${ano}** — vale até quarta-feira às 06:00.`)
+    .setDescription(`Semana de **${dia}/${mes}/${ano}** - vale até quarta-feira às 06:00.`)
     .setTimestamp();
 
   missoes.forEach((m, i) => {
@@ -182,14 +182,14 @@ export function montarAnuncio(weekStart, missoes) {
 
 async function anunciar(client, weekStart, missoes) {
   if (!config.channelId) {
-    console.warn('[MISSOES] channelId não configurado — missões cadastradas, anúncio pulado');
+    console.warn('[MISSOES] channelId não configurado - missões cadastradas, anúncio pulado');
     return false;
   }
 
   const canal = await client.channels.fetch(config.channelId).catch(() => null);
 
   if (!canal) {
-    console.warn(`[MISSOES] canal ${config.channelId} não encontrado — anúncio pulado`);
+    console.warn(`[MISSOES] canal ${config.channelId} não encontrado - anúncio pulado`);
     return false;
   }
 
@@ -210,7 +210,7 @@ export async function registrarMissoesDaSemana(client) {
     const existentes = await getMissionsByWeekStart(weekStart);
 
     if (existentes.length) {
-      console.log(`[MISSOES] semana ${weekStart} já tem ${existentes.length} missão(ões) — nada a fazer`);
+      console.log(`[MISSOES] semana ${weekStart} já tem ${existentes.length} missão(ões) - nada a fazer`);
       return { criadas: 0, weekStart, anunciado: false };
     }
 

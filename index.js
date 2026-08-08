@@ -28,13 +28,13 @@ import { registerInteractionHandler } from './src/interactions.js';
 // achando que está isolado e descobrir pelo ping dos inativos que não estava.
 function logRuntimeMode(registrouSlash) {
   if (!runtime.isDev) {
-    console.log('[MODE] PRODUCAO — slash commands, crons e lembrete de inativos ATIVOS');
+    console.log('[MODE] PRODUCAO - slash commands, crons e lembrete de inativos ATIVOS');
     return;
   }
 
   const linha = '='.repeat(60);
   console.log(`\n${linha}`);
-  console.log('  MODO DEV — nada que afete o servidor real vai rodar');
+  console.log('  MODO DEV - nada que afete o servidor real vai rodar');
   console.log(linha);
   console.log('  pulado : lembrete de inativos (ping no canal + DM)');
   console.log('  pulado : crons (cargos, ELO, apelidos, aniversarios, MOTD)');
@@ -56,7 +56,7 @@ async function main() {
   client.once(Events.ClientReady, async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
-    // O PUT reescreve os slash commands da guilda — em dev só com --register-commands
+    // O PUT reescreve os slash commands da guilda - em dev só com --register-commands
     const vaiRegistrarSlash = !runtime.isDev || runtime.registerCommandsInDev;
     logRuntimeMode(vaiRegistrarSlash);
 

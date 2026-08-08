@@ -66,7 +66,7 @@ function embedCadastrado({ weekStart, nossa, oponente, nossoRank }) {
   return new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle('⚔️ Duelo da semana cadastrado')
-    .setDescription(`Semana de **${dia}/${mes}/${ano}** — enfrentamos a **${oponente.name}**.`)
+    .setDescription(`Semana de **${dia}/${mes}/${ano}** - enfrentamos a **${oponente.name}**.`)
     .addFields(
       {
         name: `${nossa.name} (nós)`,
@@ -99,7 +99,7 @@ export function montarAvisoDeFalha(weekStart, motivo) {
     .setColor(0xED4245)
     .setTitle('⚠️ Duelo da semana não foi cadastrado')
     .setDescription(motivo)
-    .setFooter({ text: `Semana ${weekStart.slice(0, 10)} — cadastro manual necessário` })
+    .setFooter({ text: `Semana ${weekStart.slice(0, 10)} - cadastro manual necessário` })
     .setTimestamp();
 
   return {
@@ -111,14 +111,14 @@ export function montarAvisoDeFalha(weekStart, motivo) {
 
 async function enviar(client, payload) {
   if (!config.channelId) {
-    console.warn('[DUELO] channelId não configurado — aviso pulado');
+    console.warn('[DUELO] channelId não configurado - aviso pulado');
     return false;
   }
 
   const canal = await client.channels.fetch(config.channelId).catch(() => null);
 
   if (!canal) {
-    console.warn(`[DUELO] canal ${config.channelId} não encontrado — aviso pulado`);
+    console.warn(`[DUELO] canal ${config.channelId} não encontrado - aviso pulado`);
     return false;
   }
 
@@ -148,7 +148,7 @@ export async function registrarDueloDaSemana(client) {
     ]);
 
     if (dueloExistente && baseExistente) {
-      console.log(`[DUELO] semana ${weekStart} já cadastrada — nada a fazer`);
+      console.log(`[DUELO] semana ${weekStart} já cadastrada - nada a fazer`);
       return { cadastrado: false, weekStart, motivo: 'JA_EXISTE' };
     }
 
@@ -169,7 +169,7 @@ export async function registrarDueloDaSemana(client) {
     const registry = await getGuildRegistry();
 
     if (!registry.length) {
-      await avisarFalha(client, weekStart, 'Nenhuma guilda cadastrada em `guild_registry` — sem ela não há como descobrir quem está na posição do nosso par.');
+      await avisarFalha(client, weekStart, 'Nenhuma guilda cadastrada em `guild_registry` - sem ela não há como descobrir quem está na posição do nosso par.');
       return { cadastrado: false, weekStart, motivo: 'REGISTRO_VAZIO' };
     }
 
@@ -179,7 +179,7 @@ export async function registrarDueloDaSemana(client) {
     // Guilda nova no topo: ninguém monitorado ocupa a posição do par
     if (!oponente) {
       await avisarFalha(client, weekStart,
-        `Estamos em **${nossoRank}º**, então o duelo é contra quem está em **${rankAlvo}º** — e nenhuma das ` +
+        `Estamos em **${nossoRank}º**, então o duelo é contra quem está em **${rankAlvo}º** - e nenhuma das ` +
         `${monitoradas.length} guildas monitoradas está nessa posição.\n\n` +
         `Provavelmente é uma guilda que ainda não está em \`guild_registry\`. Cadastre o \`guild_id\` dela ` +
         `e o duelo da próxima semana já sai sozinho.`
