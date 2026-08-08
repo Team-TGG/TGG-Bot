@@ -3,7 +3,8 @@ import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuil
 import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getMonthWeekStartDateTime, getCurrentSeason, getSeasonWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID, incrementCrz, getUserByDiscordId, getContasVinculadas } from './db.js';
 import { getGuildWeeklyGuildPoints, getDuelGuildWeeklyGuildPoints, getPlayerWeeklyGuildPoints } from './guild.js';
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI, fetchPlayerGuildStatsNewAPI, fetchPlayerBasicNewAPI } from './brawlhalla.js';
-import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, videoGuilda as videoGuildaConfig, guildDuel as guildDuelConfig } from '../config/index.js';
+import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, videoGuilda as videoGuildaConfig, guildDuel as guildDuelConfig, justificativas as justificativasConfig } from '../config/index.js';
+import { criarPedidoDeBlindagem, decidirBlindagem, getBlindagem, getPedidoPendenteDoMembro, registrarMensagemDoPedido, MAX_SEMANAS, STATUS } from './inactivity.js';
 import { calculateGames, calculateGamesFromClosedWeek } from './handlers/publicHandlers.js';
 
 import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage } from '../utils/discordUtils.js';
@@ -80,7 +81,9 @@ export async function handleHelp(message, args, client) {
       { name: `${EMOJIS.arrowRight} .active [@user] <justificativa>`, value: 'Remover jogador da lista de inativos', inline: false },
       { name: `${EMOJIS.arrowRight} .inac-list`, value: 'Listar todos os jogadores inativos desta semana', inline: false },
       { name: `${EMOJIS.arrowRight} .justificativas [@user]`, value: 'Listar todas as justificativas de um jogador inativo', inline: false },
-      { name: `${EMOJIS.arrowRight} .scan [@user]`, value: 'Verificar informações gerais de um jogador inativo', inline: false }
+      { name: `${EMOJIS.arrowRight} .scan [@user]`, value: 'Verificar informações gerais de um jogador inativo', inline: false },
+      { name: `${EMOJIS.arrowRight} .inativar`, value: 'Inativar jogadores inativos da semana', inline: false },
+      { name: `${EMOJIS.arrowRight} .blindagem <justificativa> <quantidade de semanas>`, value: 'Blindar um jogador por um período de semanas', inline: false },
     )
     .setFooter({ text: 'Selecione uma categoria no dropdown' })
     .setTimestamp();
@@ -817,6 +820,210 @@ export async function handleActive(message, args, client) {
   }
 }
 
+// .justificativa <motivo> <semanas>
+export async function handleJustificativa(message, args, client) {
+  try {
+    let motivo;
+    let semanas;
+
+    // No caminho slash as opções vêm tipadas; no prefixo, a última palavra é o número
+    if (message.interaction) {
+      motivo = message.interaction.options.getString('justificativa')?.trim() ?? '';
+      semanas = message.interaction.options.getInteger('semanas');
+
+    } else {
+      const ultimo = args[args.length - 1];
+      semanas = /^\d+$/.test(ultimo ?? '') ? Number(ultimo) : NaN;
+      motivo = args.slice(0, -1).join(' ').trim();
+    }
+
+    if (!Number.isInteger(semanas) || semanas < 1 || semanas > MAX_SEMANAS) {
+      return message.reply({
+        embeds: [createErrorEmbed(
+          'Uso incorreto',
+          `Use: \`.justificativa <motivo> <semanas>\`\n\n` +
+          `A quantidade de semanas vai por último, de **1 a ${MAX_SEMANAS}**.\n` +
+          `Ex.: \`.justificativa Vou viajar e fico sem PC 2\``
+        )]
+      });
+    }
+
+    if (motivo.length < 15) {
+      return message.reply({
+        embeds: [createErrorEmbed(
+          'Justificativa muito curta',
+          'Explique o motivo com **pelo menos 15 caracteres** - quem lê precisa entender o que houve.'
+        )]
+      });
+    }
+
+    const user = await getUserByDiscordId(message.author.id);
+
+    if (!user || !user.active) {
+      return message.reply({
+        embeds: [createErrorEmbed(
+          'Sem Cadastro',
+          'Só membros ativos da guilda podem pedir blindagem.'
+        )]
+      });
+    }
+
+    const pendente = await getPedidoPendenteDoMembro(message.author.id);
+
+    if (pendente) {
+      return message.reply({
+        embeds: [createErrorEmbed(
+          'Você já tem um pedido em análise',
+          'Espere a staff decidir o pedido anterior antes de mandar outro.'
+        )]
+      });
+    }
+
+    const canal = justificativasConfig.channelId
+      ? await client.channels.fetch(justificativasConfig.channelId).catch(() => null)
+      : null;
+
+    // Sem canal não há como alguém aprovar, e o pedido ficaria pendente para sempre
+    if (!canal) {
+      return message.reply({
+        embeds: [createErrorEmbed(
+          'Canal da staff indisponível',
+          'Não consegui enviar seu pedido para análise. Avise um administrador.'
+        )]
+      });
+    }
+
+    const pedido = await criarPedidoDeBlindagem({
+      discordId: message.author.id,
+      reason: motivo,
+      weeks: semanas,
+    });
+
+    const [ano, mes, dia] = String(pedido.week_start).slice(0, 10).split('-');
+
+    const embed = new EmbedBuilder()
+      .setColor(0xfaa61a)
+      .setTitle('📝 Pedido de justificativa')
+      .setDescription(`<@${message.author.id}> pediu blindagem contra inativação.`)
+      .addFields(
+        { name: 'Motivo', value: motivo.slice(0, 1024), inline: false },
+        { name: 'Semanas', value: `**${semanas}**`, inline: true },
+        // A semana de inatividade corre de quarta a quarta; a blindagem vale a partir da que
+        // está em curso, então a data costuma ser alguns dias atrás.
+        { name: 'A partir da semana de', value: `${dia}/${mes}/${ano}`, inline: true },
+      )
+      .setFooter({ text: 'Aprovar blinda o membro; recusar avisa que não foi aceita.' })
+      .setTimestamp();
+
+    const botoes = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`justificativa_aprovar_${pedido.id}`)
+        .setLabel('Aprovar')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`justificativa_recusar_${pedido.id}`)
+        .setLabel('Recusar')
+        .setStyle(ButtonStyle.Danger),
+    );
+
+    const aviso = await canal.send({
+      embeds: [embed],
+      components: [botoes],
+      allowedMentions: { parse: [] },
+    });
+
+    await registrarMensagemDoPedido(pedido.id, aviso.channelId, aviso.id);
+
+    await message.reply({
+      embeds: [createSuccessEmbed(
+        'Justificativa enviada',
+        `Seu pedido de **${semanas} semana(s)** foi mandado para a staff analisar.\n\n` +
+        `Você recebe uma DM assim que alguém decidir. Enquanto isso o pedido **não** blinda ` +
+        `- se a semana fechar sem decisão, você ainda pode cair na lista de inativos.`
+      )]
+    });
+
+  } catch (err) {
+    await message.reply({
+      embeds: [createErrorEmbed('Erro ao Enviar Justificativa', err.message)]
+    });
+  }
+}
+
+/**
+ * Botões do pedido de justificativa, roteados por prefixo em [interactions.js](./interactions.js).
+ *
+ * Não dá para usar collector aqui: a staff pode demorar horas para decidir e o collector morre no
+ * primeiro restart. O estado vive na tabela, então o botão continua funcionando depois de deploy.
+ */
+export async function handleJustificativaButton(interaction, client) {
+  const [, acao, id] = interaction.customId.split('_');
+
+  if (!(await isAdmin(interaction.user.id))) {
+    return interaction.reply({
+      embeds: [createErrorEmbed('Acesso Negado', 'Apenas officers e administradores decidem justificativas.')],
+      ephemeral: true,
+    }).catch(() => {});
+  }
+
+  const aprovar = acao === 'aprovar';
+  const status = aprovar ? STATUS.APROVADA : STATUS.RECUSADA;
+
+  // O update condicionado a status = pendente resolve dois cliques ao mesmo tempo: o segundo
+  // não encontra linha e sai sem sobrescrever a decisão do primeiro.
+  const pedido = await decidirBlindagem(id, { status, approvedBy: interaction.user.id });
+
+  if (!pedido) {
+    const atual = await getBlindagem(id).catch(() => null);
+
+    return interaction.reply({
+      embeds: [createErrorEmbed(
+        'Já decidido',
+        atual?.approved_by
+          ? `Este pedido já foi **${atual.status}** por <@${atual.approved_by}>.`
+          : 'Este pedido não está mais pendente.'
+      )],
+      ephemeral: true,
+    }).catch(() => {});
+  }
+
+  const embedDecidido = new EmbedBuilder()
+    .setColor(aprovar ? 0x57f287 : 0xed4245)
+    .setTitle(aprovar ? '✅ Justificativa aprovada' : '❌ Justificativa recusada')
+    .setDescription(`Pedido de <@${pedido.discord_id}>, decidido por <@${interaction.user.id}>.`)
+    .addFields(
+      { name: 'Motivo', value: String(pedido.reason).slice(0, 1024), inline: false },
+      { name: 'Semanas', value: `**${pedido.weeks}**`, inline: true },
+      {
+        name: aprovar ? 'Blindado a partir da semana de' : 'Efeito',
+        value: aprovar
+          ? String(pedido.week_start).slice(0, 10).split('-').reverse().join('/')
+          : 'Nenhum - o membro segue sujeito à inativação.',
+        inline: true,
+      },
+    )
+    .setTimestamp();
+
+  await interaction.update({ embeds: [embedDecidido], components: [] }).catch(() => {});
+
+  const dm = new EmbedBuilder()
+    .setColor(aprovar ? 0x57f287 : 0xed4245)
+    .setTitle(aprovar ? '✅ Justificativa aceita' : '❌ Justificativa não aceita')
+    .setDescription(
+      aprovar
+        ? `Sua justificativa foi aceita: você **não será inativado** pelas próximas ` +
+          `**${pedido.weeks} semana(s)**.\n\n_Motivo registrado: ${pedido.reason}_`
+        : `Sua justificativa **não foi aceita** pela staff.\n\n_Motivo enviado: ${pedido.reason}_\n\n` +
+          `Você continua sujeito à inativação se fizer menos de 1.000 de contribuição na semana. ` +
+          `Se quiser entender o porquê, fale com um membro da staff.`
+    )
+    .setTimestamp();
+
+  await client.users.fetch(pedido.discord_id)
+    .then(u => u.send({ embeds: [dm] }))
+    .catch(() => console.log(`[JUSTIFICATIVA] DM bloqueada: ${pedido.discord_id}`));
+}
+
 // .birthday <DD/MM>
 export async function handleBirthday(message, args) {
   if (args.length === 0) {
@@ -1239,7 +1446,7 @@ export async function handleDuel(message, args, client) {
   }
 }
 
-// .alts [@usuario/id] — contas vinculadas pelo .corrigir-id e pelo .add-account
+// .alts [@usuario/id] - contas vinculadas pelo .corrigir-id e pelo .add-account
 export async function handleAlts(message, args) {
   let loadingMsg = null;
 
@@ -1306,9 +1513,9 @@ export async function handleAlts(message, args) {
     );
 
     const linha = (c) => {
-      if (!c.info) return `\`${c.id}\` — _dados indisponíveis na API_`;
+      if (!c.info) return `\`${c.id}\` - _dados indisponíveis na API_`;
       const { name, level, games, wins } = c.info;
-      return `\`${c.id}\` **${name}** — Nv ${level} · ${games.toLocaleString('pt-BR')} jogos · ${wins.toLocaleString('pt-BR')} vitórias`;
+      return `\`${c.id}\` **${name}** - Nv ${level} · ${games.toLocaleString('pt-BR')} jogos · ${wins.toLocaleString('pt-BR')} vitórias`;
     };
 
     const daGuilda = dados.find((c) => c.rotulo === 'guilda');
@@ -1321,11 +1528,11 @@ export async function handleAlts(message, args) {
     ];
 
     if (principal) {
-      partes.push('', '⭐ **Conta principal** — registrada com `.corrigir-id`', linha(principal));
+      partes.push('', '⭐ **Conta principal** - registrada com `.corrigir-id`', linha(principal));
     }
 
     if (alternativas.length) {
-      partes.push('', `🎮 **Contas alternativas** (${alternativas.length}) — registradas com \`.add-account\``);
+      partes.push('', `🎮 **Contas alternativas** (${alternativas.length}) - registradas com \`.add-account\``);
       alternativas.forEach((c) => partes.push(linha(c)));
     }
 

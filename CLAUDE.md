@@ -45,7 +45,9 @@ parecido com `Message` (`author`, `member`, `channel`, `mentions`, `reply()`). C
 - A assinatura de todo handler é `(message, args, client)` — nunca `(interaction)`.
 - `reply()` usa `fetchReply: true` para devolver uma `Message` real, então `createMessageComponentCollector`
   funciona igual nos dois caminhos. Botões/menus **não** passam pelo router de `interactionCreate`;
-  cada handler é dono do próprio collector. Só modais são roteados por prefixo de `customId`.
+  cada handler é dono do próprio collector. Modais são roteados por prefixo de `customId`, e os
+  botões de `justificativa_*` também — decisão da staff pode demorar horas e o collector morre no
+  primeiro restart, então o estado vive na tabela e o botão continua valendo depois de deploy.
 - Quando o handler precisa de opções tipadas (número, canal, texto longo), ele testa `if (message.interaction)`
   e lê `message.interaction.options.getX(...)`, com fallback para parse de `args` no caminho prefixo.
   Ver `handleEditWarn`, `handleCadastrarMissao`, `handleEscrever`, `handleAddCoins`.
@@ -157,6 +159,33 @@ normalmente quando consultados sozinhos. É a explicação mais provável para o
 já que o cron do site percorre centenas de contas por essa rota a cada 15 min. `ensurePlayerWeeklyInfo`
 também usa o lote primeiro, caindo na rota individual só para conta fora da guilda (alt).
 
+### Contribuição da semana: MVP e inativação
+
+As duas rotinas leem o **mesmo** número, de [src/services/contribuicaoSemanal.js](src/services/contribuicaoSemanal.js):
+guild points atuais (rota em lote `/v1/guild/members`) menos `player_weekly_info.guild_points` da
+semana de missões. Alt não entra — as duas medem a conta que está na guilda. Quem não pôde ser
+medido volta com `motivo` (`SEM_BASE`, `BASE_ZERADA`, `FORA_DA_GUILDA`) em vez de sumir: 0 e "não
+sei" são coisas diferentes, e tratar os dois como 0 daria MVP a quem não jogou e inativaria quem jogou.
+
+**MVP (quarta 06:00)** — cargo `weeklyMvp.roleId` para os 14 primeiros. Staff recebe sem ocupar
+vaga; a contagem fecha quando a 14ª vaga é preenchida, então officer que aparece depois fica de
+fora. Staff aqui é quem é staff em **qualquer** das duas fontes (`users.role` **ou** o `rank` do
+jogo): medido em 08/08/2026, 6 pessoas divergiam entre as duas, nas duas direções.
+
+**Inativação (quarta 06:10)** — grava em `weekly_inactive_players`, aplica o cargo de inativo,
+manda DM e avisa no canal. Substitui a página `relatorio_inativar.php` do site, que media **XP**
+(sistema antigo) e não contribuição.
+
+**A medição só vale entre quarta 06:00 e quinta 06:00.** Antes o número é parcial; depois,
+`player_weekly_info` já virou para a semana nova e a conta dá ~0 para todo mundo — rodar numa
+quinta de manhã inativaria a guilda inteira. `semanaFechada()` trava as duas pontas com uma
+condição só, e vale para o cron e para o `.inativar`.
+
+**Blindagem** (`inactivity_shields`): quem nunca é inativado. Officer e admin não precisam de linha
+— são pulados pelo `users.role`. Membro específico entra por insert manual no Supabase (`weeks`
+nulo = permanente). O `.justificativa <motivo> <semanas>` do membro cria a linha como `pendente`,
+que **não protege nada** até um officer/admin aprovar pelos botões no canal de helper.
+
 ### Duelo semanal de guildas
 
 O jogo pareia 1º×2º, 3º×4º, 5º×6º pela classificação corrente. **O campo `rank` de
@@ -211,6 +240,10 @@ Todos registrados no `ClientReady`:
   ([src/services/weeklyMissionsService.js](src/services/weeklyMissionsService.js)). Cada posição tem seu
   ciclo (12, 1, 2 e 3 semanas), ancorado em 06/08/2026. Não sobrescreve semana que já tem missão.
   Os textos espelham `$missionTemplates` de `cadastro_missao.php`, no repo do site — mudou lá, mude aqui.
+- Cron `0 6 * * 3` — troca os MVPs da semana
+  ([src/services/weeklyMvpService.js](src/services/weeklyMvpService.js)). Ver abaixo.
+- Cron `10 6 * * 3` — inativa quem ficou abaixo de 1.000 de contribuição
+  ([src/services/weeklyInactiveService.js](src/services/weeklyInactiveService.js)). Ver abaixo.
 - Cron `0 7 * * 3` — cadastra o duelo da semana seguinte
   ([src/services/guildDuelService.js](src/services/guildDuelService.js)). Ver abaixo.
 - `setInterval` — lembrete de inativos (3h por padrão, `INACTIVE_MESSAGE_INTERVAL`).
@@ -233,7 +266,7 @@ Sem migrations no repo — o schema vive no Supabase. Domínios principais:
 - **Membros**: `users` (`discord_id`, `brawlhalla_id`, `role`, `active`, `need_update`), `alt_ids`,
   `player_elo_history`, view `vw_player_elo_max`.
 - **Semana/atividade**: `player_weekly_info`, `weekly_missions`, `weekly_inactive_players`,
-  `guild_weekly_guild_points`, `guild_duels`, `season`.
+  `inactivity_shields`, `guild_weekly_guild_points`, `guild_duels`, `season`.
 - **Economia (TGG Coins)**: `tgg_coins_wallet`, `_transactions`, `_shop`, `_shop_roles`, `_shop_exitlag`,
   `_purchases`, `_inventory`, `_service_providers`, `_coach_prices`, `_daily_streak`, `_achievements`,
   `_achievements_alts`, `_achievements_finished`, view `vw_tgg_coins_wallet_total`.

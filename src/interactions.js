@@ -5,6 +5,7 @@ import { checkInteractionChannelPermission, isAdmin } from '../utils/permissions
 import { STAFF_ROLE_IDS } from '../config/index.js';
 import { createErrorEmbed } from '../utils/discordUtils.js';
 import { handleEscreverModalSubmit } from './admin.js';
+import { handleJustificativaButton } from './public.js';
 
 // Rate limit (mesmo do messageCreate anterior): 5s por usuário, staff isento.
 const rateLimitMap = new Map();
@@ -74,7 +75,30 @@ export function registerInteractionHandler(client) {
       return;
     }
 
-    // Botões/menus/select continuam via createMessageComponentCollector nas mensagens de reply.
+    // Botões de aprovação da justificativa: roteados por prefixo, como os modais.
+    //
+    // É a exceção à regra de collector no handler. A staff pode levar horas para decidir e o
+    // collector morre no primeiro restart; o estado do pedido vive na tabela, então o botão
+    // precisa continuar funcionando depois de deploy.
+    if (interaction.isButton() && interaction.customId.startsWith('justificativa_')) {
+      try {
+        await handleJustificativaButton(interaction, client);
+      } catch (err) {
+        console.error('[JUSTIFICATIVA] falha ao decidir:', err);
+        const payload = {
+          embeds: [createErrorEmbed('Erro Interno', `Não consegui registrar a decisão: ${err.message}`)],
+          ephemeral: true,
+        };
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp(payload).catch(() => {});
+        } else {
+          await interaction.reply(payload).catch(() => {});
+        }
+      }
+      return;
+    }
+
+    // Os demais botões/menus continuam via createMessageComponentCollector nas mensagens de reply.
     // Não roteamos aqui — cada handler dono do collector continua ouvindo.
   });
 }

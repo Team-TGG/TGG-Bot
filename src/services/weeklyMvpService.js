@@ -1,7 +1,5 @@
 import { EmbedBuilder } from 'discord.js';
-import { getActiveUsersWithBrawlhallaId, getMissionWeekStart } from '../db.js';
-import { getPlayerMissionProgress } from '../tggCoins.js';
-import { fetchGuildMembersNewAPI } from '../brawlhalla.js';
+import { calcularContribuicaoSemanal } from './contribuicaoSemanal.js';
 import { weeklyMvp as config, discord as discordConfig } from '../../config/index.js';
 import { LEADER_ID } from '../../utils/permissions.js';
 
@@ -12,9 +10,8 @@ import { LEADER_ID } from '../../utils/permissions.js';
  * mas não ocupa vaga. Quando a última vaga é preenchida a lista fecha, então officer que aparece
  * depois disso fica de fora.
  *
- * Contribuição é sempre diferença entre duas capturas: `player_weekly_info.guild_points`
- * (linha de base da quinta) contra o valor atual da rota em lote /v1/guild/members. Alt não
- * entra — o cargo é do membro, medido pela conta que está na guilda.
+ * O número da contribuição vem de [contribuicaoSemanal.js](./contribuicaoSemanal.js), o mesmo que
+ * a inativação usa — as duas rotinas precisam concordar sobre quem contribuiu quanto.
  */
 
 /** `users.role` de quem recebe o cargo mas não ocupa vaga na contagem. */
@@ -36,68 +33,6 @@ export function ocupaVaga(user, rankNoJogo) {
   if (String(user.discord_id) === LEADER_ID) return false;
   if (CARGOS_SEM_VAGA.has(String(user.role || '').toLowerCase())) return false;
   return !RANKS_SEM_VAGA.has(String(rankNoJogo || '').toLowerCase());
-}
-
-/**
- * Contribuição de cada membro na semana. Função pura: recebe o que já foi lido do banco e da
- * API e devolve a lista, então dá para conferir o cálculo sem tocar em nada.
- *
- * Devolve todo mundo, inclusive quem não pôde ser medido (`motivo` preenchido), para o
- * chamador poder mostrar o que ficou de fora em vez de sumir com a pessoa em silêncio.
- */
-export function calcularContribuicoes({ users, baseByAccount, membrosDaGuilda, inicioSemanaEmSegundos, entradaRecenteEmSegundos }) {
-  const linhas = [];
-
-  for (const user of users) {
-    const id = String(user.brawlhalla_id);
-    const membro = membrosDaGuilda.get(id);
-
-    const linha = {
-      discordId: String(user.discord_id),
-      brawlhallaId: id,
-      nome: membro?.name || user.username || id,
-      role: String(user.role || '').toLowerCase(),
-      // Rank do jogo (Leader/Officer/Member/Recruit) — nem sempre bate com o role do banco
-      rankNoJogo: membro?.rank ?? null,
-      ocupaVaga: ocupaVaga(user, membro?.rank),
-      contribuicao: 0,
-      motivo: null,
-    };
-
-    // Saiu da guilda do jogo (ou a conta cadastrada não é a que está nela): sem valor atual
-    // não há o que medir.
-    if (!membro) {
-      linha.motivo = 'FORA_DA_GUILDA';
-      linhas.push(linha);
-      continue;
-    }
-
-    const base = baseByAccount.get(id);
-
-    if (base === null || base === undefined) {
-      linha.motivo = 'SEM_BASE';
-      linhas.push(linha);
-      continue;
-    }
-
-    // Base 0 é legítima para quem acabou de entrar na guilda — começou do zero mesmo. A janela é
-    // a semana passada inteira, não só esta: quem entrou na terça já pega a captura da quinta com
-    // quase nada acumulado (medido em 08/08/2026: os 5 casos de base 0 legítima entraram na
-    // véspera da virada). Para quem já estava aqui, 0 quer dizer base não registrada — contar
-    // contra esse 0 leria o acumulado inteiro (dezenas de milhares) como ganho da semana.
-    const entrouAgora = membro.joinDate > 0 && membro.joinDate >= entradaRecenteEmSegundos;
-
-    if (Number(base) === 0 && membro.points > 0 && !entrouAgora) {
-      linha.motivo = 'BASE_ZERADA';
-      linhas.push(linha);
-      continue;
-    }
-
-    linha.contribuicao = Math.max(0, Number(membro.points) - Number(base));
-    linhas.push(linha);
-  }
-
-  return linhas;
 }
 
 /**
@@ -127,43 +62,11 @@ export function selecionarMvps(ranking, limite = config.limite) {
 
 /** Lê banco + API e monta o ranking da semana corrente. Não mexe em cargo nenhum. */
 export async function calcularMvpsDaSemana() {
-  const weekStart = getMissionWeekStart();
-
-  const [users, guildMembers] = await Promise.all([
-    getActiveUsersWithBrawlhallaId(),
-    fetchGuildMembersNewAPI(),
-  ]);
-
-  const membrosDaGuilda = new Map(
-    (guildMembers.guild_members ?? []).map(m => [String(m.brawlhalla_id), {
-      name: m.name,
-      rank: m.rank ?? null,
-      points: Number(m.guild_points || 0),
-      // join_date separa base 0 legítima (entrou nesta semana) de base 0 não registrada
-      joinDate: Number(m.join_date || 0),
-    }])
-  );
-
-  const accountIds = users.map(u => String(u.brawlhalla_id));
-  const baseRows = await getPlayerMissionProgress(accountIds, weekStart);
-
-  const baseByAccount = new Map(
-    (baseRows ?? []).map(row => [String(row.brawlhalla_id), row.guild_points])
-  );
-
-  // week_start vem como 'YYYY-MM-DD HH:mm:ss'; join_date da API é epoch em segundos
-  const inicioSemanaEmSegundos = Math.floor(
-    new Date(String(weekStart).replace(' ', 'T')).getTime() / 1000
-  );
-
-  const entradaRecenteEmSegundos = inicioSemanaEmSegundos - 7 * 24 * 3600;
-
-  const linhas = calcularContribuicoes({
-    users, baseByAccount, membrosDaGuilda, inicioSemanaEmSegundos, entradaRecenteEmSegundos,
-  });
+  const { weekStart, linhas } = await calcularContribuicaoSemanal();
 
   const ranking = linhas
     .filter(l => !l.motivo)
+    .map(l => ({ ...l, ocupaVaga: ocupaVaga({ discord_id: l.discordId, role: l.role }, l.rankNoJogo) }))
     .sort((a, b) => b.contribuicao - a.contribuicao || a.nome.localeCompare(b.nome, 'pt-BR'));
 
   return {
@@ -234,14 +137,14 @@ export function montarAnuncio({ weekStart, mvps }) {
 
   const linhas = mvps.map(m => {
     const posicao = m.posicao ? `**${m.posicao}º**` : '⭐';
-    return `${posicao} <@${m.discordId}> — ${formatPontos(m.contribuicao)}`;
+    return `${posicao} <@${m.discordId}> - ${formatPontos(m.contribuicao)}`;
   });
 
   const embed = new EmbedBuilder()
     .setColor(0xfee75c)
     .setTitle('🏅 MVPs da semana')
     .setDescription(
-      `Semana de **${dia}/${mes}/${ano}** — top ${config.limite} em contribuição.\n` +
+      `Semana de **${dia}/${mes}/${ano}** - top ${config.limite} em contribuição.\n` +
       `⭐ = staff, recebe o cargo sem ocupar vaga.\n\n` +
       (linhas.join('\n') || 'Ninguém pontuou nesta semana.')
     )
@@ -256,14 +159,14 @@ export function montarAnuncio({ weekStart, mvps }) {
 
 async function anunciar(client, payload) {
   if (!config.channelId) {
-    console.warn('[MVP] channelId não configurado — cargo trocado, anúncio pulado');
+    console.warn('[MVP] channelId não configurado - cargo trocado, anúncio pulado');
     return false;
   }
 
   const canal = await client.channels.fetch(config.channelId).catch(() => null);
 
   if (!canal) {
-    console.warn(`[MVP] canal ${config.channelId} não encontrado — anúncio pulado`);
+    console.warn(`[MVP] canal ${config.channelId} não encontrado - anúncio pulado`);
     return false;
   }
 
@@ -282,7 +185,7 @@ export async function trocarMvpsDaSemana(client) {
     const { weekStart, ranking, mvps, ignorados } = await calcularMvpsDaSemana();
 
     if (!mvps.length) {
-      console.warn(`[MVP] semana ${weekStart}: ninguém pontuou — cargo mantido como está`);
+      console.warn(`[MVP] semana ${weekStart}: ninguém pontuou - cargo mantido como está`);
       return { trocado: false, weekStart, motivo: 'SEM_PONTUACAO' };
     }
 
@@ -295,7 +198,7 @@ export async function trocarMvpsDaSemana(client) {
     );
 
     mvps.forEach(m => console.log(
-      `  ${m.posicao ? `${m.posicao}º` : ' *'} ${m.nome} (${m.brawlhallaId}) — ${m.contribuicao}`
+      `  ${m.posicao ? `${m.posicao}º` : ' *'} ${m.nome} (${m.brawlhallaId}) - ${m.contribuicao}`
     ));
 
     if (resultado.falhas.length) {

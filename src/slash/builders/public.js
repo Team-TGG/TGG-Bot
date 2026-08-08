@@ -36,6 +36,12 @@ export const publicCommands = [
     .addStringOption(o => o.setName('justificativa').setDescription('Sua justificativa (mínimo 15 caracteres)').setMinLength(15)),
 
   new SlashCommandBuilder()
+    .setName('justificativa')
+    .setDescription('Pede blindagem contra inativação por N semanas (a staff aprova)')
+    .addStringOption(o => o.setName('justificativa').setDescription('Por que você vai ficar sem jogar (mínimo 15 caracteres)').setRequired(true).setMinLength(15))
+    .addIntegerOption(o => o.setName('semanas').setDescription('Quantas semanas de blindagem (1 a 8)').setRequired(true).setMinValue(1).setMaxValue(8)),
+
+  new SlashCommandBuilder()
     .setName('birthday')
     .setDescription('Registra seu aniversário para parabéns no dia')
     .addStringOption(o => o.setName('data').setDescription('Data no formato DD/MM').setRequired(true)),

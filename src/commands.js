@@ -1,6 +1,6 @@
 // Handlers
-import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleEditWarn, handleMute, handleUnmute, handleBan, handleKick, handleBam, handleInacAll, handleInacList, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleAbrirTickets, handleFecharTickets, handleWam, handleJustificativas, handleResumo, handleScan } from './admin.js';
-import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes, handleDuel, handleCrz, handleVideoGuilda, handleAlts } from './public.js';
+import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleEditWarn, handleMute, handleUnmute, handleBan, handleKick, handleBam, handleInacAll, handleInacList, handleInativar, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleAbrirTickets, handleFecharTickets, handleWam, handleJustificativas, handleResumo, handleScan } from './admin.js';
+import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes, handleDuel, handleCrz, handleVideoGuilda, handleAlts, handleJustificativa } from './public.js';
 import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins, handleAddAccount, handleQuiz, handleInventory } from './tggCoinsCommands.js';
 
 // Command Aliases
@@ -25,6 +25,9 @@ export const COMMAND_ALIASES = {
   'missão': 'missoes',
   'missions': 'missoes',
   'active': 'active',
+  'justificativa': 'justificativa',
+  'justificar': 'justificativa',
+  'blindagem': 'justificativa',
   'sync': 'sync',
   'sync-guild': 'sync',
   'sync-roles': 'sync',
@@ -51,6 +54,8 @@ export const COMMAND_ALIASES = {
   'bam': 'bam',
   'inac-all': 'inac-all',
   'inac-list': 'inac-list',
+  'inativar': 'inativar',
+  'inativos': 'inativar',
   'concluida': 'concluida',
   'concluída': 'concluida',
   'concluido': 'concluida',
@@ -132,6 +137,7 @@ export const COMMAND_ALIASES = {
   'addcoins': 'addcoins',
   'escrever': 'escrever',
   'write': 'escrever',
+  'organize-tickets': 'organize-tickets',
   'organizartickets': 'organize-tickets',
   'arrumartickets': 'organize-tickets',
   'organizar-tickets': 'organize-tickets',
@@ -176,7 +182,6 @@ export const COMMAND_ALIASES = {
   'batalha': 'duel',
   'battle': 'duel',
   'justificativas': 'justificativas',
-  'justificativa': 'justificativas',
   'mentiras': 'justificativas',
   'mentira': 'justificativas',
   'desculpas': 'justificativas',
@@ -213,6 +218,7 @@ export const commands = {
   guild: handleGuild,
   missoes: handleMissoes,
   active: handleActive,
+  justificativa: handleJustificativa,
   birthday: handleBirthday,
   games: handleGames,
   'corrigir-id': handleCorrigirID,
@@ -239,6 +245,7 @@ export const commands = {
   bam: handleBam,
   'inac-all': handleInacAll,
   'inac-list': handleInacList,
+  inativar: handleInativar,
   concluida: handleConcluida,
   cadastrarmissao: handleCadastrarMissao,
   entrou: handleEntrou,

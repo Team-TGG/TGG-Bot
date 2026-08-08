@@ -5,6 +5,7 @@ import { publishMotd } from '../services/motdService.js';
 import { registrarMissoesDaSemana } from '../services/weeklyMissionsService.js';
 import { registrarDueloDaSemana } from '../services/guildDuelService.js';
 import { trocarMvpsDaSemana } from '../services/weeklyMvpService.js';
+import { inativarSemana } from '../services/weeklyInactiveService.js';
 
 export function startCronJobs(client, services) {
   const {
@@ -79,6 +80,18 @@ export function startCronJobs(client, services) {
       await trocarMvpsDaSemana(client);
     } catch (err) {
       console.error('[CRON ERROR - MVP]', err);
+    }
+  }, {
+    timezone: 'America/Sao_Paulo'
+  });
+
+  // Inativos da semana - quarta 06:10. Roda depois do MVP de propósito: os dois medem a mesma
+  // semana, e deixar o MVP na frente evita as duas rotinas disputando a API na mesma virada.
+  cron.schedule('10 6 * * 3', async () => {
+    try {
+      await inativarSemana(client);
+    } catch (err) {
+      console.error('[CRON ERROR - Inativos]', err);
     }
   }, {
     timezone: 'America/Sao_Paulo'

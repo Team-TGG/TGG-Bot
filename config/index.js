@@ -13,7 +13,7 @@ export const STAFF_ROLE_IDS = {
   leader: '1437427830286717009',
 }
 
-// Modo dev: sobe o bot sem nada que afete o servidor real — sem registrar slash
+// Modo dev: sobe o bot sem nada que afete o servidor real - sem registrar slash
 // commands, sem crons, sem lembrete de inativos, sem restaurar mutes/warns.
 //
 //   npm start      -> produção (a VM usa esse, nunca precisa de ajuste)
@@ -56,6 +56,12 @@ export const inactivePlayers = {
   messageInterval: process.env.INACTIVE_MESSAGE_INTERVAL,
 };
 
+// Pedidos de blindagem do `.justificativa`: onde a staff aprova ou recusa
+// (ver src/services/weeklyInactiveService.js e o roteamento em src/interactions.js).
+export const justificativas = {
+  channelId: '1448392117410857092', // canal de helper
+};
+
 export const tickets = {
   filaDeEsperaRoleId: '1466815420630565069',
   entrarNaGuildaChannelId: '1484570233124421692',
@@ -72,7 +78,7 @@ export const tggCoinsEvents = {
 };
 
 // Cadastro automático das missões, toda quinta 06:00 (ver src/services/weeklyMissionsService.js).
-// Sem channelId as missões continuam sendo cadastradas — só o anúncio é pulado.
+// Sem channelId as missões continuam sendo cadastradas - só o anúncio é pulado.
 export const weeklyMissions = {
   channelId: '1448392117410857092', // canal de helper
   correcaoUrl: 'https://teamtgg.com.br/cadastro_usuario', // onde corrigir divergência
@@ -80,7 +86,7 @@ export const weeklyMissions = {
 
 // MVP da semana, trocado sozinho na quarta 06:00 (ver src/services/weeklyMvpService.js).
 // `limite` são as vagas de contagem: officers/admins e o líder recebem o cargo enquanto a
-// contagem corre, mas não ocupam vaga. Sem channelId o cargo continua sendo trocado — só o
+// contagem corre, mas não ocupam vaga. Sem channelId o cargo continua sendo trocado - só o
 // anúncio é pulado.
 export const weeklyMvp = {
   roleId: '1448466041997889769',

@@ -49,7 +49,12 @@ export function formatCreatedAtBR(dateStr) {
   }).format(date).replace(',', ' às');
 }
 
-function getLastWednesdayReference() {
+/**
+ * A quarta que abriu a semana de inatividade **já fechada** — é a `week_reference` de
+ * `weekly_inactive_players`. Rodando numa quarta, é a quarta anterior (a semana que fecha hoje);
+ * em qualquer outro dia, a retrasada.
+ */
+export function getLastWednesdayReference() {
   const today = new Date();
   const dayOfWeek = today.getDay();
   let diff = (dayOfWeek - 3 + 7) % 7;
@@ -71,6 +76,24 @@ function getLastWednesdayReference() {
   return `${year}-${month}-${day}`;
 }
 
+
+/**
+ * A quarta que abriu a semana de inatividade **em curso** — a que vai ser avaliada na próxima
+ * quarta 06:00. É a âncora de uma blindagem nova: `.justificativa` pedida hoje começa a valer
+ * pela semana que está rodando.
+ */
+export function getCurrentInactivityWeekReference() {
+  const [ano, mes, dia] = getLastWednesdayReference().split('-').map(Number);
+
+  // Montado componente a componente de propósito: `new Date('YYYY-MM-DD')` é interpretado como
+  // UTC e, no fuso de São Paulo, voltaria um dia na hora de formatar.
+  const ref = new Date(ano, mes - 1, dia + 7);
+
+  const m = String(ref.getMonth() + 1).padStart(2, '0');
+  const d = String(ref.getDate()).padStart(2, '0');
+
+  return `${ref.getFullYear()}-${m}-${d}`;
+}
 
 export function getMissionWeekStart() {
   const now = new Date();

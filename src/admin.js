@@ -14,6 +14,7 @@ import { EMOJIS } from '../config/emojis.js';
 import { scheduleTemporaryWarningRemoval } from './services/warningManager.js';
 import { scheduleMuteRenewal } from './services/muteManager.js';
 import { ensurePlayerWeeklyInfo } from './tggCoins.js';
+import { calcularInativosDaSemana, inativarSemana, CONTRIBUICAO_MINIMA } from './services/weeklyInactiveService.js';
 
 // Funções auxiliares
 
@@ -623,7 +624,7 @@ export const handleMute = adminOnly(async (message, args, client) => {
       if (idMatch) targetId = args[0];
     }
 
-    if (!targetId) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.mute <@user/ID> <duração> [motivo]` — ex: `.mute @user 1h sendo tóxico`')] });
+    if (!targetId) return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.mute <@user/ID> <duração> [motivo]` - ex: `.mute @user 1h sendo tóxico`')] });
 
     if (await isAdmin(targetId)) {
       return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Você não pode silenciar um administrador.')] });
@@ -982,6 +983,139 @@ export const handleInacAll = adminOnly(async (message, args, client) => {
   }
 });
 
+// .inativar - o que antes era feito na mão na página "inativar players" do site
+export const handleInativar = adminOnly(async (message, args, client) => {
+  const loading = await message.reply({
+    embeds: [createLoadingEmbed(`${EMOJIS.loading} Calculando...`, 'Medindo a contribuição da semana de todo mundo.')]
+  });
+
+  try {
+    const { weekReference, inativos, poupados, pendentes, fechada } = await calcularInativosDaSemana();
+
+    const contagem = (motivo) => poupados.filter(p => p.motivoPoupado === motivo).length;
+    const semMedicao = poupados.filter(p => p.motivo).length;
+
+    const [ano, mes, dia] = weekReference.split('-');
+
+    // Fora da janela quarta 06:00 → quinta 06:00 o número não descreve a semana: antes está
+    // parcial, depois a base já virou e todo mundo aparece com ~0. Mostra a prévia, mas não deixa
+    // confirmar - o estrago seria cargo e DM em massa em cima de número errado.
+    if (!fechada) {
+      return sendCleanMessage(loading, {
+        embeds: [createErrorEmbed(
+          'Fora da janela de medição',
+          `A semana ainda não fechou. A contribuição só pode ser cobrada entre **quarta 06:00** e ` +
+          `**quinta 06:00** - antes disso o número está pela metade, e depois a base já virou para ` +
+          `a semana nova (todo mundo apareceria com zero).\n\n` +
+          `O cron roda sozinho na quarta às 06:10. Se precisar rodar na mão, é nessa janela.`
+        )]
+      });
+    }
+
+    if (!inativos.length) {
+      return sendCleanMessage(loading, {
+        embeds: [createSuccessEmbed(
+          'Ninguém para inativar',
+          `Semana de **${dia}/${mes}/${ano}**: todo mundo passou de ${CONTRIBUICAO_MINIMA.toLocaleString('pt-BR')} ` +
+          `de contribuição, está blindado ou já está na lista.\n\n` +
+          `Já na lista: **${contagem('JA_NA_LISTA')}** • Blindados: **${contagem('BLINDADO')}** • ` +
+          `Staff: **${contagem('STAFF')}** • Sem medição: **${semMedicao}**`
+        )]
+      });
+    }
+
+    // A lista pode passar do limite de um embed; o corte deixa explícito que há mais
+    const MOSTRAR = 25;
+    const lista = inativos.slice(0, MOSTRAR)
+      .map((i, n) => `\`${String(n + 1).padStart(2)}\` <@${i.discordId}> - **${i.contribuicao.toLocaleString('pt-BR')}**`)
+      .join('\n');
+
+    const resto = inativos.length > MOSTRAR ? `\n… e mais **${inativos.length - MOSTRAR}**.` : '';
+
+    const previa = new EmbedBuilder()
+      .setColor(0xfaa61a)
+      .setTitle(`⚠️ Inativar ${inativos.length} membro(s)?`)
+      .setDescription(
+        `Semana de **${dia}/${mes}/${ano}** - abaixo de ${CONTRIBUICAO_MINIMA.toLocaleString('pt-BR')} de contribuição.\n\n` +
+        `${lista}${resto}`
+      )
+      .addFields(
+        {
+          name: 'Fora da conta',
+          value:
+            `🛡️ Blindados: **${contagem('BLINDADO')}**\n` +
+            `👮 Staff: **${contagem('STAFF')}**\n` +
+            `🆕 Entrou na semana: **${contagem('ENTROU_NA_SEMANA')}**\n` +
+            `❔ Sem medição: **${semMedicao}**\n` +
+            `📋 Já na lista: **${contagem('JA_NA_LISTA')}**`,
+          inline: true,
+        },
+        {
+          name: 'O que vai acontecer',
+          value: '• Grava em `weekly_inactive_players`\n• Aplica o cargo de inativo\n• Manda DM para cada um\n• Avisa no canal de inativos',
+          inline: true,
+        },
+      )
+      .setFooter({ text: `Confirmando, ${inativos.length} pessoa(s) recebem o cargo e a DM.` });
+
+    if (pendentes.length) {
+      previa.addFields({
+        name: `⏳ ${pendentes.length} justificativa(s) esperando decisão`,
+        value: pendentes.map(p => `<@${p.discord_id}>`).join(' ').slice(0, 1024)
+          + '\n_Pedido pendente não blinda ninguém - decida antes de confirmar._',
+        inline: false,
+      });
+    }
+
+    await loading.delete().catch(() => {});
+
+    const { confirmed, interaction } = await awaitConfirmation(message, previa, {
+      authorId: message.author.id,
+      confirmLabel: 'Inativar',
+      cancelLabel: 'Cancelar',
+    });
+
+    if (!confirmed) {
+      if (interaction) {
+        await interaction.update({
+          embeds: [createErrorEmbed('Cancelado', 'Ninguém foi inativado.')],
+          components: [],
+        });
+      }
+      return;
+    }
+
+    await interaction.update({
+      embeds: [createLoadingEmbed(`${EMOJIS.loading} Inativando...`, 'Gravando a lista, aplicando cargo e mandando as mensagens.')],
+      components: [],
+    });
+
+    const resultado = await inativarSemana(client);
+
+    const falhas = resultado.falhas?.length
+      ? `\n\n⚠️ **${resultado.falhas.length} falha(s):**\n` +
+        resultado.falhas.slice(0, 10).map(f => `• ${f.nome ?? f.discordId}: ${f.erro}`).join('\n')
+      : '';
+
+    await interaction.editReply({
+      embeds: [createSuccessEmbed(
+        'Inativos aplicados',
+        `Semana de **${dia}/${mes}/${ano}**\n\n` +
+        `📋 Gravados: **${resultado.gravados}**\n` +
+        `🏷️ Cargo aplicado: **${resultado.cargoAplicado}**\n` +
+        `✉️ DMs entregues: **${resultado.dmEnviada}**\n` +
+        `📢 Aviso no canal: ${resultado.anunciado ? 'enviado' : '**falhou**'}${falhas}`
+      )],
+      components: [],
+    });
+
+  } catch (err) {
+    await sendCleanMessage(loading, {
+      embeds: [createErrorEmbed('Erro ao Inativar', err.message)]
+    });
+  }
+});
+
 // .inac-list
 export const handleInacList = adminOnly(async (message, args, client) => {
   try {
@@ -1325,7 +1459,7 @@ export const handleEscrever = adminOnly(async (message, args, client) => {
 
     const cor = new TextInputBuilder()
       .setCustomId('cor')
-      .setLabel('Cor (hex #FF0000 ou nome) — opcional')
+      .setLabel('Cor (hex #FF0000 ou nome) - opcional')
       .setStyle(TextInputStyle.Short)
       .setRequired(false)
       .setMaxLength(20)
@@ -1333,7 +1467,7 @@ export const handleEscrever = adminOnly(async (message, args, client) => {
 
     const imagem = new TextInputBuilder()
       .setCustomId('imagem')
-      .setLabel('URL da imagem — opcional')
+      .setLabel('URL da imagem - opcional')
       .setStyle(TextInputStyle.Short)
       .setRequired(false)
       .setMaxLength(500);
@@ -1404,7 +1538,7 @@ export const handleEscrever = adminOnly(async (message, args, client) => {
   }
 });
 
-// Parse de cor flexível — hex (#RGB/#RRGGBB), int, ou nome pt/EN básico.
+// Parse de cor flexível - hex (#RGB/#RRGGBB), int, ou nome pt/EN básico.
 const COLOR_NAMES = {
   red: 0xED4245, vermelho: 0xED4245,
   green: 0x57F287, verde: 0x57F287,
@@ -1431,7 +1565,7 @@ function parseColor(raw) {
   return 0x5865F2;
 }
 
-// Handler do submit do modal — chamado pelo router em interactions.js
+// Handler do submit do modal - chamado pelo router em interactions.js
 export async function handleEscreverModalSubmit(interaction, client) {
   try {
     const conteudo = interaction.fields.getTextInputValue('conteudo')?.trim();
@@ -2068,7 +2202,7 @@ export const handleResumo = adminOnly(async (message, args) => {
 // do .scan: dividir pelo tempo total de guilda achataria quem é membro antigo.
 const GUILD_POINTS_DESDE = new Date(2025, 11, 3); // 03/12/2025 (mês é 0-indexado)
 
-// .scan <@usuario/id> — visão de staff sobre um membro, em abas
+// .scan <@usuario/id> - visão de staff sobre um membro, em abas
 export const handleScan = adminOnly(async (message, args, client) => {
   let loadingMsg = null;
 
@@ -2139,7 +2273,7 @@ export const handleScan = adminOnly(async (message, args, client) => {
     const primeiraEntrada = entradas[entradas.length - 1] ?? null;
     const ultimaSaida = saidas[0] ?? null;
 
-    // Tempo de casa (só exibição no Geral) — conta desde a entrada, sem piso
+    // Tempo de casa (só exibição no Geral) - conta desde a entrada, sem piso
     let semanasNaGuilda = null;
     if (ultimaEntrada) {
       const dias = (Date.now() - new Date(ultimaEntrada.occurred_at).getTime()) / 86400000;
@@ -2186,25 +2320,25 @@ export const handleScan = adminOnly(async (message, args, client) => {
     function embedGeral() {
       const embed = new EmbedBuilder()
         .setColor(0x5865f2)
-        .setTitle(`🔎 Scan — ${nomeJogo}`)
+        .setTitle(`🔎 Scan - ${nomeJogo}`)
         .setDescription(`<@${targetUserId}> • \`${brawlhallaId}\``)
         .addFields(
-          { name: '🏷️ Cargo no bot', value: `\`${user.role ?? '—'}\``, inline: true },
+          { name: '🏷️ Cargo no bot', value: `\`${user.role ?? '-'}\``, inline: true },
           { name: '📌 Status', value: user.active ? '`ativo`' : '`inativo`', inline: true },
-          { name: '🎖️ Rank na guilda', value: `\`${guildStats?.rank ?? ultimaEntrada?.rank ?? '—'}\``, inline: true }
+          { name: '🎖️ Rank na guilda', value: `\`${guildStats?.rank ?? ultimaEntrada?.rank ?? '-'}\``, inline: true }
         );
 
       if (ultimaEntrada) {
         embed.addFields({
           name: '📥 Entrou na guilda',
-          value: `${formatCreatedAtBR(ultimaEntrada.occurred_at)}${semanasNaGuilda ? ` — ha ~${semanasNaGuilda} semana(s)` : ''}`,
+          value: `${formatCreatedAtBR(ultimaEntrada.occurred_at)}${semanasNaGuilda ? ` - ha ~${semanasNaGuilda} semana(s)` : ''}`,
           inline: false
         });
 
         if (entradas.length > 1 && primeiraEntrada) {
           embed.addFields({
             name: '↩️ Primeira entrada',
-            value: `${formatCreatedAtBR(primeiraEntrada.occurred_at)} — ${entradas.length} entradas no total`,
+            value: `${formatCreatedAtBR(primeiraEntrada.occurred_at)} - ${entradas.length} entradas no total`,
             inline: false
           });
         }
@@ -2219,7 +2353,7 @@ export const handleScan = adminOnly(async (message, args, client) => {
       embed.addFields({
         name: '🚪 Já saiu da guilda',
         value: saidas.length
-          ? `**${saidas.length}x** — a ultima em ${formatCreatedAtBR(ultimaSaida.occurred_at)}`
+          ? `**${saidas.length}x** - a ultima em ${formatCreatedAtBR(ultimaSaida.occurred_at)}`
           : 'Nunca saiu',
         inline: false
       });
@@ -2238,7 +2372,7 @@ export const handleScan = adminOnly(async (message, args, client) => {
     function embedJogos() {
       const embed = new EmbedBuilder()
         .setColor(0x57f287)
-        .setTitle(`🎮 Jogos — ${nomeJogo}`);
+        .setTitle(`🎮 Jogos - ${nomeJogo}`);
 
       if (jogosAtual) {
         embed.addFields({
@@ -2278,7 +2412,7 @@ export const handleScan = adminOnly(async (message, args, client) => {
     function embedPontos() {
       const embed = new EmbedBuilder()
         .setColor(0xfaa61a)
-        .setTitle(`⭐ Guild Points — ${nomeJogo}`)
+        .setTitle(`⭐ Guild Points - ${nomeJogo}`)
         .addFields(
           {
             name: '🏆 Total acumulado',
@@ -2292,7 +2426,7 @@ export const handleScan = adminOnly(async (message, args, client) => {
           },
           {
             name: '📈 Média por semana',
-            value: mediaSemanal != null ? `\`${mediaSemanal.toLocaleString('pt-BR')}\`` : '—',
+            value: mediaSemanal != null ? `\`${mediaSemanal.toLocaleString('pt-BR')}\`` : '-',
             inline: true
           }
         );
@@ -2308,7 +2442,7 @@ export const handleScan = adminOnly(async (message, args, client) => {
       if (!justificativas.length) {
         return new EmbedBuilder()
           .setColor(0x95a5a6)
-          .setTitle(`📋 Justificativas — ${nomeJogo}`)
+          .setTitle(`📋 Justificativas - ${nomeJogo}`)
           .setDescription('Nunca foi marcado como inativo.');
       }
 
@@ -2318,8 +2452,8 @@ export const handleScan = adminOnly(async (message, args, client) => {
 
       const descricao = itens
         .map((item, i) => {
-          const quando = item.created_at ? formatDateBR(item.created_at) : '—';
-          const semana = item.week_reference ? formatDateBR(item.week_reference) : '—';
+          const quando = item.created_at ? formatDateBR(item.created_at) : '-';
+          const semana = item.week_reference ? formatDateBR(item.week_reference) : '-';
           const texto = item.note || '_ainda sem justificativa nessa semana_';
           return `**${inicio + i + 1}.** 🗓️ semana de ${semana} • 🕒 ${quando}\n${texto}`;
         })
@@ -2327,7 +2461,7 @@ export const handleScan = adminOnly(async (message, args, client) => {
 
       return new EmbedBuilder()
         .setColor(0xed4245)
-        .setTitle(`📋 Justificativas — ${nomeJogo}`)
+        .setTitle(`📋 Justificativas - ${nomeJogo}`)
         .setDescription(descricao)
         .setFooter({
           text: `${comNota} justificada(s) de ${justificativas.length} semana(s) inativo • pagina ${paginaJust + 1}/${totalPaginasJust}`

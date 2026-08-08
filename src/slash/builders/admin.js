@@ -94,6 +94,11 @@ export const adminCommands = [
     .setDefaultMemberPermissions(MOD_DEFAULT_PERMS),
 
   new SlashCommandBuilder()
+    .setName('inativar')
+    .setDescription('Marca como inativo quem ficou abaixo de 1.000 de contribuição na semana')
+    .setDefaultMemberPermissions(MOD_DEFAULT_PERMS),
+
+  new SlashCommandBuilder()
     .setName('justificativas')
     .setDescription('Lista justificativas de inatividade de um usuário')
     .addUserOption(o => o.setName('usuario').setDescription('@user').setRequired(true))
