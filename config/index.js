@@ -62,6 +62,13 @@ export const justificativas = {
   channelId: '1448392117410857092', // canal de helper
 };
 
+// Lembrete de domingo 12:00 para quem ainda não bateu a contribuição mínima
+// (ver src/services/contributionReminderService.js). A semana só fecha na quarta 06:00, mas
+// domingo ainda dá tempo de correr atrás. Sem channelId o lembrete é pulado inteiro.
+export const contributionReminder = {
+  channelId: '1440865671150829648', // tgg-geral
+};
+
 export const tickets = {
   filaDeEsperaRoleId: '1466815420630565069',
   entrarNaGuildaChannelId: '1484570233124421692',

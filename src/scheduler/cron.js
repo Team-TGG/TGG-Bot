@@ -6,6 +6,7 @@ import { registrarMissoesDaSemana } from '../services/weeklyMissionsService.js';
 import { registrarDueloDaSemana } from '../services/guildDuelService.js';
 import { trocarMvpsDaSemana } from '../services/weeklyMvpService.js';
 import { inativarSemana } from '../services/weeklyInactiveService.js';
+import { lembrarContribuicao } from '../services/contributionReminderService.js';
 
 export function startCronJobs(client, services) {
   const {
@@ -80,6 +81,18 @@ export function startCronJobs(client, services) {
       await trocarMvpsDaSemana(client);
     } catch (err) {
       console.error('[CRON ERROR - MVP]', err);
+    }
+  }, {
+    timezone: 'America/Sao_Paulo'
+  });
+
+  // Lembrete de contribuição - domingo 12:00. A semana só fecha na quarta 06:00, então ainda
+  // sobram tres dias para quem esta abaixo do minimo correr atras.
+  cron.schedule('0 12 * * 0', async () => {
+    try {
+      await lembrarContribuicao(client);
+    } catch (err) {
+      console.error('[CRON ERROR - Lembrete]', err);
     }
   }, {
     timezone: 'America/Sao_Paulo'

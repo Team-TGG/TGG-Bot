@@ -926,10 +926,13 @@ export async function handleJustificativa(message, args, client) {
         .setStyle(ButtonStyle.Danger),
     );
 
+    // O canal é só de staff, então pingar todo mundo é o jeito de a decisão não ficar parada —
+    // pedido pendente não protege ninguém e a semana fecha na quarta.
     const aviso = await canal.send({
+      content: '@everyone',
       embeds: [embed],
       components: [botoes],
-      allowedMentions: { parse: [] },
+      allowedMentions: { parse: ['everyone'] },
     });
 
     await registrarMensagemDoPedido(pedido.id, aviso.channelId, aviso.id);

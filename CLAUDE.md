@@ -240,6 +240,11 @@ Todos registrados no `ClientReady`:
   ([src/services/weeklyMissionsService.js](src/services/weeklyMissionsService.js)). Cada posição tem seu
   ciclo (12, 1, 2 e 3 semanas), ancorado em 06/08/2026. Não sobrescreve semana que já tem missão.
   Os textos espelham `$missionTemplates` de `cadastro_missao.php`, no repo do site — mudou lá, mude aqui.
+- Cron `0 12 * * 0` — lembrete de contribuição no tgg-geral + DM para quem ainda não bateu os 1.000
+  ([src/services/contributionReminderService.js](src/services/contributionReminderService.js)).
+  Mesmo público e mesmas isenções da inativação, exceto que quem já está na lista da semana passada
+  continua sendo avisado. As menções vão em lotes de 80: 100 usuários é o teto de `allowedMentions`
+  e ~90 menções já estouram os 2.000 caracteres da mensagem.
 - Cron `0 6 * * 3` — troca os MVPs da semana
   ([src/services/weeklyMvpService.js](src/services/weeklyMvpService.js)). Ver abaixo.
 - Cron `10 6 * * 3` — inativa quem ficou abaixo de 1.000 de contribuição

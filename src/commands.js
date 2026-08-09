@@ -89,6 +89,8 @@ export const COMMAND_ALIASES = {
   'porracaralhomerdabostacacetefilhodaputaarrombadodisgraçadofedorendoxexelentoseubostinhaboiolinhapipipopofodasepaunocu': 'daily', // Trinca Ferro
   'pneumoultramicroscopicossilicovulcanoconiotico': 'daily', // Nacreous
   'porra': 'daily', // GGhost_storm
+  'pneumoultramicroscópicosilicovulcanoconiótico': 'daily', // DRG
+  'pneumoultramicroscopicosilicovulcanoconiotico': 'daily', // DRG
   'balance': 'balance',
   'bal': 'balance',
   'baal': 'balance',
