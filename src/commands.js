@@ -1,5 +1,5 @@
 // Handlers
-import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleEditWarn, handleMute, handleUnmute, handleBan, handleKick, handleBam, handleInacAll, handleInacList, handleInativar, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleAbrirTickets, handleFecharTickets, handleWam, handleJustificativas, handleResumo, handleScan } from './admin.js';
+import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleEditWarn, handleMute, handleUnmute, handleBan, handleKick, handleBam, handleInacAll, handleInacList, handleInativar, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleAbrirTickets, handleFecharTickets, handleWam, handleJustificativas, handleResumo, handleScan, handleBlindagens } from './admin.js';
 import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes, handleDuel, handleCrz, handleVideoGuilda, handleAlts, handleJustificativa } from './public.js';
 import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins, handleAddAccount, handleQuiz, handleInventory } from './tggCoinsCommands.js';
 
@@ -183,6 +183,10 @@ export const COMMAND_ALIASES = {
   'duelo': 'duel',
   'batalha': 'duel',
   'battle': 'duel',
+  'blindagens': 'blindagens',
+  'blindados': 'blindagens',
+  'protegidos': 'blindagens',
+  'shields': 'blindagens',
   'justificativas': 'justificativas',
   'mentiras': 'justificativas',
   'mentira': 'justificativas',
@@ -255,6 +259,7 @@ export const commands = {
   'organize-tickets': handleOrganizeTickets,
   'abrir-tickets': handleAbrirTickets,
   'fechar-tickets': handleFecharTickets,
+  blindagens: handleBlindagens,
   justificativas: handleJustificativas,
   resumo: handleResumo,
   scan: handleScan,

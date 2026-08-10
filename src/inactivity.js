@@ -26,22 +26,36 @@ export const STATUS = {
 /** Teto de semanas que um membro pode pedir de uma vez. */
 export const MAX_SEMANAS = 4;
 
-/** Uma blindagem aprovada cobre a semana avaliada? `weeks` nulo = permanente. */
-export function cobreSemana(blindagem, weekReference) {
-  if (blindagem.status !== STATUS.APROVADA) return false;
-  if (blindagem.weeks === null || blindagem.weeks === undefined) return true;
+/** `weeks` nulo (ou ausente) é o que marca blindagem permanente. */
+export function ehPermanente(blindagem) {
+  return blindagem.weeks === null || blindagem.weeks === undefined;
+}
 
-  const inicio = String(blindagem.week_start).slice(0, 10);
-  if (weekReference < inicio) return false;
+/**
+ * Primeira semana **não** coberta, como 'YYYY-MM-DD'. Permanente devolve `null`.
+ * Fim exclusivo: `weeks = 1` cobre só a semana que começa em `week_start`.
+ */
+export function fimDaBlindagem(blindagem) {
+  if (ehPermanente(blindagem)) return null;
 
-  const [ano, mes, dia] = inicio.split('-').map(Number);
+  const [ano, mes, dia] = String(blindagem.week_start).slice(0, 10).split('-').map(Number);
   const fim = new Date(ano, mes - 1, dia + Number(blindagem.weeks) * 7);
 
   const m = String(fim.getMonth() + 1).padStart(2, '0');
   const d = String(fim.getDate()).padStart(2, '0');
 
-  // Fim exclusivo: weeks = 1 cobre só a semana que começa em week_start
-  return weekReference < `${fim.getFullYear()}-${m}-${d}`;
+  return `${fim.getFullYear()}-${m}-${d}`;
+}
+
+/** Uma blindagem aprovada cobre a semana avaliada? `weeks` nulo = permanente. */
+export function cobreSemana(blindagem, weekReference) {
+  if (blindagem.status !== STATUS.APROVADA) return false;
+  if (ehPermanente(blindagem)) return true;
+
+  const inicio = String(blindagem.week_start).slice(0, 10);
+  if (weekReference < inicio) return false;
+
+  return weekReference < fimDaBlindagem(blindagem);
 }
 
 /** Todas as blindagens aprovadas. A tabela é pequena — filtrar em memória sai mais simples. */

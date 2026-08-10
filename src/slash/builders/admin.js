@@ -104,6 +104,11 @@ export const adminCommands = [
     .addUserOption(o => o.setName('usuario').setDescription('@user').setRequired(true))
     .setDefaultMemberPermissions(MOD_DEFAULT_PERMS),
 
+  new SlashCommandBuilder()
+    .setName('blindagens')
+    .setDescription('Lista quem está blindado contra inatividade e os pedidos pendentes')
+    .setDefaultMemberPermissions(MOD_DEFAULT_PERMS),
+
   // ── Missões ──
   new SlashCommandBuilder()
     .setName('concluida')

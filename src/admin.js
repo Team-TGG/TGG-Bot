@@ -4,7 +4,7 @@ import { createClient, runSync, runEloSync } from './discord.js';
 import { fetchPlayerStats, getUserBrawlhallaId, fetchPlayerGuildStatsNewAPI } from './brawlhalla.js';
 import { calculateGames, calculateGamesFromClosedWeek } from './handlers/publicHandlers.js';
 import { addWarning, getUserWarnings, removeWarning, removeLastWarning, editWarning, deleteExpiredWarnings, parseTime, formatTime as formatModTime } from './moderation.js';
-import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getMissionWeekStart, getActiveUser, getMemberJustifications, formatDateBR, getMembershipHistory, getPreviousMissionWeekStart, getWeeklyInitial, getMissionWeekStartDateTime, formatCreatedAtBR, loadAliases, resolveBrawlhallaId } from './db.js';
+import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getMissionWeekStart, getActiveUser, getMemberJustifications, formatDateBR, getMembershipHistory, getPreviousMissionWeekStart, getWeeklyInitial, getMissionWeekStartDateTime, formatCreatedAtBR, loadAliases, resolveBrawlhallaId, getLastWednesdayReference } from './db.js';
 import { discord as discordConfig, STAFF_ROLE_IDS, inactivePlayers as inactivePlayersConfig, tickets as ticketsConfig } from '../config/index.js';
 import { loadCustomNicknames } from './customNicknames.js';
 import { syncNicknames, updateMemberNicknameDiscordPortion, parseNickname, buildNickname, fetchBrawlhallaClanData, loadClanCache } from './nicknameSync.js';
@@ -14,6 +14,7 @@ import { EMOJIS } from '../config/emojis.js';
 import { scheduleTemporaryWarningRemoval } from './services/warningManager.js';
 import { scheduleMuteRenewal } from './services/muteManager.js';
 import { ensurePlayerWeeklyInfo } from './tggCoins.js';
+import { getBlindagensAprovadas, getBlindagensPendentes, cobreSemana, ehPermanente, fimDaBlindagem } from './inactivity.js';
 import { calcularInativosDaSemana, inativarSemana, CONTRIBUICAO_MINIMA } from './services/weeklyInactiveService.js';
 
 // Funções auxiliares
@@ -1913,6 +1914,209 @@ export const handleJustificativas = adminOnly(async (message, args) => {
       ]
     });
   }
+});
+
+// A description do embed morre em 4096 caracteres; abaixo disso a página quebra e o discord.js
+// recusa o embed inteiro antes de enviar. Nada é cortado - o que não cabe vira a página seguinte.
+const BLINDAGENS_POR_PAGINA = 10;
+const LIMITE_DA_PAGINA = 3600;
+
+/** Quebra as linhas em páginas que cabem no embed. Nenhuma linha é descartada. */
+function paginarBlindagens(linhas) {
+  if (!linhas.length) return [];
+
+  const paginas = [];
+  let atual = [];
+  let tamanho = 0;
+
+  for (const linha of linhas) {
+    const estouraTamanho = tamanho + linha.length + 1 > LIMITE_DA_PAGINA;
+
+    if (atual.length && (atual.length >= BLINDAGENS_POR_PAGINA || estouraTamanho)) {
+      paginas.push(atual);
+      atual = [];
+      tamanho = 0;
+    }
+
+    atual.push(linha);
+    tamanho += linha.length + 1;
+  }
+
+  if (atual.length) paginas.push(atual);
+
+  return paginas;
+}
+
+/** Motivo é texto livre digitado pelo membro - corta para a linha não dominar a página. */
+function resumirMotivo(reason) {
+  const texto = String(reason || '').trim() || 'sem motivo registrado';
+  return texto.length > 120 ? `${texto.slice(0, 119)}…` : texto;
+}
+
+// .blindagens - quem está protegido da inativação e quais pedidos aguardam a staff
+export const handleBlindagens = adminOnly(async (message, args, client) => {
+  // A semana que a rotina de inativação avalia (a que já fechou)
+  const semanaAvaliada = getLastWednesdayReference();
+
+  const [aprovadas, pendentes] = await Promise.all([
+    getBlindagensAprovadas(),
+    getBlindagensPendentes()
+  ]);
+
+  const permanentes = [...aprovadas.filter(ehPermanente)]
+    .sort((a, b) => String(b.week_start).localeCompare(String(a.week_start)));
+
+  const temporarias = aprovadas.filter((b) => !ehPermanente(b));
+
+  // Vigente = ainda não expirou. Não dá para usar cobreSemana contra a semana avaliada aqui: uma
+  // blindagem pedida agora nasce com week_start na semana **em curso**, que é posterior à avaliada,
+  // e cairia fora da lista mesmo estando aprovada e valendo.
+  const vigentes = [...temporarias.filter((b) => fimDaBlindagem(b) > semanaAvaliada)]
+    .sort((a, b) => fimDaBlindagem(a).localeCompare(fimDaBlindagem(b)));
+
+  const expiradas = temporarias.length - vigentes.length;
+
+  const linhasPermanentes = permanentes.map(
+    (b) => `<@${b.discord_id}>\n> ${resumirMotivo(b.reason)}`
+  );
+
+  const linhasVigentes = vigentes.map((b) => {
+    // Fim é exclusivo: a última semana coberta começa 7 dias antes dele
+    const [ano, mes, dia] = fimDaBlindagem(b).split('-').map(Number);
+    const ultimaSemana = new Date(ano, mes - 1, dia - 7);
+
+    const cobreAgora = cobreSemana(b, semanaAvaliada);
+    const quando = cobreAgora
+      ? `✅ cobre a semana avaliada`
+      : `🔜 começa em ${formatDateBR(b.week_start)}`;
+
+    return `<@${b.discord_id}> - **${b.weeks}** semana(s), até ${ultimaSemana.toLocaleDateString('pt-BR')} • ${quando}\n> ${resumirMotivo(b.reason)}`;
+  });
+
+  const linhasPendentes = [...pendentes]
+    .sort((a, b) => String(a.week_start).localeCompare(String(b.week_start)))
+    .map((b) => `<@${b.discord_id}> - pediu **${b.weeks}** semana(s), a partir de ${formatDateBR(b.week_start)}\n> ${resumirMotivo(b.reason)}`);
+
+  const abas = {
+    perm: {
+      rotulo: 'Permanentes',
+      titulo: '♾️ Blindagens permanentes',
+      cor: 0x5865f2,
+      total: permanentes.length,
+      paginas: paginarBlindagens(linhasPermanentes),
+      vazio: 'Ninguém com blindagem permanente.',
+      rodape: 'Blindagem permanente é linha manual no banco, com weeks nulo'
+    },
+    temp: {
+      rotulo: 'Temporárias',
+      titulo: '⏳ Blindagens temporárias vigentes',
+      cor: 0xfaa61a,
+      total: vigentes.length,
+      paginas: paginarBlindagens(linhasVigentes),
+      vazio: 'Nenhuma blindagem temporária em vigor.',
+      rodape: expiradas > 0
+        ? `${expiradas} temporária(s) já expirada(s) fora da lista`
+        : 'Nenhuma temporária expirada no histórico'
+    },
+    pend: {
+      rotulo: 'Pendentes',
+      titulo: '📨 Pedidos aguardando decisão',
+      cor: 0xed4245,
+      total: pendentes.length,
+      paginas: paginarBlindagens(linhasPendentes),
+      vazio: 'Nenhum pedido esperando decisão.',
+      rodape: 'Aprove ou recuse pelos botões no canal da staff'
+    }
+  };
+
+  let aba = 'perm';
+  let pagina = 0;
+
+  function montarEmbed() {
+    const atual = abas[aba];
+    const totalPaginas = Math.max(1, atual.paginas.length);
+    const conteudo = atual.paginas[pagina]?.join('\n\n') ?? atual.vazio;
+
+    return new EmbedBuilder()
+      .setColor(atual.cor)
+      .setTitle(`🛡️ ${atual.titulo}`)
+      .setDescription(
+        `Semana avaliada: **${formatDateBR(semanaAvaliada)}** • ` +
+        `officer e admin não precisam de blindagem\n\n${conteudo}`
+      )
+      .setFooter({
+        text: `${atual.total} no total • pagina ${pagina + 1}/${totalPaginas} • ${atual.rodape}`
+      })
+      .setTimestamp();
+  }
+
+  function montarComponentes() {
+    const linhas = [
+      new ActionRowBuilder().addComponents(
+        Object.entries(abas).map(([id, dados]) =>
+          new ButtonBuilder()
+            .setCustomId(`blind_${id}`)
+            .setLabel(`${dados.rotulo} (${dados.total})`)
+            .setStyle(aba === id ? ButtonStyle.Primary : ButtonStyle.Secondary)
+        )
+      )
+    ];
+
+    if (abas[aba].paginas.length > 1) {
+      linhas.push(
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('blind_prev')
+            .setLabel('⬅️')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(pagina === 0),
+          new ButtonBuilder()
+            .setCustomId('blind_next')
+            .setLabel('➡️')
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(pagina >= abas[aba].paginas.length - 1)
+        )
+      );
+    }
+
+    return linhas;
+  }
+
+  // Menção dentro de embed não notifica, mas o allowedMentions evita ping se o texto vazar
+  const sent = await message.reply({
+    embeds: [montarEmbed()],
+    components: montarComponentes(),
+    allowedMentions: { parse: [] }
+  });
+
+  const collector = sent.createMessageComponentCollector({
+    filter: (i) => i.user.id === message.author.id,
+    time: 180000
+  });
+
+  collector.on('collect', async (interaction) => {
+    try {
+      if (interaction.customId === 'blind_prev') {
+        pagina = Math.max(0, pagina - 1);
+      } else if (interaction.customId === 'blind_next') {
+        pagina = Math.min(abas[aba].paginas.length - 1, pagina + 1);
+      } else {
+        aba = interaction.customId.replace('blind_', '');
+        pagina = 0;
+      }
+
+      await interaction.update({
+        embeds: [montarEmbed()],
+        components: montarComponentes()
+      });
+    } catch (err) {
+      console.error('[BLINDAGENS] Erro no botao:', err);
+    }
+  });
+
+  collector.on('end', async () => {
+    await sent.edit({ components: [] }).catch(() => {});
+  });
 });
 
 // .resumo
