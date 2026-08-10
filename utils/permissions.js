@@ -126,6 +126,32 @@ export function leaderOnly(handler) {
   };
 }
 
+/**
+ * Prende um comando a um único canal, além da allowlist global.
+ *
+ * Vale nos dois caminhos de entrada: o shim do slash expõe `channelId`/`channel` igual à Message.
+ * Admin/officer passa em qualquer canal, mesma regra de `checkChannelPermission` - staff precisa
+ * usar comando fora do canal do público.
+ */
+export function channelOnly(channelId, handler) {
+  return async (message, ...args) => {
+    const canalAtual = message.channelId ?? message.channel?.id;
+
+    if (canalAtual !== channelId && !(await isAdmin(message.author.id))) {
+      return message.reply({
+        embeds: [
+          createErrorEmbed(
+            'Canal Errado',
+            `Esse comando só funciona no canal <#${channelId}>.`
+          )
+        ]
+      });
+    }
+
+    return handler(message, ...args);
+  };
+}
+
 export function getMemberLevel(member) {
   let level = 0;
 

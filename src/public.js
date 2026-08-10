@@ -9,7 +9,7 @@ import { calculateGames, calculateGamesFromClosedWeek } from './handlers/publicH
 import { calcularContribuicaoSemanal } from './services/contribuicaoSemanal.js';
 
 import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage } from '../utils/discordUtils.js';
-import { isAdmin, adminOnly } from '../utils/permissions.js';
+import { isAdmin, adminOnly, channelOnly } from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
 import { SOCIALS } from '../config/socials.js';
 
@@ -745,8 +745,8 @@ export async function handleMissoes(message, args, client) {
   }
 }
 
-// .active
-export async function handleActive(message, args, client) {
+// .active - preso ao canal de players inativos, que é onde o lembrete pede a ativação
+export const handleActive = channelOnly(inactivePlayersConfig.channelId, async (message, args, client) => {
   if (!message.guild) {
     return message.reply({ embeds: [createErrorEmbed('Comando Inválido', 'Este comando só pode ser usado no servidor.')] });
   }
@@ -854,7 +854,7 @@ export async function handleActive(message, args, client) {
       embeds: [createErrorEmbed('Erro ao Ativar Usuário', err.message)]
     });
   }
-}
+});
 
 // .justificativa <motivo> <semanas>
 export async function handleJustificativa(message, args, client) {
