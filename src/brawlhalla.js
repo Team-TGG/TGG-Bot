@@ -1280,7 +1280,15 @@ export function createRankedEmbed(playerData) {
     .setTimestamp();
 }
 
-export async function createGuildEmbed(guildData) {
+/**
+ * Monta o embed do `.guild`.
+ *
+ * `topSemanal` é o ranking de contribuição da semana (ver topContribuintesDaSemana em public.js).
+ * Vem de fora porque só existe para a nossa guilda e depende do banco - a camada de API não precisa
+ * saber disso. `null` = não se aplica (outra guilda) ou o cálculo falhou; nesse caso o embed sai
+ * como sempre foi, só com o acumulado.
+ */
+export async function createGuildEmbed(guildData, topSemanal = null) {
   const guildName = normalizeUnicode(guildData.name || 'Unknown Guild');
   const guildId = guildData.guild_id || 'N/A';
   const createDate = guildData.create_date || 0;
@@ -1297,24 +1305,41 @@ export async function createGuildEmbed(guildData) {
   const lastWeekGuildPoints = Number(lastWeekGuildPointsData?.total_guild_points || 0);
   const weeklyGuildPoints = Math.max(0, Number(guildData.guild_points || 0) - lastWeekGuildPoints);
 
-  // Buscar membros
-  const membersData = await fetchGuildMembersNewAPI(guildId);
+  // Buscar membros. A rota exige guild_id numérico e devolve 400 com qualquer outra coisa - sem a
+  // guarda, um guildData sem guild_id derruba o comando inteiro em vez de perder só o top.
+  const membersData = /^\d+$/.test(String(guildId))
+    ? await fetchGuildMembersNewAPI(guildId).catch((err) => {
+        console.warn(`[Brawlhalla] Membros indisponiveis para a guilda ${guildId}:`, err.message);
+        return null;
+      })
+    : null;
+
+  if (!membersData) {
+    console.warn(`[Brawlhalla] Sem lista de membros para a guilda ${guildId} - top do embed fica vazio`);
+  }
 
   // Top 10 guild points
-  const topMembers = [...(membersData.guild_members || [])]
+  const topMembers = [...(membersData?.guild_members || [])]
     .sort((a, b) => (b.guild_points || 0) - (a.guild_points || 0))
     .slice(0, 10);
 
+  // As duas listas ficam lado a lado (inline), então cada linha precisa caber em meia largura:
+  // nome curto e sem sufixo. Nome grande vira "Nomegrandeee…".
+  const encurtar = (nome) => {
+    const limpo = String(nome || 'Desconhecido');
+    return limpo.length > 14 ? `${limpo.slice(0, 13)}…` : limpo;
+  };
+
+  const linhaDoTop = (nome, valor, index) =>
+    `**${index + 1}.** ${encurtar(nome)} - ${formatNumber(valor || 0)}`;
+
   const topMembersText = topMembers.length
-    ? topMembers
-        .map((member, index) => {
-          return (
-            `**${index + 1}.** ${member.name} ` +
-            `— ${formatNumber(member.guild_points || 0)} GP`
-          );
-        })
-        .join('\n')
+    ? topMembers.map((member, index) => linhaDoTop(member.name, member.guild_points, index)).join('\n')
     : 'Nenhum membro encontrado';
+
+  const topSemanalText = topSemanal?.length
+    ? topSemanal.map((linha, index) => linhaDoTop(linha.nome, linha.contribuicao, index)).join('\n')
+    : 'Ninguém pontuou ainda.';
 
   return new EmbedBuilder()
     .setColor(0x0099ff)
@@ -1331,11 +1356,20 @@ export async function createGuildEmbed(guildData) {
           `**Criada em:** ${createDate ? new Date(createDate * 1000).toLocaleDateString('pt-BR') : 'N/A'}`,
         inline: false
       },
+      // Com o semanal presente as duas listas viram colunas: o embed ganha a informação sem
+      // ficar mais alto. Sem ele, o acumulado ocupa a largura toda, como sempre foi.
       {
-        name: '🏆 Top 10 Guild Points',
+        name: '🏆 Top 10 - GP total',
         value: topMembersText,
-        inline: false
+        inline: topSemanal !== null
       },
+      ...(topSemanal !== null
+        ? [{
+            name: '🔥 Top 10 - na semana',
+            value: topSemanalText,
+            inline: true
+          }]
+        : []),
       {
         name: '💬 Discord',
         value: discordInvite,

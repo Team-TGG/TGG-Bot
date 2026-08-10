@@ -6,6 +6,7 @@ import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, 
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, videoGuilda as videoGuildaConfig, guildDuel as guildDuelConfig, justificativas as justificativasConfig } from '../config/index.js';
 import { criarPedidoDeBlindagem, decidirBlindagem, getBlindagem, getPedidoPendenteDoMembro, registrarMensagemDoPedido, MAX_SEMANAS, STATUS } from './inactivity.js';
 import { calculateGames, calculateGamesFromClosedWeek } from './handlers/publicHandlers.js';
+import { calcularContribuicaoSemanal } from './services/contribuicaoSemanal.js';
 
 import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage } from '../utils/discordUtils.js';
 import { isAdmin, adminOnly } from '../utils/permissions.js';
@@ -616,23 +617,58 @@ export async function handleGames(message, args) {
   }
 }
 
+/**
+ * Ranking de contribuição da semana corrente, do maior para o menor.
+ *
+ * Vem de [contribuicaoSemanal.js](./services/contribuicaoSemanal.js), o mesmo cálculo do MVP e da
+ * inativação - as rotinas precisam concordar sobre quem contribuiu quanto. Quem não pôde ser medido
+ * (`motivo` preenchido) fica de fora: 0 e "não sei" são coisas diferentes.
+ *
+ * Devolve `null` quando o cálculo falha, para o comando seguir sem o ranking em vez de quebrar.
+ */
+async function topContribuintesDaSemana(limite) {
+  try {
+    const { linhas } = await calcularContribuicaoSemanal();
+
+    return linhas
+      .filter((l) => !l.motivo && l.contribuicao > 0)
+      .sort((a, b) => b.contribuicao - a.contribuicao || a.nome.localeCompare(b.nome, 'pt-BR'))
+      .slice(0, limite);
+
+  } catch (err) {
+    console.warn('[Contribuição] Ranking semanal indisponível:', err.message);
+    return null;
+  }
+}
+
 // .guild
 export async function handleGuild(message, args, client) {
+  // Declarado fora do try: o catch precisa alcançar a mensagem de loading para editá-la
+  let loadingMsg = null;
+
   try {
-    let GuildId = process.env.BRAWLHALLA_CLAN_ID || '396943';
+    const NOSSA_GUILDA = process.env.BRAWLHALLA_CLAN_ID || '396943';
+
+    let GuildId = NOSSA_GUILDA;
     if (args.length > 0 && /^\d+$/.test(args[0])) {
       GuildId = args[0];
     }
 
-    // Checar cache primeiro (inclusive expirado)
-    const cachedData = getCached(`clan:${GuildId}`, true);
+    // Contribuição da semana só existe para a nossa guilda - a linha de base é dos nossos membros
+    const topSemanal = GuildId === NOSSA_GUILDA ? await topContribuintesDaSemana(10) : null;
+
+    // Cache quente evita a mensagem de loading. A chave é a mesma que fetchGuildStatsNewAPI grava:
+    // `clan:` é da rota v0 depreciada e tem outro formato (clan_id/clan_name), que chegava aqui sem
+    // guild_id e fazia a busca de membros ir para a API com 'N/A'. Sem ignoreTtl: fora dos 5 min a
+    // busca normal roda de novo, e ela mesma cai no cache velho se a API estiver fora.
+    const cachedData = getCached(`guild:${GuildId}`);
     if (cachedData) {
-      return await message.reply({ embeds: [await createGuildEmbed(cachedData)] });
+      return await message.reply({ embeds: [await createGuildEmbed(cachedData, topSemanal)] });
     }
 
-    const loadingMsg = await message.reply({ embeds: [createLoadingEmbed(`${EMOJIS.loading} Carregando informações da guilda...`, 'Buscando dados do Brawlhalla...')] });
+    loadingMsg = await message.reply({ embeds: [createLoadingEmbed(`${EMOJIS.loading} Carregando informações da guilda...`, 'Buscando dados do Brawlhalla...')] });
     const guildData = await fetchGuildStatsNewAPI(GuildId);
-    await sendCleanMessage(loadingMsg, { embeds: [await createGuildEmbed(guildData)] });
+    await sendCleanMessage(loadingMsg, { embeds: [await createGuildEmbed(guildData, topSemanal)] });
 
   } catch (err) {
     console.error('Error fetching guild stats:', err);
@@ -1406,6 +1442,26 @@ export async function handleDuel(message, args, client) {
     // Diferença entre as guildas
     const duelDifference = Math.abs(ourDiff - enemyDiff);
 
+    // Convite do Discord de cada guilda, quando a guilda cadastrou um
+    const discordDaGuilda = (guild) => guild?.discord_invite_code
+      ? `💬 **Discord:** discord.gg/${guild.discord_invite_code}`
+      : '💬 **Discord:** não informado';
+
+    // Top 5 nossos na semana. Falha no cálculo não derruba o duelo.
+    const topContribuintes = await topContribuintesDaSemana(5);
+
+    const medalhas = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
+
+    let topTexto = 'Ninguém pontuou nesta semana ainda.';
+
+    if (topContribuintes === null) {
+      topTexto = 'Não foi possível calcular agora.';
+    } else if (topContribuintes.length) {
+      topTexto = topContribuintes
+        .map((l, i) => `${medalhas[i]} <@${l.discordId}> - **${l.contribuicao.toLocaleString('pt-BR')}**`)
+        .join('\n');
+    }
+
     const embed = new EmbedBuilder()
       .setColor(ourDiff >= enemyDiff ? 0x57F287 : 0xED4245)
       .setTitle('⚔️ Duelo Semanal de Guildas')
@@ -1416,7 +1472,8 @@ export async function handleDuel(message, args, client) {
           value:
             `👥 **Membros:** ${ourGuild.member_count}\n` +
             `📈 **Guild Points:** ${ourCurrentPoints.toLocaleString()}\n` +
-            `🔥 **Pontos na semana:** ${ourDiff.toLocaleString()}`,
+            `🔥 **Pontos na semana:** ${ourDiff.toLocaleString()}\n` +
+            discordDaGuilda(ourGuild),
           inline: true
         },
         {
@@ -1424,12 +1481,18 @@ export async function handleDuel(message, args, client) {
           value:
             `👥 **Membros:** ${enemyGuild.member_count}\n` +
             `📈 **Guild Points:** ${enemyCurrentPoints.toLocaleString()}\n` +
-            `🔥 **Pontos na semana:** ${enemyDiff.toLocaleString()}`,
+            `🔥 **Pontos na semana:** ${enemyDiff.toLocaleString()}\n` +
+            discordDaGuilda(enemyGuild),
           inline: true
         },
         {
           name: '📊 Diferença',
           value: `${duelDifference.toLocaleString()} pontos`,
+          inline: false
+        },
+        {
+          name: `🏅 Top 5 da semana - ${ourGuild.name}`,
+          value: topTexto,
           inline: false
         }
       )
