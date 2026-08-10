@@ -2244,11 +2244,12 @@ export const handleScan = adminOnly(async (message, args, client) => {
     const weekStart = getMissionWeekStartDateTime();
     const prevWeekStart = getPreviousMissionWeekStart();
 
-    const [history, justificativas, semanaAtual, semanaPassada] = await Promise.all([
+    const [history, justificativas, semanaAtual, semanaPassada, warns] = await Promise.all([
       getMembershipHistory(brawlhallaId),
       getMemberJustifications(brawlhallaId),
       getWeeklyInitial(brawlhallaId, weekStart),
-      getWeeklyInitial(brawlhallaId, prevWeekStart)
+      getWeeklyInitial(brawlhallaId, prevWeekStart),
+      getUserWarnings(targetUserId)
     ]);
 
     // API externa não pode derrubar o comando: sem ela as abas mostram o que dá
@@ -2299,6 +2300,29 @@ export const handleScan = adminOnly(async (message, args, client) => {
       pontosSemanaPassada = semanaAtual.guild_points - semanaPassada.guild_points;
     }
 
+    // Contribuição da semana corrente: total atual menos a base gravada na quinta.
+    // Base 0 só é legítima para quem entrou na guilda durante esta semana; para quem já estava
+    // aqui ela significa base não registrada, e subtrair de 0 leria o acumulado inteiro como ganho.
+    const inicioSemanaEmSegundos = Math.floor(new Date(String(weekStart).replace(' ', 'T')).getTime() / 1000);
+    const entrouNestaSemana = Number(guildStats?.join_date || 0) > 0
+      && Number(guildStats.join_date) >= inicioSemanaEmSegundos;
+
+    let pontosSemanaAtual = null;
+    let motivoSemanaAtual = 'Sem base gravada';
+
+    if (pontosTotais == null) {
+      motivoSemanaAtual = 'Indisponivel (API fora do ar)';
+    } else if (semanaAtual) {
+      const base = semanaAtual.guild_points;
+      const baseZeradaIndevida = Number(base) === 0 && pontosTotais > 0 && !entrouNestaSemana;
+
+      if (base === null || base === undefined || baseZeradaIndevida) {
+        motivoSemanaAtual = 'Base nao registrada';
+      } else {
+        pontosSemanaAtual = Math.max(0, pontosTotais - Number(base));
+      }
+    }
+
     const mediaSemanal = pontosTotais != null ? Math.round(pontosTotais / divisorSemanas) : null;
 
     const jogosAtual = stats && semanaAtual ? calculateGames(stats, stats.ranked, semanaAtual) : null;
@@ -2314,8 +2338,12 @@ export const handleScan = adminOnly(async (message, args, client) => {
     const JUST_POR_PAGINA = 5;
     const totalPaginasJust = Math.max(1, Math.ceil(justificativas.length / JUST_POR_PAGINA));
 
+    const WARN_POR_PAGINA = 5;
+    const totalPaginasWarn = Math.max(1, Math.ceil(warns.length / WARN_POR_PAGINA));
+
     let aba = 'geral';
     let paginaJust = 0;
+    let paginaWarn = 0;
 
     function embedGeral() {
       const embed = new EmbedBuilder()
@@ -2420,6 +2448,11 @@ export const handleScan = adminOnly(async (message, args, client) => {
             inline: true
           },
           {
+            name: '📅 Esta semana',
+            value: pontosSemanaAtual != null ? `\`${pontosSemanaAtual.toLocaleString('pt-BR')}\`` : motivoSemanaAtual,
+            inline: true
+          },
+          {
             name: '🕓 Semana passada',
             value: pontosSemanaPassada != null ? `\`${pontosSemanaPassada.toLocaleString('pt-BR')}\`` : 'Sem base gravada',
             inline: true
@@ -2468,10 +2501,44 @@ export const handleScan = adminOnly(async (message, args, client) => {
         });
     }
 
+    function embedWarns() {
+      if (!warns.length) {
+        return new EmbedBuilder()
+          .setColor(0x95a5a6)
+          .setTitle(`⚠️ Warns - ${nomeJogo}`)
+          .setDescription('Nenhum aviso ativo.');
+      }
+
+      const temporarios = warns.filter((w) => w.expires_at).length;
+      const inicio = paginaWarn * WARN_POR_PAGINA;
+      const itens = warns.slice(inicio, inicio + WARN_POR_PAGINA);
+
+      const descricao = itens
+        .map((w, i) => {
+          const quando = w.created_at ? formatCreatedAtBR(w.created_at) : '-';
+          const moderador = w.moderator_id ? ` • por <@${w.moderator_id}>` : '';
+          const expira = w.expires_at
+            ? `\n> ⏳ expira <t:${Math.floor(new Date(w.expires_at).getTime() / 1000)}:R>`
+            : '';
+
+          return `**${inicio + i + 1}.** 🕒 ${quando}${moderador}\n> ${w.reason || 'Sem motivo especificado'}${expira}`;
+        })
+        .join('\n\n');
+
+      return new EmbedBuilder()
+        .setColor(0xfaa61a)
+        .setTitle(`⚠️ Warns - ${nomeJogo}`)
+        .setDescription(descricao)
+        .setFooter({
+          text: `${warns.length} aviso(s) • ${temporarios} temporario(s) • pagina ${paginaWarn + 1}/${totalPaginasWarn}`
+        });
+    }
+
     function montarEmbed() {
       if (aba === 'jogos') return embedJogos();
       if (aba === 'pontos') return embedPontos();
       if (aba === 'just') return embedJustificativas();
+      if (aba === 'warns') return embedWarns();
       return embedGeral();
     }
 
@@ -2480,7 +2547,8 @@ export const handleScan = adminOnly(async (message, args, client) => {
         { id: 'geral', label: 'Geral' },
         { id: 'jogos', label: 'Jogos' },
         { id: 'pontos', label: 'Guild Points' },
-        { id: 'just', label: `Justificativas${justificativas.length ? ` (${justificativas.length})` : ''}` }
+        { id: 'just', label: `Justificativas${justificativas.length ? ` (${justificativas.length})` : ''}` },
+        { id: 'warns', label: `Warns${warns.length ? ` (${warns.length})` : ''}` }
       ];
 
       const linhas = [
@@ -2494,7 +2562,7 @@ export const handleScan = adminOnly(async (message, args, client) => {
         )
       ];
 
-      // Setas só aparecem na aba de justificativas, e só se houver mais de uma página
+      // Setas só aparecem nas abas paginadas, e só se houver mais de uma página
       if (aba === 'just' && totalPaginasJust > 1) {
         linhas.push(
           new ActionRowBuilder().addComponents(
@@ -2508,6 +2576,23 @@ export const handleScan = adminOnly(async (message, args, client) => {
               .setLabel('➡️')
               .setStyle(ButtonStyle.Secondary)
               .setDisabled(paginaJust >= totalPaginasJust - 1)
+          )
+        );
+      }
+
+      if (aba === 'warns' && totalPaginasWarn > 1) {
+        linhas.push(
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId('scan_w_prev')
+              .setLabel('⬅️')
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(paginaWarn === 0),
+            new ButtonBuilder()
+              .setCustomId('scan_w_next')
+              .setLabel('➡️')
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(paginaWarn >= totalPaginasWarn - 1)
           )
         );
       }
@@ -2529,6 +2614,8 @@ export const handleScan = adminOnly(async (message, args, client) => {
       try {
         if (interaction.customId === 'scan_j_prev') paginaJust = Math.max(0, paginaJust - 1);
         else if (interaction.customId === 'scan_j_next') paginaJust = Math.min(totalPaginasJust - 1, paginaJust + 1);
+        else if (interaction.customId === 'scan_w_prev') paginaWarn = Math.max(0, paginaWarn - 1);
+        else if (interaction.customId === 'scan_w_next') paginaWarn = Math.min(totalPaginasWarn - 1, paginaWarn + 1);
         else aba = interaction.customId.replace('scan_', '');
 
         await interaction.update({
