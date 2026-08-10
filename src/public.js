@@ -7,6 +7,7 @@ import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, vid
 import { criarPedidoDeBlindagem, decidirBlindagem, getBlindagem, getPedidoPendenteDoMembro, registrarMensagemDoPedido, MAX_SEMANAS, STATUS } from './inactivity.js';
 import { calculateGames, calculateGamesFromClosedWeek } from './handlers/publicHandlers.js';
 import { calcularContribuicaoSemanal } from './services/contribuicaoSemanal.js';
+import { addTransaction, updateBalance } from './tggCoins.js';
 
 import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage } from '../utils/discordUtils.js';
 import { isAdmin, adminOnly, channelOnly } from '../utils/permissions.js';
@@ -231,6 +232,9 @@ export async function handleRegras(message, args, client) {
   await message.reply({ embeds: [rulesEmbed] });
 }
 
+// Quanto vale mandar uma mensagem para o sorteio da MOTD
+const MOTD_REWARD = 100;
+
 // .motd
 export async function handleMotd(message, args, client) {
   try {
@@ -275,6 +279,19 @@ export async function handleMotd(message, args, client) {
 
     await addMotd(message.author.id, message.member.displayName, motdMessage);
 
+    // Recompensa pela participação. A trava de 7 dias acima é o que limita o ganho: uma MOTD por
+    // membro por semana. Falha aqui não pode derrubar o comando - a mensagem já foi salva.
+    let recompensa = null;
+
+    try {
+      await addTransaction(message.author.id, MOTD_REWARD, 'MOTD', 'Mensagem do dia enviada');
+      const novoSaldo = await updateBalance(message.author.id, MOTD_REWARD);
+
+      recompensa = `${EMOJIS.TGGcoin} +${MOTD_REWARD} TGG Coins\n💳 Saldo atual: **${novoSaldo.toLocaleString('pt-BR')}**`;
+    } catch (err) {
+      console.warn('[MOTD] Nao foi possivel creditar as TGG Coins:', err.message);
+    }
+
     const embed = new EmbedBuilder()
       .setColor(0x00ff00)
       .setTitle('📢 Mensagem do Dia')
@@ -282,6 +299,10 @@ export async function handleMotd(message, args, client) {
       .addFields({ name: 'Mensagem', value: `"${motdMessage}"` })
       .setFooter({ text: 'TGG Bot • MOTD' })
       .setTimestamp();
+
+    if (recompensa) {
+      embed.addFields({ name: 'Recompensa', value: recompensa });
+    }
 
     await message.reply({ embeds: [embed] });
 
