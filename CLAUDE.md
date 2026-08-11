@@ -330,6 +330,9 @@ Sem migrations no repo — o schema vive no Supabase. Domínios principais:
 - Toda saída ao usuário é **embed**, via os builders de [utils/discordUtils.js](utils/discordUtils.js)
   (`createErrorEmbed`, `createSuccessEmbed`, `createLoadingEmbed`, `createWarningEmbed`).
   Listas longas usam `createPagination`; ações destrutivas usam `awaitConfirmation`.
+  O `time` de `createPagination` é a vida útil **absoluta** do collector, e o padrão são 60s — lista
+  com muitas páginas fica inalcançável do meio para o fim. Passe `idle` (reinicia a cada clique) e um
+  `time` maior de teto, como faz o `.lb-guilda`. Os outros comandos paginados ainda estão nos 60s.
 - Texto voltado ao usuário em **português (pt-BR)**; logs em inglês com prefixo entre colchetes
   (`[CRON]`, `[ELO ADD]`, `[WeeklyInfo]`).
 - Erros: handlers deixam a exceção subir para o try/catch de `index.js`/`interactions.js`, que responde um

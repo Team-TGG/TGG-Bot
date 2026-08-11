@@ -42,10 +42,17 @@ export async function sendCleanMessage(msg, content) {
   }
 }
 
+/**
+ * `time` é a vida útil **absoluta** do collector, não a ociosidade: passado esse prazo os botões
+ * param de responder mesmo com alguém clicando. Com os 60s de padrão, lista de muitas páginas fica
+ * inalcançável do meio para o fim. Quem tem lista longa passa `idle` (reinicia a cada clique) e um
+ * `time` maior de teto. Fica opcional para não mudar o comportamento de quem já usa a função.
+ */
 export async function createPagination(message, {
   getEmbed,
   getTotalPages,
   time = 60000,
+  idle = undefined,
   prevId = 'pg_prev',
   nextId = 'pg_next',
   extraButtons = null,
@@ -67,7 +74,7 @@ export async function createPagination(message, {
     components: [buildRow(page, initialTp)],
   });
 
-  const collector = msg.createMessageComponentCollector({ time });
+  const collector = msg.createMessageComponentCollector(idle ? { time, idle } : { time });
 
   collector.on('collect', async (interaction) => {
     try {
