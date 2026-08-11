@@ -49,6 +49,22 @@ export const brawlhalla = {
   clanId:'396943',
 };
 
+// Consulta em linguagem natural (`.ia`) - ver src/services/iaProvider.js.
+// A IA só escolhe qual função do bot responde a pergunta e escreve a frase; todo número sai do
+// código, das mesmas funções que decidem o MVP e a inativação. Sem `GEMINI_API_KEY` o comando
+// avisa que está desligado e nada mais no bot muda.
+export const ia = {
+  apiKey: process.env.GEMINI_API_KEY,
+  // Flash atual e no free tier em 11/08/2026 (o 2.0-flash já foi desligado). Modelo aposentado
+  // devolve 404: conferir a lista em ai.google.dev/gemini-api/docs/models e trocar por env,
+  // sem mexer no código.
+  modelo: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
+  // A leitura de contribuição já gasta alguns segundos antes da IA entrar; 20s é o teto de cada
+  // uma das duas chamadas, para o comando não ficar pendurado se o provedor engasgar.
+  timeoutMs: 20_000,
+  maxPergunta: 300,
+};
+
 export const inactivePlayers = {
   inactiveRoleId: '1468593277363290304',
   // Canal dos inativos: onde o lembrete de 3h é postado e o único lugar onde `.active` funciona.

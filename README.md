@@ -95,6 +95,7 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 - [ ] Adicionar a tabela de warns em um comando do bot, bloqueado em canais que não sejam da staff.
 - [ ] Criar `.refund`, restrito ao dono.
 - [x] Criar `.lb-guilda` (e aliases) com o leaderboard da guilda: público, uma chamada à API cruzada com os dados do banco.
+- [x] Criar `.ia` (staff): pergunta em português sobre a semana, com a IA escolhendo qual função do bot responde e o bot calculando o número.
 
 ### Sistemas e Melhorias
 - [x] Discutir com staff/helpers os preços e o que incluir no Coach.
@@ -113,6 +114,20 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 - [ ] Criar o cargo personalizado pelo bot, definindo nome e cores.
 - [ ] Deixar o dono do cargo personalizado editá-lo, dá-lo a outra pessoa e usá-lo no `.inv`.
 - [ ] Tasks de staff: cobrar cada tópico ainda aberto em `pendências`, marcando os responsáveis de tempos em tempos (definir o período).
+
+### Testes e treino do `.ia`
+Treinar aqui é calibrar as **descrições das ferramentas** e as instruções em
+`src/handlers/iaHandlers.js` — é a `description` de cada ferramenta que decide o roteamento, não
+o modelo. Nada disso é fine-tuning: o ajuste é texto no repo, e cada mudança precisa ser
+reconferida contra as perguntas que já funcionavam.
+
+- [ ] Montar uma lista de perguntas de referência, com a ferramenta certa de cada uma, para reconferir o roteamento sempre que uma descrição mudar.
+- [ ] Registrar as perguntas que caíram na ferramenta errada e corrigir a `description` correspondente. O log `[IA]` já grava quem perguntou, o texto e a ferramenta escolhida.
+- [ ] Calibrar tom e tamanho da resposta em `INSTRUCAO_RESPOSTA` a partir do que a staff achar útil na prática.
+- [ ] Criar a ferramenta de média semanal por membro: query nova em `player_weekly_info`, cortando o histórico anterior a agosto/2026 (guild points não confiáveis).
+- [ ] Avaliar ferramentas novas conforme as perguntas aparecerem — jogos da semana, histórico de blindagem, movimentação da guilda.
+- [ ] Medir o gasto no free tier e decidir se o `.ia` precisa de cooldown próprio (staff é isenta do rate limit de 5s).
+- [ ] Comparar `gemini-3.6-flash` com um modelo mais barato no roteamento, que é tarefa simples.
 
 ### Futuro
 - [x] Comandos slash.

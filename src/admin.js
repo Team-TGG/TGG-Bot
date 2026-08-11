@@ -5,7 +5,7 @@ import { fetchPlayerStats, getUserBrawlhallaId, fetchPlayerGuildStatsNewAPI } fr
 import { calculateGames, calculateGamesFromClosedWeek } from './handlers/publicHandlers.js';
 import { addWarning, getUserWarnings, removeWarning, removeLastWarning, editWarning, deleteExpiredWarnings, parseTime, formatTime as formatModTime } from './moderation.js';
 import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getMissionWeekStart, getActiveUser, getMemberJustifications, formatDateBR, getMembershipHistory, getPreviousMissionWeekStart, getWeeklyInitial, getMissionWeekStartDateTime, formatCreatedAtBR, loadAliases, resolveBrawlhallaId, getLastWednesdayReference } from './db.js';
-import { discord as discordConfig, STAFF_ROLE_IDS, inactivePlayers as inactivePlayersConfig, tickets as ticketsConfig } from '../config/index.js';
+import { discord as discordConfig, STAFF_ROLE_IDS, inactivePlayers as inactivePlayersConfig, tickets as ticketsConfig, ia as iaConfig } from '../config/index.js';
 import { loadCustomNicknames } from './customNicknames.js';
 import { syncNicknames, updateMemberNicknameDiscordPortion, parseNickname, buildNickname, fetchBrawlhallaClanData, loadClanCache } from './nicknameSync.js';
 import { createErrorEmbed, createSuccessEmbed, createWarningEmbed, createLoadingEmbed, sendCleanMessage, awaitConfirmation } from '../utils/discordUtils.js';
@@ -16,6 +16,8 @@ import { scheduleMuteRenewal } from './services/muteManager.js';
 import { ensurePlayerWeeklyInfo } from './tggCoins.js';
 import { getBlindagensAprovadas, getBlindagensPendentes, cobreSemana, ehPermanente, fimDaBlindagem } from './inactivity.js';
 import { calcularInativosDaSemana, inativarSemana, CONTRIBUICAO_MINIMA, LIMIAR_INATIVACAO, TOLERANCIA_INATIVACAO } from './services/weeklyInactiveService.js';
+import { escolherFerramenta, redigirResposta, iaConfigurada } from './services/iaProvider.js';
+import { FERRAMENTAS, EXECUTORES, INSTRUCAO_ESCOLHA, INSTRUCAO_RESPOSTA } from './handlers/iaHandlers.js';
 
 // Funções auxiliares
 
@@ -2580,5 +2582,103 @@ export const handleScan = adminOnly(async (message, args, client) => {
 
     if (loadingMsg) await sendCleanMessage(loadingMsg, { embeds: [errorEmbed] });
     else await message.reply({ embeds: [errorEmbed] });
+  }
+});
+// .ia <pergunta>
+//
+// Pergunta em português sobre a semana. A IA só escolhe qual função do bot responde e escreve a
+// frase — todo número vem de `EXECUTORES`, que chamam as mesmas funções do cron de quarta. O embed
+// mostra os dados de verdade abaixo do texto, então dá para conferir a resposta sem confiar nela.
+export const handleIa = adminOnly(async (message, args) => {
+  const pergunta = String(
+    message.interaction ? message.interaction.options.getString('pergunta') : args.join(' ')
+  ).trim();
+
+  if (!pergunta) {
+    return message.reply({
+      embeds: [createErrorEmbed(
+        'Faltou a pergunta',
+        'Use: `.ia <pergunta>`\n\n' +
+        'Exemplos:\n' +
+        '`.ia quantos membros estão abaixo da contribuição mínima?`\n' +
+        '`.ia quem são os MVPs da semana?`\n' +
+        '`.ia quem contribuiu menos essa semana?`'
+      )]
+    });
+  }
+
+  if (!iaConfigurada()) {
+    return message.reply({
+      embeds: [createErrorEmbed(
+        'IA desligada',
+        'Falta a `GEMINI_API_KEY` no `.env`. Pegue uma chave gratuita em ' +
+        'https://aistudio.google.com/apikey e reinicie o bot.'
+      )]
+    });
+  }
+
+  if (pergunta.length > iaConfig.maxPergunta) {
+    return message.reply({
+      embeds: [createErrorEmbed(
+        'Pergunta longa demais',
+        `Máximo de ${iaConfig.maxPergunta} caracteres. A sua tem ${pergunta.length}.`
+      )]
+    });
+  }
+
+  const loading = await message.reply({
+    embeds: [createLoadingEmbed(`${EMOJIS.loading} Pensando...`, 'Entendendo a pergunta e medindo a semana.')]
+  });
+
+  try {
+    const escolha = await escolherFerramenta({
+      pergunta,
+      ferramentas: FERRAMENTAS,
+      instrucao: INSTRUCAO_ESCOLHA,
+    });
+
+    const executor = escolha && EXECUTORES[escolha.nome];
+
+    if (!executor) {
+      console.warn(`[IA] sem ferramenta para "${pergunta}" (escolhido: ${escolha?.nome ?? 'nada'})`);
+      return sendCleanMessage(loading, {
+        embeds: [createErrorEmbed(
+          'Não sei responder isso',
+          'Por enquanto eu só respondo sobre **contribuição da semana**, **MVPs**, **inativação** ' +
+          'e a situação de **um membro específico**. Tente reformular.'
+        )]
+      });
+    }
+
+    console.log(`[IA] ${message.author.tag}: "${pergunta}" -> ${escolha.nome}(${JSON.stringify(escolha.args)})`);
+
+    const { dados, titulo, campos, rodape } = await executor(escolha.args);
+
+    // Falha ao redigir não perde o trabalho: os dados abaixo já respondem a pergunta sozinhos
+    const texto = await redigirResposta({
+      pergunta,
+      escolha,
+      resultado: dados,
+      instrucao: INSTRUCAO_RESPOSTA,
+    }).catch(err => {
+      console.warn(`[IA] falha ao redigir: ${err.message}`);
+      return '';
+    });
+
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle(titulo)
+      .setDescription(texto ? texto.slice(0, 4000) : '_Os números estão abaixo._')
+      .addFields(campos)
+      .setFooter({ text: `${rodape} • ${escolha.nome} • números do bot, texto por IA` })
+      .setTimestamp();
+
+    await sendCleanMessage(loading, { embeds: [embed] });
+
+  } catch (err) {
+    console.error('[IA]', err);
+    await sendCleanMessage(loading, {
+      embeds: [createErrorEmbed('Erro na consulta', err.message)]
+    });
   }
 });

@@ -159,4 +159,10 @@ export const adminCommands = [
     .setDescription('Visão de staff sobre um membro: entrada, saídas, jogos, guild points e justificativas')
     .addUserOption(o => o.setName('usuario').setDescription('Membro a escanear (vazio = você mesmo)').setRequired(false))
     .setDefaultMemberPermissions(MOD_DEFAULT_PERMS),
+
+  new SlashCommandBuilder()
+    .setName('ia')
+    .setDescription('Pergunta em português sobre contribuição, MVPs e inativação da semana')
+    .addStringOption(o => o.setName('pergunta').setDescription('Ex: quantos estão abaixo do mínimo? quem são os MVPs?').setRequired(true))
+    .setDefaultMemberPermissions(MOD_DEFAULT_PERMS),
 ];
