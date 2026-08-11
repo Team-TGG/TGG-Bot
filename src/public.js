@@ -3,10 +3,12 @@ import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuil
 import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getMonthWeekStartDateTime, getCurrentSeason, getSeasonWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID, incrementCrz, getUserByDiscordId, getContasVinculadas } from './db.js';
 import { getGuildWeeklyGuildPoints, getDuelGuildWeeklyGuildPoints, getPlayerWeeklyGuildPoints } from './guild.js';
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI, fetchPlayerGuildStatsNewAPI, fetchPlayerBasicNewAPI } from './brawlhalla.js';
-import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, videoGuilda as videoGuildaConfig, guildDuel as guildDuelConfig, justificativas as justificativasConfig } from '../config/index.js';
+import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, videoGuilda as videoGuildaConfig, guildDuel as guildDuelConfig, justificativas as justificativasConfig, weeklyMvp as weeklyMvpConfig } from '../config/index.js';
 import { criarPedidoDeBlindagem, decidirBlindagem, getBlindagem, getPedidoPendenteDoMembro, registrarMensagemDoPedido, MAX_SEMANAS, STATUS } from './inactivity.js';
 import { calculateGames, calculateGamesFromClosedWeek } from './handlers/publicHandlers.js';
 import { calcularContribuicaoSemanal } from './services/contribuicaoSemanal.js';
+import { CONTRIBUICAO_MINIMA } from './services/weeklyInactiveService.js';
+import { QUIZ_REWARD } from './handlers/tggCoinsHandlers.js';
 import { addTransaction, updateBalance } from './tggCoins.js';
 
 import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage } from '../utils/discordUtils.js';
@@ -47,6 +49,7 @@ export async function handleHelp(message, args, client) {
     .setColor(0x5865f2)
     .setTitle(`${EMOJIS.clipboard} Informações`)
     .addFields(
+      { name: `${EMOJIS.arrowRight} .resumo`, value: 'Guia da guilda: semana, contribuição, missões, MVP, inatividade, coins e regras', inline: false },
       { name: `${EMOJIS.arrowRight} .regras`, value: 'Mostrar regras da guild', inline: false },
       { name: `${EMOJIS.arrowRight} .motd <mensagem>`, value: 'Salvar uma mensagem para ser sorteada (1x por semana)', inline: false },
       { name: `${EMOJIS.arrowRight} .birthday DD/MM`, value: 'Registrar seu aniversário para receber parabéns no dia!', inline: false },
@@ -1674,4 +1677,408 @@ export async function handleAlts(message, args) {
     if (loadingMsg) return await sendCleanMessage(loadingMsg, { embeds: [erro] });
     return await message.reply({ embeds: [erro] });
   }
+}
+
+// .resumo - guia da guilda em páginas: como a semana funciona, contribuição, missões, MVP, inatividade, economia e regras.
+export async function handleResumo(message, args, client) {
+  const canalInativos = `<#${inactivePlayersConfig.channelId}>`;
+  const minimo = CONTRIBUICAO_MINIMA.toLocaleString('pt-BR');
+
+  const paginas = [
+    {
+      value: 'geral',
+      label: 'Visão geral',
+      emoji: '🏰',
+      descricao: 'Como a semana da guilda funciona',
+      embed: new EmbedBuilder()
+        .setColor(0x5865f2)
+        .setTitle('🏰 Team TGG - como a guilda funciona')
+        .setDescription(
+          'Tudo na guilda gira em torno de **uma semana de missões** e de **uma moeda: a contribuição** ' +
+          '(os *guild points* que aparecem na aba da guilda dentro do jogo).\n\n' +
+          '**A semana começa na quinta às 06:00 e fecha na quarta às 06:00.**\n' +
+          'Quando ela fecha, três coisas acontecem sozinhas:'
+        )
+        .addFields(
+          {
+            name: `${EMOJIS.arrowRight} Quarta, 06:00 - MVP da semana`,
+            value: `Os **${weeklyMvpConfig.limite} maiores contribuidores** ganham o cargo de MVP Semanal.`,
+            inline: false
+          },
+          {
+            name: `${EMOJIS.arrowRight} Quarta, logo depois - inatividade`,
+            value: `Quem ficou abaixo de **${minimo} de contribuição** entra na lista de inativos e recebe uma DM do bot.`,
+            inline: false
+          },
+          {
+            name: `${EMOJIS.arrowRight} Quinta, 06:00 - semana nova`,
+            value: 'As **4 missões** da semana são cadastradas e a contagem de contribuição zera para todo mundo.',
+            inline: false
+          },
+          {
+            name: `${EMOJIS.square} O que se espera de você`,
+            value:
+              `${EMOJIS.check} Fazer pelo menos **${minimo} de contribuição** por semana\n` +
+              `${EMOJIS.check} Fazer as missões da guilda (é o que mais rende ponto)\n` +
+              `${EMOJIS.check} Jogar com membros da guilda\n` +
+              `${EMOJIS.check} Avisar quando for ficar sem jogar, com \`.justificativa\``,
+            inline: false
+          }
+        )
+        .setThumbnail(message.guild?.iconURL() ?? null)
+    },
+
+    {
+      value: 'contribuicao',
+      label: 'Contribuição',
+      emoji: '🎯',
+      descricao: 'A pontuação que vale de verdade',
+      embed: new EmbedBuilder()
+        .setColor(0x2ecc71)
+        .setTitle('🎯 Contribuição (guild points)')
+        .setDescription(
+          'Contribuição é o **guild point** que você ganha nas missões da guilda. É o único número que a ' +
+          'staff avalia: é ele que define MVP, inatividade e o duelo contra outra guilda.'
+        )
+        .addFields(
+          {
+            name: `${EMOJIS.square} Mínimo semanal`,
+            value: `**${minimo} por semana.** Abaixo disso você é marcado como inativo quando a semana fecha.`,
+            inline: false
+          },
+          {
+            name: `${EMOJIS.square} XP não é contribuição`,
+            value:
+              'XP você ganha em qualquer partida, inclusive contra bots — ele mede só volume de jogo. ' +
+              'Contribuição vem das **missões da guilda**. São coisas diferentes.',
+            inline: false
+          },
+          {
+            name: `${EMOJIS.square} Como conferir`,
+            value:
+              `${EMOJIS.check} No jogo: aba da guilda → sua linha\n` +
+              `${EMOJIS.check} \`.stats\` - seus dados atualizados\n` +
+              `${EMOJIS.check} \`.games\` - quantas partidas você jogou na semana\n` +
+              `${EMOJIS.check} \`.guild\` - o total da guilda`,
+            inline: false
+          },
+          {
+            name: `${EMOJIS.square} Joga em outra conta?`,
+            value:
+              'A contribuição só conta na conta que **está na guilda**. Se você entrou com uma alt, use ' +
+              '`.corrigir-id <id>` para apontar sua conta principal e `.alts` para conferir o que está vinculado.',
+            inline: false
+          }
+        )
+    },
+
+    {
+      value: 'missoes',
+      label: 'Missões',
+      emoji: '📜',
+      descricao: 'As 4 missões semanais',
+      embed: new EmbedBuilder()
+        .setColor(0xf1c40f)
+        .setTitle('📜 Missões da semana')
+        .setDescription(
+          'Toda **quinta às 06:00** entram 4 missões novas, e elas valem até a **quarta às 06:00**. ' +
+          'Use `.missoes` para ver as da semana atual, com o objetivo e a dica de cada uma.'
+        )
+        .addFields(
+          {
+            name: `${EMOJIS.square} O que costuma cair`,
+            value:
+              `${EMOJIS.check} **Hordas** e Walker Attack\n` +
+              `${EMOJIS.check} **Ranked 2v2 / 3v3 com membros da guilda** (não precisa vencer, precisa ser com a guilda)\n` +
+              `${EMOJIS.check} **Chegar a um ELO** (ouro, platina, diamante) - depois da MD10, ganhe uma partida para contabilizar\n` +
+              `${EMOJIS.check} **Modos em lobby**: Crew Battle, Brawlball, Kungfoot\n` +
+              `${EMOJIS.check} **Brawl of the Week** - aí sim é preciso vencer`,
+            inline: false
+          },
+          {
+            name: `${EMOJIS.square} A dica importa`,
+            value:
+              'Várias missões só contabilizam de um jeito específico (time formado só por membros, lobby ' +
+              'com placar montado, vitória depois da MD10). A dica de cada missão está no `.missoes` — leia antes de farmar.',
+            inline: false
+          },
+          {
+            name: `${EMOJIS.square} Conquistas`,
+            value:
+              'Além das missões da guilda, a semana tem **conquistas** que pagam TGG Coins: subir de ELO, ' +
+              'vitórias, partidas jogadas e contribuição. Veja em `.conquistas`.',
+            inline: false
+          }
+        )
+    },
+
+    {
+      value: 'mvp',
+      label: 'MVP e duelo',
+      emoji: '🏅',
+      descricao: 'Premiação da semana e o duelo de guildas',
+      embed: new EmbedBuilder()
+        .setColor(0xe67e22)
+        .setTitle('🏅 MVP Semanal e duelo de guildas')
+        .addFields(
+          {
+            name: `${EMOJIS.square} MVP Semanal`,
+            value:
+              `Os **${weeklyMvpConfig.limite} maiores contribuidores** da semana recebem o cargo na quarta de manhã. ` +
+              'O cargo é trocado toda semana — para manter, é preciso repetir a contribuição.',
+            inline: false
+          },
+          {
+            name: `${EMOJIS.square} O que o MVP ganha`,
+            value:
+              `${EMOJIS.check} **+40% de TGG Coins** no \`.daily\`\n` +
+              `${EMOJIS.check} O cargo e a cor no servidor`,
+            inline: false
+          },
+          {
+            name: `${EMOJIS.square} Duelo de guildas`,
+            value:
+              'Toda semana a TGG é pareada com outra guilda pela classificação (1º×2º, 3º×4º, 5º×6º). ' +
+              'Use `.duel` para ver contra quem estamos e como está o placar.',
+            inline: false
+          }
+        )
+    },
+
+    {
+      value: 'inatividade',
+      label: 'Inatividade',
+      emoji: '💤',
+      descricao: 'Como sair da lista e como se blindar',
+      embed: new EmbedBuilder()
+        .setColor(0xe74c3c)
+        .setTitle('💤 Inatividade')
+        .setDescription(
+          `Quando a semana fecha na quarta, quem fez menos de **${minimo} de contribuição** recebe o cargo ` +
+          'de inativo e uma DM do bot. Não é punição — é a forma de saber quem ainda está jogando.'
+        )
+        .addFields(
+          {
+            name: `${EMOJIS.square} Caiu na lista? Use \`.active\``,
+            value:
+              `\`.active <motivo>\` — só funciona em ${canalInativos}, e o motivo precisa de pelo menos 15 caracteres.`,
+            inline: false
+          },
+          {
+            name: `${EMOJIS.square} Vai ficar um tempo sem jogar? Avise antes`,
+            value:
+              `\`.justificativa <motivo> <semanas>\` pede **blindagem** por até ${MAX_SEMANAS} semanas ` +
+              '(prova, viagem, trabalho, saúde). O pedido fica pendente até um membro da staff aprovar — ' +
+              '**enquanto não for aprovado, ele não protege nada.**',
+            inline: false
+          },
+          {
+            name: `${EMOJIS.square} Quem não entra na conta`,
+            value:
+              `${EMOJIS.check} Quem entrou na guilda no meio da semana (não teve semana inteira)\n` +
+              `${EMOJIS.check} Quem está com blindagem aprovada\n` +
+              `${EMOJIS.check} Staff da guilda`,
+            inline: false
+          },
+          {
+            name: `${EMOJIS.square} Lembrete de domingo`,
+            value:
+              `Todo domingo ao meio-dia o bot avisa quem ainda não bateu os ${minimo}. ` +
+              'Se você foi marcado, ainda dá tempo de correr atrás até quarta.',
+            inline: false
+          }
+        )
+    },
+
+    {
+      value: 'coins',
+      label: 'TGG Coins',
+      emoji: '🪙',
+      descricao: 'Como ganhar e onde gastar',
+      embed: new EmbedBuilder()
+        .setColor(0xf1c40f)
+        .setTitle(`${EMOJIS.TGGcoin} TGG Coins`)
+        .setDescription('A moeda do servidor. Ela não afeta sua situação na guilda — serve para a loja.')
+        .addFields(
+          {
+            name: `${EMOJIS.square} Como ganhar`,
+            value:
+              `${EMOJIS.check} \`.daily\` todo dia: **50** moedas, **75** com 3 dias de streak, ` +
+              `**100** com 7 dias e **150** com 67 dias\n` +
+              `${EMOJIS.check} \`.conquistas\` — as conquistas da semana pagam por ELO, vitórias, partidas e contribuição\n` +
+              `${EMOJIS.check} \`.quiz\` — **${QUIZ_REWARD}** moedas por acertar o quiz da guilda\n` +
+              `${EMOJIS.check} \`.motd <mensagem>\` — **${MOTD_REWARD}** moedas por mandar uma mensagem para o sorteio`,
+            inline: false
+          },
+          {
+            name: `${EMOJIS.square} Bônus no daily`,
+            value:
+              `${EMOJIS.check} **MVP Semanal: +40%**\n` +
+              `${EMOJIS.check} **VIP: +20%**\n` +
+              'Os dois acumulam. Perdeu um dia? A streak pode ser recuperada por 300 moedas.',
+            inline: false
+          },
+          {
+            name: `${EMOJIS.square} Onde gastar`,
+            value:
+              `${EMOJIS.check} \`.shop\` — ver a loja | \`.buy <número>\` — comprar\n` +
+              `${EMOJIS.check} \`.inventory\` — equipar e trocar suas cores\n` +
+              `${EMOJIS.check} \`.balance\` — saldo | \`.historico\` — o que você já gastou\n` +
+              `${EMOJIS.check} \`.leaderboard\` — quem tem mais moedas`,
+            inline: false
+          },
+          {
+            name: `${EMOJIS.square} Joga em mais de uma conta?`,
+            value: '`.add-account <id>` soma o progresso das suas alts nas conquistas.',
+            inline: false
+          }
+        )
+    },
+
+    {
+      value: 'regras',
+      label: 'Regras',
+      emoji: '📋',
+      descricao: 'Convivência e o que não é tolerado',
+      embed: new EmbedBuilder()
+        .setColor(0x95a5a6)
+        .setTitle('📋 Regras da guilda')
+        .setDescription('Poucas regras, todas simples. `.regras` mostra esta lista a qualquer momento.')
+        .addFields(
+          {
+            name: `${EMOJIS.square} Sem toxicidade`,
+            value:
+              `${EMOJIS.xis} Nada de nomes ofensivos\n` +
+              `${EMOJIS.xis} Nada de mau comportamento, dentro ou fora do jogo\n` +
+              `${EMOJIS.check} Reporte o que sair da linha para a staff`,
+            inline: false
+          },
+          {
+            name: `${EMOJIS.square} Respeite a staff e o servidor`,
+            value: `${EMOJIS.check} Siga as diretrizes do Discord e as decisões da staff.`,
+            inline: false
+          },
+          {
+            name: `${EMOJIS.square} Contribua`,
+            value: `${EMOJIS.check} Mínimo de **${minimo} de contribuição por semana**, medido de quinta a quarta.`,
+            inline: false
+          },
+          {
+            name: `${EMOJIS.square} Nada de cheats ou toxicidade`,
+            value: `${EMOJIS.xis} Vale expulsão da guilda.`,
+            inline: false
+          },
+          {
+            name: `${EMOJIS.greaterthan} Seja bem-vindo!`,
+            value: 'Aproveite, conheça os membros e chame a staff se tiver qualquer dúvida.',
+            inline: false
+          }
+        )
+    },
+
+    {
+      value: 'comandos',
+      label: 'Comandos',
+      emoji: '🤖',
+      descricao: 'Os comandos que você pode usar',
+      embed: new EmbedBuilder()
+        .setColor(0x9b59b6)
+        .setTitle('🤖 Comandos')
+        .setDescription('Todos funcionam como `.comando` ou `/comando`. `.help` traz a lista completa.')
+        .addFields(
+          {
+            name: '⚔️ Guilda',
+            value:
+              '`.missoes`\n`.stats`\n`.games`\n`.guild`\n`.duel`\n`.alts`\n`.corrigir-id`',
+            inline: true
+          },
+          {
+            name: `${EMOJIS.TGGcoin} TGG Coins`,
+            value:
+              '`.daily`\n`.streak`\n`.conquistas`\n`.balance`\n`.shop`\n`.buy`\n`.inventory`\n`.quiz`\n`.leaderboard`',
+            inline: true
+          },
+          {
+            name: '📖 Informações',
+            value:
+              '`.resumo`\n`.regras`\n`.redes`\n`.motd`\n`.birthday`\n`.video-guilda`\n`.help`',
+            inline: true
+          },
+          {
+            name: `${EMOJIS.square} Inatividade`,
+            value: `\`.active <motivo>\` (em ${canalInativos})\n\`.justificativa <motivo> <semanas>\``,
+            inline: false
+          }
+        )
+    }
+  ];
+
+  let atual = 0;
+
+  const montarEmbed = () =>
+    EmbedBuilder.from(paginas[atual].embed)
+      .setFooter({ text: `Página ${atual + 1}/${paginas.length} • ${paginas[atual].label}` })
+      .setTimestamp();
+
+  const montarComponentes = () => {
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId('resumo_menu')
+      .setPlaceholder('Escolha um assunto...')
+      .addOptions(
+        paginas.map((p, i) => ({
+          label: p.label,
+          value: p.value,
+          emoji: p.emoji,
+          description: p.descricao,
+          default: i === atual
+        }))
+      );
+
+    const navegacao = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('resumo_prev')
+        .setLabel('◀')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(atual === 0),
+      new ButtonBuilder()
+        .setCustomId('resumo_next')
+        .setLabel('▶')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(atual === paginas.length - 1)
+    );
+
+    return [new ActionRowBuilder().addComponents(menu), navegacao];
+  };
+
+  const sent = await message.reply({ embeds: [montarEmbed()], components: montarComponentes() });
+
+  const collector = sent.createMessageComponentCollector({ time: 300000 });
+
+  collector.on('collect', async (interaction) => {
+    if (interaction.user.id !== message.author.id) {
+      return interaction.reply({
+        content: 'Use `.resumo` para abrir o seu.',
+        ephemeral: true
+      });
+    }
+
+    try {
+      if (interaction.customId === 'resumo_prev') {
+        atual = Math.max(0, atual - 1);
+      } else if (interaction.customId === 'resumo_next') {
+        atual = Math.min(paginas.length - 1, atual + 1);
+      } else {
+        const escolhida = paginas.findIndex((p) => p.value === interaction.values[0]);
+        if (escolhida >= 0) atual = escolhida;
+      }
+
+      await interaction.update({ embeds: [montarEmbed()], components: montarComponentes() });
+    } catch (err) {
+      console.error('[RESUMO] Erro na navegação:', err);
+    }
+  });
+
+  collector.on('end', async () => {
+    await sent.edit({ components: [] }).catch(() => {});
+  });
 }

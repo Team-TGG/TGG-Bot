@@ -69,6 +69,10 @@ export const publicCommands = [
     .setDescription('Vídeo explicando como funciona a guilda'),
 
   new SlashCommandBuilder()
+    .setName('resumo')
+    .setDescription('Guia da guilda: semana, contribuição, missões, MVP, inatividade, coins e regras'),
+
+  new SlashCommandBuilder()
     .setName('alts')
     .setDescription('Lista suas contas vinculadas (.corrigir-id e .add-account)')
     .addUserOption(o => o.setName('usuario').setDescription('Ver as contas de outro usuário (admin)')),
