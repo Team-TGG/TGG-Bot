@@ -121,15 +121,14 @@ Treinar aqui é calibrar as **descrições das ferramentas** e as instruções e
 o modelo. Nada disso é fine-tuning: o ajuste é texto no repo, e cada mudança precisa ser
 reconferida contra as perguntas que já funcionavam.
 
-- [ ] Montar uma lista de perguntas de referência, com a ferramenta certa de cada uma, para reconferir o roteamento sempre que uma descrição mudar.
+- [x] Montar uma lista de perguntas de referência, com a ferramenta certa de cada uma, para reconferir o roteamento sempre que uma descrição mudar: `node .claude/skills/checar/perguntas.mjs`. Afirma ferramenta e argumentos, passa pelo `escolherFerramenta` de verdade e ainda checa que a resposta escrita sai. Pergunta que a staff errar vira linha nova em `CASOS`.
 - [ ] Registrar as perguntas que caíram na ferramenta errada e corrigir a `description` correspondente. O log `[IA]` já grava quem perguntou, o texto e a ferramenta escolhida.
 - [ ] Calibrar tom e tamanho da resposta em `INSTRUCAO_RESPOSTA` a partir do que a staff achar útil na prática.
 - [ ] Criar a ferramenta de média semanal por membro: query nova em `player_weekly_info`, cortando o histórico anterior a agosto/2026 (guild points não confiáveis).
 - [ ] Avaliar ferramentas novas conforme as perguntas aparecerem — jogos da semana, histórico de blindagem, movimentação da guilda.
-- [ ] Medir o gasto no free tier e decidir se o `.ia` precisa de cooldown próprio (staff é isenta do rate limit de 5s).
+- [ ] Decidir se o `.ia` precisa de cooldown próprio (staff é isenta do rate limit de 5s). O teto diário deixou de ser o problema (500 requisições, ~250 perguntas), mas o free tier **também limita por minuto**: 16 chamadas seguidas tomaram 429 em 11/08/2026, e cada pergunta gasta duas.
 - [x] Comparar `gemini-3.6-flash` com um modelo mais barato no roteamento, que é tarefa simples. Trocado para `gemini-3.5-flash-lite`: 8/8 nas perguntas de referência, 678ms por pergunta e 500 requisições por dia contra 20 do flash (medido em 11/08/2026).
 - [x] Tratar pergunta fora do catálogo com a ferramenta `nao_sei_responder`. Com `mode: 'ANY'` o modelo é obrigado a escolher uma das ferramentas, então antes dela toda pergunta sem ferramenta correspondente virava resposta confiante e errada — 6 de 6 ("quem tem mais TGG Coins?" caía em `ranking_contribuicao` com `limite: 1`). Depois: 14/14, sem perder nenhuma das 8 perguntas que já funcionavam (medido em 11/08/2026).
-- [ ] Montar as perguntas de referência como script versionado. Hoje a comparação acima foi feita em arquivo descartável, então cada troca de modelo ou de `description` recomeça do zero.
 
 ### Futuro
 - [x] Comandos slash.

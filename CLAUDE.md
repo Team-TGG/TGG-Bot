@@ -318,8 +318,11 @@ Todos registrados no `ClientReady`:
 
 Em [.claude/skills/](.claude/skills/), versionadas junto com o código:
 
-- **`checar`** — checagem estática (`node .claude/skills/checar/check.mjs`). Única verificação que roda
-  sem subir o bot. Use antes de commitar e depois de mexer em comando.
+- **`checar`** — checagem estática (`node .claude/skills/checar/check.mjs`), offline e em 2s. Use antes
+  de commitar e depois de mexer em comando. A mesma skill traz
+  `node .claude/skills/checar/perguntas.mjs`, que mede o roteamento do `.ia` contra as perguntas de
+  referência — gasta cota da API e leva ~80s, então é script à parte e só depois de mexer em
+  `FERRAMENTAS`. São as duas únicas verificações que rodam sem subir o bot.
 - **`novo-comando`** — as três edições obrigatórias para adicionar um comando, no padrão do repo.
 - **`publicar`** — checagem + commit no padrão + checkbox do roadmap do README.
 

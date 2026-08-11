@@ -20,6 +20,34 @@ e lê arquivos. Precisa do `.env` porque `src/discord.js` cria o client do Supab
 Saída: lista de `ok` / `aviso` / `ERRO`. Exit code 0 se não houver erro, 1 se houver, 2 se os
 módulos nem carregarem.
 
+## Roteamento do `.ia`
+
+Script separado, porque gasta rede e cota da API do Gemini — não entre no `check.mjs`, senão a
+checagem de todo commit passa a depender do free tier:
+
+```bash
+node .claude/skills/checar/perguntas.mjs
+```
+
+Roda as perguntas de referência contra o modelo configurado (`GEMINI_MODEL=outro-modelo node ...`
+compara dois), afirma **ferramenta e argumentos**, e no fim checa que `redigirResposta` devolve
+texto. Leva ~80s: o free tier limita por minuto e o script se espaça para não tomar 429.
+
+Rode **depois de mexer em qualquer `description` de `FERRAMENTAS`** ou nas instruções, em
+[src/handlers/iaHandlers.js](../../../src/handlers/iaHandlers.js). É o único jeito de ver que
+consertar uma pergunta não roubou outra da ferramenta vizinha.
+
+- *ferramenta errada* — a `description` da escolhida está pegando caso que não é dela, ou a da
+  certa está estreita demais. Ajuste uma das duas e rode de novo: o efeito é sempre nas duas pontas.
+- *argumento errado* — ferramenta certa, resposta errada ("top 5" com `limite: 10`). Costuma ser
+  descrição de parâmetro vaga, não a da ferramenta.
+- *`redigirResposta` vazio ou 400* — a resposta escrita parou de sair. Já aconteceu por falta do
+  `thoughtSignature` (ver o comentário em [iaProvider.js](../../../src/services/iaProvider.js)), e
+  é invisível no Discord: `handleIa` engole a falha e o embed sai só com os números.
+
+Pergunta que a staff errar no uso real vira **linha nova em `CASOS`**, com a ferramenta certa
+anotada. O log `[IA]` do bot grava quem perguntou, o texto e a ferramenta escolhida.
+
 ## Como interpretar
 
 **ERRO = quebra de verdade.** Corrija antes de commitar.
