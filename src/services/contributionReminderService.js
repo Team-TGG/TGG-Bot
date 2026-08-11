@@ -35,8 +35,15 @@ export async function calcularQuemFalta() {
     getBlindadosNaSemana(weekReference),
   ]);
 
-  // jaNaLista vazio de propósito: estar na lista da semana passada não tira ninguém do lembrete
-  const { inativos, poupados } = selecionarInativos({ linhas, blindados, jaNaLista: new Set() });
+  // jaNaLista vazio de propósito: estar na lista da semana passada não tira ninguém do lembrete.
+  // O limiar aqui é o mínimo cheio, sem a tolerância da inativação: quem está entre a folga e os
+  // 1.000 é justamente quem ainda dá tempo de empurrar para fora da fronteira.
+  const { inativos, poupados } = selecionarInativos({
+    linhas,
+    blindados,
+    jaNaLista: new Set(),
+    limiar: CONTRIBUICAO_MINIMA,
+  });
 
   return { weekStart, weekReference, faltando: inativos, poupados };
 }

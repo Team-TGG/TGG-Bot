@@ -84,7 +84,7 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 - [x] `.add-account` deve adicionar registro em `player_weekly_info`.
 - [x] `.entrou` deve adicionar registro em `player_weekly_info`.
 - [x] Corrigir o guild points da semana no `.stats` e mostrar a colocação.
-- [ ] Dar uma tolerância de 10% na inativação, para absorver erro da API.
+- [x] Dar uma tolerância de 10% na inativação, para absorver erro da API.
 
 ### Novos Comandos
 - [x] Criar `.resumão` com um resumo grande e detalhado da guilda.

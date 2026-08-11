@@ -15,7 +15,7 @@ import { scheduleTemporaryWarningRemoval } from './services/warningManager.js';
 import { scheduleMuteRenewal } from './services/muteManager.js';
 import { ensurePlayerWeeklyInfo } from './tggCoins.js';
 import { getBlindagensAprovadas, getBlindagensPendentes, cobreSemana, ehPermanente, fimDaBlindagem } from './inactivity.js';
-import { calcularInativosDaSemana, inativarSemana, CONTRIBUICAO_MINIMA } from './services/weeklyInactiveService.js';
+import { calcularInativosDaSemana, inativarSemana, CONTRIBUICAO_MINIMA, LIMIAR_INATIVACAO, TOLERANCIA_INATIVACAO } from './services/weeklyInactiveService.js';
 
 // Funções auxiliares
 
@@ -1017,10 +1017,11 @@ export const handleInativar = adminOnly(async (message, args, client) => {
       return sendCleanMessage(loading, {
         embeds: [createSuccessEmbed(
           'Ninguém para inativar',
-          `Semana de **${dia}/${mes}/${ano}**: todo mundo passou de ${CONTRIBUICAO_MINIMA.toLocaleString('pt-BR')} ` +
+          `Semana de **${dia}/${mes}/${ano}**: todo mundo passou de ${LIMIAR_INATIVACAO.toLocaleString('pt-BR')} ` +
           `de contribuição, está blindado ou já está na lista.\n\n` +
           `Já na lista: **${contagem('JA_NA_LISTA')}** • Blindados: **${contagem('BLINDADO')}** • ` +
-          `Staff: **${contagem('STAFF')}** • Sem medição: **${semMedicao}**`
+          `Staff: **${contagem('STAFF')}** • Na tolerância: **${contagem('TOLERANCIA')}** • ` +
+          `Sem medição: **${semMedicao}**`
         )]
       });
     }
@@ -1037,7 +1038,9 @@ export const handleInativar = adminOnly(async (message, args, client) => {
       .setColor(0xfaa61a)
       .setTitle(`⚠️ Inativar ${inativos.length} membro(s)?`)
       .setDescription(
-        `Semana de **${dia}/${mes}/${ano}** - abaixo de ${CONTRIBUICAO_MINIMA.toLocaleString('pt-BR')} de contribuição.\n\n` +
+        `Semana de **${dia}/${mes}/${ano}** - abaixo de ${LIMIAR_INATIVACAO.toLocaleString('pt-BR')} de ` +
+        `contribuição (mínimo de ${CONTRIBUICAO_MINIMA.toLocaleString('pt-BR')} com ` +
+        `${Math.round(TOLERANCIA_INATIVACAO * 100)}% de tolerância para erro da API).\n\n` +
         `${lista}${resto}`
       )
       .addFields(
@@ -1047,6 +1050,7 @@ export const handleInativar = adminOnly(async (message, args, client) => {
             `🛡️ Blindados: **${contagem('BLINDADO')}**\n` +
             `👮 Staff: **${contagem('STAFF')}**\n` +
             `🆕 Entrou na semana: **${contagem('ENTROU_NA_SEMANA')}**\n` +
+            `📏 Na tolerância: **${contagem('TOLERANCIA')}**\n` +
             `❔ Sem medição: **${semMedicao}**\n` +
             `📋 Já na lista: **${contagem('JA_NA_LISTA')}**`,
           inline: true,

@@ -16,11 +16,27 @@ import { inactivePlayers as config, discord as discordConfig } from '../../confi
  *   - é officer/admin no `users.role` ou tem blindagem cobrindo a semana;
  *   - entrou na guilda durante a semana avaliada (não teve semana inteira para contribuir);
  *   - não pôde ser medido (sem base, base zerada, fora da guilda) — sem número não se acusa;
+ *   - ficou dentro da tolerância sobre o mínimo (ver `LIMIAR_INATIVACAO`);
  *   - já está na lista desta semana.
  */
 
-/** Contribuição mínima da semana. Abaixo disso, inativo. */
+/** Contribuição mínima da semana - a regra que o membro conhece e que os avisos citam. */
 export const CONTRIBUICAO_MINIMA = 1000;
+
+/**
+ * Folga sobre o mínimo, só para a inativação. Existe por erro de leitura da API de guild points:
+ * o desvio normal é de 1 a 10 pontos e nunca tinha atrapalhado, mas em 08/2026 um membro com
+ * 1.020 pontos foi lido como 902 (a hipótese é que os pontos tinham acabado de ser ganhos).
+ * 10% não cobre um caso desse tamanho — é um começo, para ir calibrando com o que aparecer.
+ *
+ * A folga não muda a regra: os avisos continuam cobrando os 1.000, e o lembrete de domingo
+ * também (ver contributionReminderService.js). Ela só evita marcar como inativo quem está na
+ * fronteira, onde o erro da API decide o resultado.
+ */
+export const TOLERANCIA_INATIVACAO = 0.10;
+
+/** Abaixo disso, inativo. */
+export const LIMIAR_INATIVACAO = Math.round(CONTRIBUICAO_MINIMA * (1 - TOLERANCIA_INATIVACAO));
 
 /**
  * A medição só vale entre **quarta 06:00 e quinta 06:00** — é a única janela em que a semana
@@ -43,8 +59,11 @@ const CARGOS_ISENTOS = new Set(['officer', 'admin']);
  *
  * Devolve os inativos e também os `poupados`, com o motivo de cada um, porque "ninguém foi
  * inativado" e "todo mundo estava blindado" precisam ser distinguíveis no resumo da staff.
+ *
+ * `limiar` é o corte de fato. O padrão é o mínimo com a tolerância; o lembrete de domingo passa
+ * `CONTRIBUICAO_MINIMA` cheio, porque lá o objetivo é empurrar para a regra, não poupar ninguém.
  */
-export function selecionarInativos({ linhas, blindados, jaNaLista }) {
+export function selecionarInativos({ linhas, blindados, jaNaLista, limiar = LIMIAR_INATIVACAO }) {
   const inativos = [];
   const poupados = [];
 
@@ -80,6 +99,13 @@ export function selecionarInativos({ linhas, blindados, jaNaLista }) {
 
     if (linha.contribuicao >= CONTRIBUICAO_MINIMA) {
       poupar('CONTRIBUIU');
+      continue;
+    }
+
+    // Não bateu o mínimo, mas está dentro da folga: motivo próprio para a staff enxergar
+    // quantos ficaram de fora só por causa dela e poder calibrar o número
+    if (linha.contribuicao >= limiar) {
+      poupar('TOLERANCIA');
       continue;
     }
 
@@ -225,7 +251,7 @@ export async function inativarSemana(client) {
   }
 
   if (!inativos.length) {
-    console.log(`[INATIVOS] semana ${weekReference}: ninguém abaixo de ${CONTRIBUICAO_MINIMA} - nada a fazer`);
+    console.log(`[INATIVOS] semana ${weekReference}: ninguém abaixo de ${LIMIAR_INATIVACAO} - nada a fazer`);
     return { ...resultado, gravados: 0, anunciado: false };
   }
 

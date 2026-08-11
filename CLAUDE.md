@@ -176,6 +176,14 @@ jogo): medido em 08/08/2026, 6 pessoas divergiam entre as duas, nas duas direç�
 manda DM e avisa no canal. Substitui a página `relatorio_inativar.php` do site, que media **XP**
 (sistema antigo) e não contribuição.
 
+**Tolerância na inativação**: o corte é `LIMIAR_INATIVACAO` (mínimo menos `TOLERANCIA_INATIVACAO`,
+hoje 10% → 900), não os 1.000 cheios. É folga para erro de leitura da API de guild points: o desvio
+normal é de 1 a 10 pontos, mas em 08/2026 um membro com 1.020 foi lido como 902. O número é para ir
+sendo calibrado. A **regra continua sendo 1.000** — é o que a DM, o anúncio e o lembrete de domingo
+cobram; a folga só decide quem é marcado. Quem cai nela vira `poupados` com motivo `TOLERANCIA`, e a
+prévia do `.inativar` mostra a contagem. O lembrete de domingo passa `limiar: CONTRIBUICAO_MINIMA`
+de propósito: lá o objetivo é empurrar para fora da fronteira, não poupar.
+
 **A medição só vale entre quarta 06:00 e quinta 06:00.** Antes o número é parcial; depois,
 `player_weekly_info` já virou para a semana nova e a conta dá ~0 para todo mundo — rodar numa
 quinta de manhã inativaria a guilda inteira. `semanaFechada()` trava as duas pontas com uma
@@ -276,7 +284,7 @@ Todos registrados no `ClientReady`:
   e ~90 menções já estouram os 2.000 caracteres da mensagem.
 - Cron `0 6 * * 3` — troca os MVPs da semana
   ([src/services/weeklyMvpService.js](src/services/weeklyMvpService.js)). Ver abaixo.
-- Cron `10 6 * * 3` — inativa quem ficou abaixo de 1.000 de contribuição
+- Cron `10 6 * * 3` — inativa quem ficou abaixo do limiar (1.000 menos a tolerância) de contribuição
   ([src/services/weeklyInactiveService.js](src/services/weeklyInactiveService.js)). Ver abaixo.
 - Cron `0 7 * * 3` — cadastra o duelo da semana seguinte
   ([src/services/guildDuelService.js](src/services/guildDuelService.js)). Ver abaixo.
