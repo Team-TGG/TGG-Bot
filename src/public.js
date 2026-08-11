@@ -337,9 +337,14 @@ export async function handleStats(message, args, client) {
     const loadingMsg = await message.reply({ embeds: [createLoadingEmbed(`${EMOJIS.loading} Carregando estatísticas...`, 'Buscando dados do Brawlhalla...')] });
     const playerData = await fetchPlayerStats(brawlhallaId);
 
-    // Pegar os guild points e mandar pro stats
+    // Pegar os guild points e mandar pro stats. O id aqui é o cadastrado, sem resolver: é a conta
+    // que está no clã, e é dela que saem pontos, posição e histórico. O `playerData` veio do
+    // `fetchPlayerStats`, que resolve alt, então o `brawlhalla_id` de dentro dele é outro — daí
+    // mandar `guildAccountId` junto, senão o embed mistura as duas contas no Weekly GP.
     const guildPoints = await fetchPlayerGuildStatsNewAPI(brawlhallaId);
     playerData.guildPoints = guildPoints?.personal_points || 0;
+    playerData.guildAccountId = String(brawlhallaId);
+    playerData.weeklyGuildPosition = await posicaoContribuicaoSemanal(brawlhallaId);
 
     const mainEmbed = await createStatsEmbed(playerData);
     const rankedEmbed = createRankedEmbed(playerData);
@@ -448,23 +453,8 @@ export async function handleGames(message, args) {
     const stats = await fetchPlayerStats(brawlhallaId);
     const ranked = stats.ranked;
 
-    const currentGames = stats['games'] ?? 0;
-    const current1v1 = ranked['games'] ?? 0;
-
-    let current2v2 = 0;
-    if (ranked['2v2']) {
-      ranked['2v2'].forEach(t => {
-        current2v2 += t.games ?? 0;
-      });
-    }
-
-    const current3v3 = ranked['rotating_ranked']?.games ?? 0;
-
-    const games1v1 = current1v1 - (initial.initial_games_1v1 ?? 0);
-    const games2v2 = current2v2 - (initial.initial_games_2v2 ?? 0);
-    const games3v3 = current3v3 - (initial.initial_games_3v3 ?? 0);
-    const totalGames = currentGames - (initial.games ?? 0) + games1v1 + games2v2 + games3v3;
-    const casualGames = totalGames - games1v1 - games2v2 - games3v3;
+    // Mesma função que os botões e o `.scan` usam; a cópia inline que existia aqui saiu de sincronia
+    const { totalGames, casualGames, games1v1, games2v2, games3v3 } = calculateGames(stats, ranked, initial);
 
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
@@ -658,6 +648,35 @@ async function topContribuintesDaSemana(limite) {
 
   } catch (err) {
     console.warn('[Contribuição] Ranking semanal indisponível:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Posição do jogador no ranking de contribuição da semana, para o `.stats`.
+ *
+ * Sai da mesma medida do MVP e da inativação (`calcularContribuicaoSemanal`) em vez de uma conta
+ * própria — três definições diferentes de "contribuição da semana" seria uma a mais do que já é
+ * confuso. Só entram no ranking os membros que puderam ser medidos: quem tem `motivo` não tem
+ * número, e enfiá-lo como 0 empurraria todo mundo para baixo.
+ *
+ * Empate divide a mesma posição (dois com 500 são ambos 3º, e o próximo é 5º) — sem isso a ordem
+ * entre os empatados seria arbitrária, e empate em 0 é o caso mais comum da lista.
+ */
+async function posicaoContribuicaoSemanal(brawlhallaId) {
+  try {
+    const { linhas } = await calcularContribuicaoSemanal();
+
+    const eu = linhas.find((l) => String(l.brawlhallaId) === String(brawlhallaId));
+    if (!eu || eu.motivo) return null;
+
+    const acima = linhas.filter((l) => !l.motivo && l.contribuicao > eu.contribuicao).length;
+
+    return acima + 1;
+
+  } catch (err) {
+    // Posição é enfeite: sem ela o embed ainda mostra o valor da contribuição
+    console.warn('[Contribuição] Posição semanal indisponível:', err.message);
     return null;
   }
 }

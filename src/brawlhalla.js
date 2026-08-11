@@ -1009,15 +1009,23 @@ export async function createStatsEmbed(playerData) {
   const mostLegendTime = mostPlayedLegend ? parseInt(mostPlayedLegend.matchtime || 0) : 0;
 
   // Lógica para os Guild Points
-  const totalGuildPoints = stats.guildPoints || 0;
-  const guildPosition = await getGuildRankingPosition(stats.brawlhalla_id); // Pegar a posição atual do jogador no ranking da guilda (Por GP)
+  //
+  // `stats.brawlhalla_id` vem da resposta da API, que o `fetchPlayerStats` já buscou pelo id
+  // RESOLVIDO — a conta principal do `alt_ids`, que pode nem estar na guilda. Tudo que é da
+  // guilda (pontos, posição, histórico) tem que sair da conta cadastrada, que é a que aparece
+  // no clã; `guildAccountId` é ela, mandada por quem chama.
+  const idGuilda = stats.guildAccountId ?? stats.brawlhalla_id;
 
-  const lastGuildPointsData = await getPlayerWeeklyGuildPoints(stats.brawlhalla_id);
+  const totalGuildPoints = stats.guildPoints || 0;
+  const guildPosition = await getGuildRankingPosition(idGuilda); // Pegar a posição atual do jogador no ranking da guilda (Por GP)
+
+  const lastGuildPointsData = await getPlayerWeeklyGuildPoints(idGuilda);
   const lastGuildPoints = Number(lastGuildPointsData || 0);
   const weeklyGuildPoints = Math.max(0, totalGuildPoints - lastGuildPoints);
+  const weeklyPosition = stats.weeklyGuildPosition ?? null;
 
-  const historicoGuilda = await getMembershipHistory(stats.brawlhalla_id).catch((err) => {
-    console.warn(`[Stats] Historico de guilda indisponivel para ${stats.brawlhalla_id}: ${err.message}`);
+  const historicoGuilda = await getMembershipHistory(idGuilda).catch((err) => {
+    console.warn(`[Stats] Historico de guilda indisponivel para ${idGuilda}: ${err.message}`);
     return [];
   });
 
@@ -1049,7 +1057,7 @@ export async function createStatsEmbed(playerData) {
       value: [
         ...(lastGuildPointsData ? [
           `Total GP: \`${formatNumber(totalGuildPoints)}\`` + (guildPosition ? ` · \`#${guildPosition}\`` : ''),
-          `Weekly GP: \`${formatNumber(weeklyGuildPoints)}\``
+          `Weekly GP: \`${formatNumber(weeklyGuildPoints)}\`` + (weeklyPosition ? ` · \`#${weeklyPosition}\`` : '')
         ] : []),
         ...linhasGuilda
       ].join('\n') +

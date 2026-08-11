@@ -2443,22 +2443,40 @@ export const handleScan = adminOnly(async (message, args, client) => {
     });
 
     await loadAliases();
+
+    // Dois ids de propósito, porque as duas metades do scan medem coisas diferentes:
+    //
+    // - `brawlhallaId` é o de `users`, a conta que aparece na guilda do jogo. Histórico,
+    //   justificativas e guild points (contribuição) são registrados por ele.
+    // - `idJogo` é a principal resolvida pelo `alt_ids`. É por ele que o cron do site grava os
+    //   campos de partidas e é o que o `.games` lê, então os jogos saem daí — senão os dois
+    //   comandos mostram números diferentes para a mesma pessoa.
+    //
+    // Antes o scan usava o id cadastrado para tudo, mas as estatísticas vinham do
+    // `fetchPlayerStats`, que resolve alt por dentro: a leitura atual era de uma conta e a base
+    // semanal de outra, e a subtração misturava as duas.
     const brawlhallaId = String(user.brawlhalla_id);
+    const idJogo = resolveBrawlhallaId(brawlhallaId);
 
     const weekStart = getMissionWeekStartDateTime();
     const prevWeekStart = getPreviousMissionWeekStart();
 
-    const [history, justificativas, semanaAtual, semanaPassada, warns] = await Promise.all([
+    // `semana*` (id cadastrado) é a base de guild points; `jogos*` (id resolvido) é a de partidas.
+    // Quando não há alt os dois ids são o mesmo e as duas leituras coincidem.
+    const [history, justificativas, semanaAtual, semanaPassada, jogosSemanaAtual, jogosSemanaPassada, warns] = await Promise.all([
       getMembershipHistory(brawlhallaId),
       getMemberJustifications(brawlhallaId),
       getWeeklyInitial(brawlhallaId, weekStart),
       getWeeklyInitial(brawlhallaId, prevWeekStart),
+      getWeeklyInitial(idJogo, weekStart),
+      getWeeklyInitial(idJogo, prevWeekStart),
       getUserWarnings(targetUserId)
     ]);
 
     // API externa não pode derrubar o comando: sem ela as abas mostram o que dá
-    const stats = await fetchPlayerStats(brawlhallaId).catch((err) => {
-      console.warn(`[SCAN] Stats indisponiveis para ${brawlhallaId}:`, err.message);
+    // Resolve alt igual ao `.games` - as partidas descrevem a conta principal
+    const stats = await fetchPlayerStats(idJogo).catch((err) => {
+      console.warn(`[SCAN] Stats indisponiveis para ${idJogo}:`, err.message);
       return null;
     });
 
@@ -2529,11 +2547,11 @@ export const handleScan = adminOnly(async (message, args, client) => {
 
     const mediaSemanal = pontosTotais != null ? Math.round(pontosTotais / divisorSemanas) : null;
 
-    const jogosAtual = stats && semanaAtual ? calculateGames(stats, stats.ranked, semanaAtual) : null;
+    const jogosAtual = stats && jogosSemanaAtual ? calculateGames(stats, stats.ranked, jogosSemanaAtual) : null;
 
     let jogosPassada = null;
-    if (semanaPassada && semanaPassada.final_games > 0) {
-      jogosPassada = calculateGamesFromClosedWeek(semanaPassada);
+    if (jogosSemanaPassada && jogosSemanaPassada.final_games > 0) {
+      jogosPassada = calculateGamesFromClosedWeek(jogosSemanaPassada);
     }
 
     const nomeJogo = stats?.name ?? ultimaEntrada?.nome ?? user.username ?? 'Desconhecido';
