@@ -55,10 +55,13 @@ export const brawlhalla = {
 // avisa que está desligado e nada mais no bot muda.
 export const ia = {
   apiKey: process.env.GEMINI_API_KEY,
-  // Flash atual e no free tier em 11/08/2026 (o 2.0-flash já foi desligado). Modelo aposentado
-  // devolve 404: conferir a lista em ai.google.dev/gemini-api/docs/models e trocar por env,
-  // sem mexer no código.
-  modelo: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
+  // Flash Lite, não Flash: o free tier do `gemini-3.6-flash` dá 20 requisições por dia e cada
+  // pergunta gasta duas (escolher a ferramenta + redigir), então eram 10 perguntas por dia. O
+  // 3.5-flash-lite dá 500 (medido em 11/08/2026), e a tarefa aqui é roteamento, não raciocínio.
+  // Precisa ser um modelo com function calling - Gemma e os de embedding/tradução não servem.
+  // Modelo aposentado devolve 404: conferir em ai.google.dev/gemini-api/docs/models e trocar por
+  // env, sem mexer no código.
+  modelo: process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
   // A leitura de contribuição já gasta alguns segundos antes da IA entrar; 20s é o teto de cada
   // uma das duas chamadas, para o comando não ficar pendurado se o provedor engasgar.
   timeoutMs: 20_000,

@@ -16,6 +16,7 @@ Node >= 18 (usa `fetch` nativo), ESM (`"type": "module"` — todo import precisa
 `.env` obrigatório (não versionado): `DISCORD_TOKEN`, `DISCORD_GUILD_ID`, `SUPABASE_URL`,
 `SUPABASE_SERVICE_ROLE_KEY` (ou `SUPABASE_ANON_KEY`), `BRAWLHALLA_API_KEY`.
 Opcionais: `BRAWLHALLA_CLAN_ID` (default `'396943'` no código), `INACTIVE_MESSAGE_INTERVAL` (default 3h),
+`GEMINI_API_KEY` (sem ela só o `.ia` fica desligado), `GEMINI_MODEL` (default `gemini-3.5-flash-lite`),
 `IGNORE_SSL_ERRORS=true` para desligar verificação TLS (uso local). `win-ca` carrega os certificados do Windows.
 O `.env` ainda tem `TGG_API_URL`, `TGG_API_KEY` e `GUILD_ACTIVITY_CHANNEL_ID` — sobras dos módulos removidos,
 nenhum código lê essas três.

@@ -127,7 +127,9 @@ reconferida contra as perguntas que já funcionavam.
 - [ ] Criar a ferramenta de média semanal por membro: query nova em `player_weekly_info`, cortando o histórico anterior a agosto/2026 (guild points não confiáveis).
 - [ ] Avaliar ferramentas novas conforme as perguntas aparecerem — jogos da semana, histórico de blindagem, movimentação da guilda.
 - [ ] Medir o gasto no free tier e decidir se o `.ia` precisa de cooldown próprio (staff é isenta do rate limit de 5s).
-- [ ] Comparar `gemini-3.6-flash` com um modelo mais barato no roteamento, que é tarefa simples.
+- [x] Comparar `gemini-3.6-flash` com um modelo mais barato no roteamento, que é tarefa simples. Trocado para `gemini-3.5-flash-lite`: 8/8 nas perguntas de referência, 678ms por pergunta e 500 requisições por dia contra 20 do flash (medido em 11/08/2026).
+- [x] Tratar pergunta fora do catálogo com a ferramenta `nao_sei_responder`. Com `mode: 'ANY'` o modelo é obrigado a escolher uma das ferramentas, então antes dela toda pergunta sem ferramenta correspondente virava resposta confiante e errada — 6 de 6 ("quem tem mais TGG Coins?" caía em `ranking_contribuicao` com `limite: 1`). Depois: 14/14, sem perder nenhuma das 8 perguntas que já funcionavam (medido em 11/08/2026).
+- [ ] Montar as perguntas de referência como script versionado. Hoje a comparação acima foi feita em arquivo descartável, então cada troca de modelo ou de `description` recomeça do zero.
 
 ### Futuro
 - [x] Comandos slash.

@@ -60,11 +60,16 @@ export async function escolherFerramenta({ pergunta, ferramentas, instrucao }) {
     tool_config: { function_calling_config: { mode: 'ANY' } },
   });
 
-  const chamada = partesDaResposta(dados).find(p => p.functionCall)?.functionCall;
+  const parte = partesDaResposta(dados).find(p => p.functionCall);
 
-  if (!chamada?.name) return null;
+  if (!parte?.functionCall?.name) return null;
 
-  return { nome: chamada.name, args: chamada.args ?? {} };
+  // `assinatura` só existe para ser devolvida em `redigirResposta` - ver o comentário de lá.
+  return {
+    nome: parte.functionCall.name,
+    args: parte.functionCall.args ?? {},
+    assinatura: parte.thoughtSignature ?? null,
+  };
 }
 
 /**
@@ -72,13 +77,24 @@ export async function escolherFerramenta({ pergunta, ferramentas, instrucao }) {
  *
  * O `contents` reconstrói o turno inteiro (pergunta → chamada → resultado) porque a API é sem
  * estado. `functionResponse.response` precisa ser objeto, nunca array.
+ *
+ * O `thoughtSignature` que veio na primeira chamada tem que voltar junto do `functionCall`: sem ele
+ * os modelos Gemini 3 recusam o turno reconstruído com **400** (`Function call is missing a
+ * thought_signature`) e a resposta nunca é escrita — como o erro cai no `.catch` de quem chama, o
+ * comando continua respondendo com os dados e a falha passa despercebida. Medido em 11/08/2026 no
+ * `gemini-3.5-flash-lite`. Mandar o resultado como texto simples também contorna o 400, mas aí o
+ * modelo perde o contexto da ferramenta e inventa a unidade (chamou guild points de "XP" no teste).
  */
 export async function redigirResposta({ pergunta, escolha, resultado, instrucao }) {
+  const chamadaDoModelo = { functionCall: { name: escolha.nome, args: escolha.args } };
+
+  if (escolha.assinatura) chamadaDoModelo.thoughtSignature = escolha.assinatura;
+
   const dados = await chamar({
     system_instruction: { parts: [{ text: instrucao }] },
     contents: [
       { role: 'user', parts: [{ text: pergunta }] },
-      { role: 'model', parts: [{ functionCall: { name: escolha.nome, args: escolha.args } }] },
+      { role: 'model', parts: [chamadaDoModelo] },
       { role: 'user', parts: [{ functionResponse: { name: escolha.nome, response: resultado } }] },
     ],
   });

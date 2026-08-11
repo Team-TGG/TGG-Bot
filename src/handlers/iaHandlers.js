@@ -12,6 +12,11 @@ import { weeklyMvp as mvpConfig } from '../../config/index.js';
  * escolhe uma; quem produz número é o executor, chamando as mesmas funções que o cron de quarta
  * usa. Ferramenta nova exige os dois — declaração sem executor vira "não sei responder".
  *
+ * `nao_sei_responder` é a exceção, e é declaração sem executor de propósito: o roteador roda com
+ * `mode: 'ANY'`, que **obriga** o modelo a escolher uma ferramenta, então sem uma saída de escape
+ * toda pergunta fora do catálogo cai numa ferramenta errada e vira resposta confiante e errada
+ * (medido em 11/08/2026: 6 de 6 — "quem tem mais TGG Coins?" caiu em `ranking_contribuicao`).
+ *
  * O `dados` que cada executor devolve é o que volta para a IA redigir a frase, então leva **só
  * apelido do jogo e números**: `discord_id` e `brawlhalla_id` nunca saem daqui. O free tier do
  * provedor pode usar o conteúdo para treino, e não há motivo para mandar identificador de membro.
@@ -79,6 +84,17 @@ export const FERRAMENTAS = [
       'Situação da inativação: quantos membros estão abaixo da contribuição mínima e quantos ' +
       'seriam de fato marcados como inativos (staff e blindados não são). Use para perguntas ' +
       'sobre inativos, sobre quem está abaixo do mínimo, e sobre quem corre risco de ser marcado.',
+    parameters: { type: 'OBJECT', properties: {} },
+  },
+  {
+    // De propósito sem executor: `handleIa` trata ferramenta sem executor como "não sei responder",
+    // que é exatamente a resposta certa aqui. Dar um executor a ela é desfazer o efeito.
+    name: 'nao_sei_responder',
+    description:
+      'Use quando a pergunta não for sobre contribuição da semana, MVP, inativação ou a situação ' +
+      'de um membro. Exemplos: quantidade de membros da guilda, entradas e saídas, elo, TGG Coins, ' +
+      'duelo de guildas, jogos jogados, qualquer assunto fora dessa lista. É melhor dizer que não ' +
+      'sabe do que responder outra coisa.',
     parameters: { type: 'OBJECT', properties: {} },
   },
   {
@@ -289,7 +305,8 @@ export const INSTRUCAO_ESCOLHA =
   'quarta 06:00; a contribuição mínima exigida de cada membro é ' + CONTRIBUICAO_MINIMA + ' por semana. ' +
   'Se a pergunta citar o nome de uma pessoa, prefira contribuicao_de_membro. ' +
   'Se pedir quantidade de gente abaixo do mínimo ou risco de inativação, use inativos_da_semana. ' +
-  'Na dúvida entre ranking e MVP, use ranking_contribuicao.';
+  'Na dúvida entre ranking e MVP, use ranking_contribuicao. ' +
+  'Se nenhuma função responder a pergunta, use nao_sei_responder em vez de escolher a mais parecida.';
 
 export const INSTRUCAO_RESPOSTA =
   'Você responde à staff de uma guilda de Brawlhalla, em português do Brasil. ' +
