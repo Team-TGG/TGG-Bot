@@ -337,3 +337,32 @@ Sem migrations no repo — o schema vive no Supabase. Domínios principais:
   `.catch(() => {})` e um `console.warn`.
 - Emojis customizados do servidor ficam em [config/emojis.js](config/emojis.js) — usar `EMOJIS.x`, não colar o ID.
 - O README lista um roadmap com itens marcados; ao concluir algo que está lá, atualize o checkbox.
+
+### Onde a função mora
+
+O corte é por **assunto**, não por tipo. "Todo comando aqui, toda função ali" produz um saco único
+que cresce para sempre; o que paga é separar o que **muda por motivo próprio** ou o que **mais de um
+lugar precisa**. [src/services/contribuicaoSemanal.js](src/services/contribuicaoSemanal.js) é o
+modelo: 123 linhas, importado por MVP, inativação, lembrete de domingo e `.scan` — se cada um
+calculasse do seu jeito, a prévia de domingo discordaria da quarta-feira. Já `parseColor` em
+[src/admin.js](src/admin.js) é usado por um handler 20 linhas acima: extrair só custaria um pulo
+entre arquivos.
+
+Na prática:
+
+- Função de apoio usada por **um** handler fica no mesmo arquivo, logo abaixo dele. Não extraia.
+- Usada por **dois ou mais**, ou que carrega regra de negócio que precisa bater entre rotinas →
+  arquivo próprio em [src/services/](src/services/) (regra) ou [src/handlers/](src/handlers/) (apoio de UI).
+- Arquivo passando de **~800 linhas** é sinal de corte, mas o corte tira um **assunto inteiro**
+  (handler + os helpers dele), nunca "as funções". Os alvos abertos hoje são o bloco de justificativa
+  em `public.js` (~410 linhas) e o de warns em `admin.js` (~490).
+- Não faça reorganização de arquivo grande "de passagem" — só quando a tarefa já for mexer nele.
+  Não há teste; verificação é rodar o bot no Discord.
+
+### Comentários
+
+Comentário explica **por quê**, nunca **o quê** — linha que traduz o código para português é ruído.
+Passando de 3 linhas, o conteúdo pertence a este arquivo ou a [docs/](docs/), não inline. A exceção
+é decisão não recuperável lendo o código, e essa vale ouro: por que base 0 tem dois significados
+([contribuicaoSemanal.js:65](src/services/contribuicaoSemanal.js#L65)), por que a tolerância existe,
+por que Bronze e Tin ficam de fora. Nesses casos, registre a **data da medição** junto.
