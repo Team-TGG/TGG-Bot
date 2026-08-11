@@ -194,6 +194,14 @@ condição só, e vale para o cron e para o `.inativar`.
 nulo = permanente). O `.justificativa <motivo> <semanas>` do membro cria a linha como `pendente`,
 que **não protege nada** até um officer/admin aprovar pelos botões no canal de log-guilda.
 
+O pedido vai com um **dossiê** para a staff decidir sem rodar `.scan`: contribuição da semana
+(tirada de `calcularContribuicaoSemanal()`, o mesmo número que decide a inativação — ler de outra
+fonte faria o embed discordar da quarta-feira), jogos totais e da semana, e o resumo do histórico
+de inatividade. Fonte que falha vira "indisponível" no campo, nunca erro no pedido. O botão
+`📋 Justificativas` abre a lista completa em mensagem efêmera, paginada; como a mensagem do pedido
+vive por horas, a página vai no `customId` (`justificativa_histpg_<pedido>_<página>`) e cada clique
+é consulta nova — **não use collector aqui**, ele morre no primeiro restart.
+
 Os avisos automáticos de missões, MVP, inativação, duelo e pedido de blindagem vão todos para
 **log-guilda** (`1536704688689516624`), para não misturar log com chat. Os botões de
 `justificativa_*` não passam pela allowlist de canal (só `isChatInputCommand` passa), então mover

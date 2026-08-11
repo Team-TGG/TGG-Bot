@@ -5,7 +5,7 @@ import { checkInteractionChannelPermission, isAdmin } from '../utils/permissions
 import { STAFF_ROLE_IDS } from '../config/index.js';
 import { createErrorEmbed } from '../utils/discordUtils.js';
 import { handleEscreverModalSubmit } from './admin.js';
-import { handleJustificativaButton } from './public.js';
+import { handleJustificativaButton, handleJustificativaHistorico } from './public.js';
 
 // Rate limit (mesmo do messageCreate anterior): 5s por usuário, staff isento.
 const rateLimitMap = new Map();
@@ -71,6 +71,26 @@ export function registerInteractionHandler(client) {
     if (interaction.isModalSubmit()) {
       if (interaction.customId.startsWith('escrever_modal')) {
         await handleEscreverModalSubmit(interaction, client);
+      }
+      return;
+    }
+
+    // Aba de justificativas do pedido: vem antes da decisão porque `handleJustificativaButton`
+    // trata como recusa tudo que não é `aprovar`.
+    if (interaction.isButton() && /^justificativa_(hist|histpg)_/.test(interaction.customId)) {
+      try {
+        await handleJustificativaHistorico(interaction, client);
+      } catch (err) {
+        console.error('[JUSTIFICATIVA] falha ao abrir o histórico:', err);
+        const payload = {
+          embeds: [createErrorEmbed('Erro Interno', `Não consegui buscar o histórico: ${err.message}`)],
+          ephemeral: true,
+        };
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp(payload).catch(() => {});
+        } else {
+          await interaction.reply(payload).catch(() => {});
+        }
       }
       return;
     }

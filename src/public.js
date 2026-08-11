@@ -1,12 +1,12 @@
 // public.js - Comandos públicos
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
-import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getMonthWeekStartDateTime, getCurrentSeason, getSeasonWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID, incrementCrz, getUserByDiscordId, getContasVinculadas } from './db.js';
+import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getMonthWeekStartDateTime, getCurrentSeason, getSeasonWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID, incrementCrz, getUserByDiscordId, getContasVinculadas, getMemberJustifications } from './db.js';
 import { getGuildWeeklyGuildPoints, getDuelGuildWeeklyGuildPoints, getPlayerWeeklyGuildPoints } from './guild.js';
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI, fetchPlayerGuildStatsNewAPI, fetchPlayerBasicNewAPI } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, videoGuilda as videoGuildaConfig, guildDuel as guildDuelConfig, justificativas as justificativasConfig, weeklyMvp as weeklyMvpConfig } from '../config/index.js';
 import { criarPedidoDeBlindagem, decidirBlindagem, getBlindagem, getPedidoPendenteDoMembro, registrarMensagemDoPedido, MAX_SEMANAS, STATUS } from './inactivity.js';
 import { calculateGames, calculateGamesFromClosedWeek } from './handlers/publicHandlers.js';
-import { calcularContribuicaoSemanal } from './services/contribuicaoSemanal.js';
+import { calcularContribuicaoSemanal, MOTIVOS } from './services/contribuicaoSemanal.js';
 import { CONTRIBUICAO_MINIMA } from './services/weeklyInactiveService.js';
 import { QUIZ_REWARD } from './handlers/tggCoinsHandlers.js';
 import { addTransaction, updateBalance } from './tggCoins.js';
@@ -899,8 +899,106 @@ export const handleActive = channelOnly(inactivePlayersConfig.channelId, async (
   }
 });
 
+// Rótulos dos motivos de "não deu para medir", no mesmo vocabulário do cálculo semanal
+const MOTIVO_CONTRIBUICAO = {
+  [MOTIVOS.FORA_DA_GUILDA]: 'Fora da guilda no jogo',
+  [MOTIVOS.SEM_BASE]: 'Sem base gravada nesta semana',
+  [MOTIVOS.BASE_ZERADA]: 'Base zerada - não dá para medir',
+};
+
+const JUSTIFICATIVAS_POR_PAGINA = 5;
+
+/**
+ * Dossiê do pedido de blindagem: o que a staff precisa para decidir sem sair do canal.
+ *
+ * A contribuição sai de `calcularContribuicaoSemanal()` de propósito - é o mesmo número que
+ * decide a inativação na quarta, então o que a staff lê aqui é o que vai valer lá. As duas outras
+ * medidas seguem a divisão do `.scan`: jogos são da conta principal (`alt_ids`), contribuição e
+ * justificativas são da conta que está na guilda.
+ *
+ * Nenhuma fonte aqui pode derrubar o pedido - o que falhar vira "indisponível" no embed.
+ */
+async function reunirDossie(brawlhallaId) {
+  const vazio = {
+    contribuicao: null,
+    motivoContribuicao: 'Sem Brawlhalla ID cadastrado',
+    jogosTotais: null,
+    jogosDaSemana: null,
+    justificativas: [],
+  };
+
+  if (!brawlhallaId) return vazio;
+
+  const conta = String(brawlhallaId);
+
+  await loadAliases().catch(() => {});
+  const idJogo = resolveBrawlhallaId(conta);
+  const weekStart = getMissionWeekStartDateTime();
+
+  const [semanal, justificativas, stats, baseDaSemana] = await Promise.all([
+    calcularContribuicaoSemanal().catch((err) => {
+      console.warn('[JUSTIFICATIVA] contribuição indisponível:', err.message);
+      return null;
+    }),
+    getMemberJustifications(conta).catch((err) => {
+      console.warn('[JUSTIFICATIVA] justificativas indisponíveis:', err.message);
+      return [];
+    }),
+    fetchPlayerStats(idJogo).catch((err) => {
+      console.warn(`[JUSTIFICATIVA] stats indisponíveis para ${idJogo}:`, err.message);
+      return null;
+    }),
+    getWeeklyInitial(idJogo, weekStart).catch(() => null),
+  ]);
+
+  const linha = semanal?.linhas.find((l) => l.brawlhallaId === conta) ?? null;
+
+  let motivoContribuicao = 'Indisponível (API fora do ar)';
+  if (linha?.motivo) motivoContribuicao = MOTIVO_CONTRIBUICAO[linha.motivo] ?? linha.motivo;
+  else if (semanal && !linha) motivoContribuicao = 'Conta fora do cálculo da semana';
+
+  return {
+    contribuicao: linha && !linha.motivo ? linha.contribuicao : null,
+    motivoContribuicao,
+    jogosTotais: stats?.games ?? null,
+    jogosDaSemana: stats && baseDaSemana ? calculateGames(stats, stats.ranked, baseDaSemana).totalGames : null,
+    justificativas: justificativas ?? [],
+  };
+}
+
+/** Os três campos do dossiê que entram no embed do pedido. */
+function camposDoDossie({ contribuicao, motivoContribuicao, jogosTotais, jogosDaSemana, justificativas }) {
+  const comNota = justificativas.filter((j) => j.note).length;
+  const ultima = justificativas[0];
+
+  const contribuicaoTexto = contribuicao == null
+    ? motivoContribuicao
+    : contribuicao >= CONTRIBUICAO_MINIMA
+      ? `✅ **${contribuicao.toLocaleString('pt-BR')}** de ${CONTRIBUICAO_MINIMA.toLocaleString('pt-BR')}`
+      : `**${contribuicao.toLocaleString('pt-BR')}** de ${CONTRIBUICAO_MINIMA.toLocaleString('pt-BR')} ` +
+        `- faltam **${(CONTRIBUICAO_MINIMA - contribuicao).toLocaleString('pt-BR')}**`;
+
+  const jogosTexto = [
+    jogosTotais != null ? `**${jogosTotais.toLocaleString('pt-BR')}** no total` : 'Total indisponível',
+    jogosDaSemana != null ? `**${jogosDaSemana.toLocaleString('pt-BR')}** nesta semana` : null,
+  ].filter(Boolean).join('\n');
+
+  const historicoTexto = justificativas.length
+    ? `**${justificativas.length}** semana(s) na lista de inativos • **${comNota}** justificada(s)` +
+      (ultima?.week_reference ? `\nÚltima: semana de ${formatDateBR(ultima.week_reference)}` : '')
+    : 'Nunca foi marcado como inativo';
+
+  return [
+    { name: '🎯 Contribuição desta semana', value: contribuicaoTexto, inline: true },
+    { name: '🎮 Jogos', value: jogosTexto, inline: true },
+    { name: '📋 Histórico de inatividade', value: historicoTexto, inline: false },
+  ];
+}
+
 // .justificativa <motivo> <semanas>
 export async function handleJustificativa(message, args, client) {
+  let aguarde = null;
+
   try {
     let motivo;
     let semanas;
@@ -972,11 +1070,19 @@ export async function handleJustificativa(message, args, client) {
       });
     }
 
+    // O dossiê passa pela API e pelo cálculo da semana inteira, então demora alguns segundos
+    aguarde = await message.reply({
+      embeds: [createLoadingEmbed('Enviando para a staff...', `${EMOJIS.loading} Juntando seus dados da semana.`)]
+    });
+
     const pedido = await criarPedidoDeBlindagem({
       discordId: message.author.id,
       reason: motivo,
       weeks: semanas,
     });
+
+    // Junta contribuição, jogos e histórico do membro para a staff não precisar rodar `.scan`
+    const dossie = await reunirDossie(user.brawlhalla_id);
 
     const [ano, mes, dia] = String(pedido.week_start).slice(0, 10).split('-');
 
@@ -990,6 +1096,7 @@ export async function handleJustificativa(message, args, client) {
         // A semana de inatividade corre de quarta a quarta; a blindagem vale a partir da que
         // está em curso, então a data costuma ser alguns dias atrás.
         { name: 'A partir da semana de', value: `${dia}/${mes}/${ano}`, inline: true },
+        ...camposDoDossie(dossie),
       )
       .setFooter({ text: 'Aprovar blinda o membro; recusar avisa que não foi aceita.' })
       .setTimestamp();
@@ -1003,6 +1110,11 @@ export async function handleJustificativa(message, args, client) {
         .setCustomId(`justificativa_recusar_${pedido.id}`)
         .setLabel('Recusar')
         .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder()
+        .setCustomId(`justificativa_hist_${pedido.id}`)
+        .setLabel(`📋 Justificativas (${dossie.justificativas.length})`)
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(!dossie.justificativas.length),
     );
 
     // O canal é só de staff, então pingar todo mundo é o jeito de a decisão não ficar parada —
@@ -1016,7 +1128,7 @@ export async function handleJustificativa(message, args, client) {
 
     await registrarMensagemDoPedido(pedido.id, aviso.channelId, aviso.id);
 
-    await message.reply({
+    await sendCleanMessage(aguarde, {
       embeds: [createSuccessEmbed(
         'Justificativa enviada',
         `Seu pedido de **${semanas} semana(s)** foi mandado para a staff analisar.\n\n` +
@@ -1026,10 +1138,112 @@ export async function handleJustificativa(message, args, client) {
     });
 
   } catch (err) {
-    await message.reply({
-      embeds: [createErrorEmbed('Erro ao Enviar Justificativa', err.message)]
+    const erro = createErrorEmbed('Erro ao Enviar Justificativa', err.message);
+
+    if (aguarde) await sendCleanMessage(aguarde, { embeds: [erro] });
+    else await message.reply({ embeds: [erro] });
+  }
+}
+
+/** Página do histórico de inatividade - mesmo formato da aba "Justificativas" do `.scan`. */
+function embedHistoricoDeJustificativas(justificativas, pagina, discordId) {
+  const totalPaginas = Math.max(1, Math.ceil(justificativas.length / JUSTIFICATIVAS_POR_PAGINA));
+  const inicio = pagina * JUSTIFICATIVAS_POR_PAGINA;
+  const itens = justificativas.slice(inicio, inicio + JUSTIFICATIVAS_POR_PAGINA);
+  const comNota = justificativas.filter((j) => j.note).length;
+
+  const descricao = itens
+    .map((item, i) => {
+      const quando = item.created_at ? formatDateBR(item.created_at) : '-';
+      const semana = item.week_reference ? formatDateBR(item.week_reference) : '-';
+      const texto = item.note || '_semana sem justificativa_';
+      return `**${inicio + i + 1}.** 🗓️ semana de ${semana} • 🕒 ${quando}\n${texto}`;
+    })
+    .join('\n\n');
+
+  return new EmbedBuilder()
+    .setColor(0xed4245)
+    .setTitle('📋 Histórico de justificativas')
+    .setDescription(`<@${discordId}>\n\n${descricao}`)
+    .setFooter({
+      text: `${comNota} justificada(s) de ${justificativas.length} semana(s) inativo • página ${pagina + 1}/${totalPaginas}`
+    });
+}
+
+/**
+ * Aba de justificativas do pedido de blindagem, aberta pelo botão do embed.
+ *
+ * Efêmera e sem collector, pelo mesmo motivo dos botões de decisão: a mensagem do pedido fica
+ * viva por horas e precisa sobreviver a restart. A página vai no próprio `customId`
+ * (`justificativa_histpg_<pedido>_<página>`), então cada clique é uma consulta nova e nada
+ * depende de estado em memória.
+ */
+export async function handleJustificativaHistorico(interaction) {
+  const partes = interaction.customId.split('_');
+  const abrindo = partes[1] === 'hist';
+  const pedidoId = partes[2];
+  const pagina = abrindo ? 0 : Math.max(0, Number(partes[3]) || 0);
+
+  if (!(await isAdmin(interaction.user.id))) {
+    return interaction.reply({
+      embeds: [createErrorEmbed('Acesso Negado', 'Apenas officers e administradores veem o histórico.')],
+      ephemeral: true,
+    }).catch(() => {});
+  }
+
+  if (abrindo) await interaction.deferReply({ ephemeral: true }).catch(() => {});
+
+  const pedido = await getBlindagem(pedidoId).catch(() => null);
+  const user = pedido ? await getUserByDiscordId(pedido.discord_id).catch(() => null) : null;
+
+  const responder = (payload) => (abrindo
+    ? interaction.editReply(payload)
+    : interaction.update(payload)).catch(() => {});
+
+  if (!user?.brawlhalla_id) {
+    return responder({
+      embeds: [createErrorEmbed(
+        'Sem histórico',
+        pedido ? 'O autor do pedido não tem Brawlhalla ID cadastrado.' : 'Não encontrei este pedido.'
+      )],
+      components: [],
     });
   }
+
+  const justificativas = await getMemberJustifications(String(user.brawlhalla_id)).catch(() => []);
+
+  if (!justificativas.length) {
+    return responder({
+      embeds: [new EmbedBuilder()
+        .setColor(0x95a5a6)
+        .setTitle('📋 Histórico de justificativas')
+        .setDescription(`<@${pedido.discord_id}> nunca foi marcado como inativo.`)],
+      components: [],
+    });
+  }
+
+  const totalPaginas = Math.ceil(justificativas.length / JUSTIFICATIVAS_POR_PAGINA);
+  const atual = Math.min(pagina, totalPaginas - 1);
+
+  const componentes = totalPaginas > 1
+    ? [new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`justificativa_histpg_${pedidoId}_${atual - 1}`)
+          .setLabel('⬅️')
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(atual === 0),
+        new ButtonBuilder()
+          .setCustomId(`justificativa_histpg_${pedidoId}_${atual + 1}`)
+          .setLabel('➡️')
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(atual >= totalPaginas - 1),
+      )]
+    : [];
+
+  return responder({
+    embeds: [embedHistoricoDeJustificativas(justificativas, atual, pedido.discord_id)],
+    components: componentes,
+  });
 }
 
 /**

@@ -104,8 +104,8 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 - [x] Criar um cron para cadastrar o duelo semanal automaticamente.
 - [x] Criar o canal `log-guilda` e mandar por lá as solicitações de blindagem e os demais avisos do bot.
 - [x] Avisar entradas, saídas, promoções e rebaixamentos da guilda no `log-guilda`.
-- [ ] Mostrar as últimas justificativas do membro na solicitação de blindagem.
-- [ ] Mostrar a contribuição atual do membro na solicitação de blindagem.
+- [x] Mostrar as últimas justificativas do membro na solicitação de blindagem.
+- [x] Mostrar a contribuição atual do membro na solicitação de blindagem.
 - [ ] Mandar mute, ban e warn para o `hall-da-vergonha` pelo bot, com a justificativa.
 - [ ] Ver como publicar as missões da semana no `guild-updates` e criar a imagem das quests.
 - [ ] Adicionar Skyforged e Goldforged na loja.
