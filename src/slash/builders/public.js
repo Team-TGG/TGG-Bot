@@ -26,6 +26,15 @@ export const publicCommands = [
     .addStringOption(o => o.setName('id').setDescription('ID alternativo de guild/clan')),
 
   new SlashCommandBuilder()
+    .setName('lb-guilda')
+    .setDescription('Leaderboard da guilda por guild points, 14 por página')
+    .addStringOption(o => o.setName('ordem').setDescription('Ordenar por total ou pela semana (padrão: total)')
+      .addChoices(
+        { name: 'Total', value: 'total' },
+        { name: 'Semanal', value: 'semanal' },
+      )),
+
+  new SlashCommandBuilder()
     .setName('missoes')
     .setDescription('Mostra as missões da semana atual'),
 

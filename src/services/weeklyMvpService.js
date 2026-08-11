@@ -60,19 +60,29 @@ export function selecionarMvps(ranking, limite = config.limite) {
   return escolhidos;
 }
 
-/** Lê banco + API e monta o ranking da semana corrente. Não mexe em cargo nenhum. */
-export async function calcularMvpsDaSemana() {
-  const { weekStart, linhas } = await calcularContribuicaoSemanal();
-
+/**
+ * Ranking e MVPs a partir de linhas de contribuição já calculadas. Função pura: não lê banco nem
+ * API, então quem já tem as linhas na mão (o `.lb-guilda`) responde "quem está elegível" sem
+ * recalcular nada — e responde exatamente o que a quarta-feira vai decidir.
+ */
+export function selecionarMvpsDasLinhas(linhas, limite = config.limite) {
   const ranking = linhas
     .filter(l => !l.motivo)
     .map(l => ({ ...l, ocupaVaga: ocupaVaga({ discord_id: l.discordId, role: l.role }, l.rankNoJogo) }))
     .sort((a, b) => b.contribuicao - a.contribuicao || a.nome.localeCompare(b.nome, 'pt-BR'));
 
+  return { ranking, mvps: selecionarMvps(ranking, limite) };
+}
+
+/** Lê banco + API e monta o ranking da semana corrente. Não mexe em cargo nenhum. */
+export async function calcularMvpsDaSemana() {
+  const { weekStart, linhas } = await calcularContribuicaoSemanal();
+  const { ranking, mvps } = selecionarMvpsDasLinhas(linhas);
+
   return {
     weekStart,
     ranking,
-    mvps: selecionarMvps(ranking),
+    mvps,
     ignorados: linhas.filter(l => l.motivo),
   };
 }

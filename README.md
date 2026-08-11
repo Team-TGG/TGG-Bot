@@ -94,7 +94,7 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 - [x] Criar `.blindagens` para listar os membros blindados.
 - [ ] Adicionar a tabela de warns em um comando do bot, bloqueado em canais que não sejam da staff.
 - [ ] Criar `.refund`, restrito ao dono.
-- [ ] Criar `.lb-guilda` (e aliases) com o leaderboard da guilda: público, uma chamada à API cruzada com os dados do banco.
+- [x] Criar `.lb-guilda` (e aliases) com o leaderboard da guilda: público, uma chamada à API cruzada com os dados do banco.
 
 ### Sistemas e Melhorias
 - [x] Discutir com staff/helpers os preços e o que incluir no Coach.

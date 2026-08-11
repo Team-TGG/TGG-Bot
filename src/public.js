@@ -5,13 +5,14 @@ import { getGuildWeeklyGuildPoints, getDuelGuildWeeklyGuildPoints, getPlayerWeek
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI, fetchPlayerGuildStatsNewAPI, fetchPlayerBasicNewAPI } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, videoGuilda as videoGuildaConfig, guildDuel as guildDuelConfig, justificativas as justificativasConfig, weeklyMvp as weeklyMvpConfig } from '../config/index.js';
 import { criarPedidoDeBlindagem, decidirBlindagem, getBlindagem, getPedidoPendenteDoMembro, registrarMensagemDoPedido, MAX_SEMANAS, STATUS } from './inactivity.js';
-import { calculateGames, calculateGamesFromClosedWeek } from './handlers/publicHandlers.js';
+import { calculateGames, calculateGamesFromClosedWeek, ORDENS_LB_GUILDA, POR_PAGINA_LB_GUILDA, ordenarLbGuilda, embedLbGuilda } from './handlers/publicHandlers.js';
 import { calcularContribuicaoSemanal, MOTIVOS } from './services/contribuicaoSemanal.js';
 import { CONTRIBUICAO_MINIMA } from './services/weeklyInactiveService.js';
+import { selecionarMvpsDasLinhas } from './services/weeklyMvpService.js';
 import { QUIZ_REWARD } from './handlers/tggCoinsHandlers.js';
 import { addTransaction, updateBalance } from './tggCoins.js';
 
-import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage } from '../utils/discordUtils.js';
+import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage, createPagination } from '../utils/discordUtils.js';
 import { isAdmin, adminOnly, channelOnly } from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
 import { SOCIALS } from '../config/socials.js';
@@ -722,6 +723,77 @@ export async function handleGuild(message, args, client) {
       await message.reply({ embeds: [errorEmbed] }).catch(() => { });
     }
   }
+}
+
+// .lb-guilda [total|semanal]
+export async function handleLbGuilda(message, args) {
+  let ordem = ORDENS_LB_GUILDA.TOTAL;
+
+  const pedida = message.interaction
+    ? message.interaction.options.getString('ordem')
+    : String(args?.[0] || '').toLowerCase();
+
+  if (['semanal', 'semana', 'week'].includes(String(pedida || '').toLowerCase())) {
+    ordem = ORDENS_LB_GUILDA.SEMANAL;
+  }
+
+  
+  // Mesma função que decide a inativação na quarta, de propósito: o número que o membro lê aqui é
+  // o que vai valer lá. Uma leitura serve as duas ordenações e todas as páginas — trocar de aba ou
+  // virar página não volta na API. Fica só quem tem cadastro no bot **e** está na guilda do jogo.
+  const { weekStart, linhas: todas } = await calcularContribuicaoSemanal();
+  const linhas = todas.filter(l => l.motivo !== MOTIVOS.FORA_DA_GUILDA);
+
+  if (!linhas.length) {
+    return message.reply({
+      embeds: [createErrorEmbed('Leaderboard vazio', 'Nenhum membro cadastrado foi encontrado na guilda do jogo.')]
+    });
+  }
+
+  // Mesma regra do cron de quarta 06:00, aplicada às linhas que já estão na mão: staff entra sem
+  // ocupar vaga e a lista fecha na 14ª vaga preenchida. É prévia — quem está marcado leva o cargo
+  // se a semana fechar agora.
+  const { mvps } = selecionarMvpsDasLinhas(linhas);
+  const mvpPorId = new Map(mvps.map(m => [m.discordId, { posicao: m.posicao }]));
+
+  const totalPaginas = () => Math.ceil(linhas.length / POR_PAGINA_LB_GUILDA) || 1;
+
+  // Ordena uma vez por ordenação, não a cada página
+  const cache = new Map();
+  const ordenadas = () => {
+    if (!cache.has(ordem)) cache.set(ordem, ordenarLbGuilda(linhas, ordem));
+    return cache.get(ordem);
+  };
+
+  await createPagination(message, {
+    getEmbed: (pagina) => embedLbGuilda({
+      linhas: ordenadas(),
+      pagina,
+      ordem,
+      weekStart,
+      totalPaginas: totalPaginas(),
+      mvpPorId,
+    }),
+    getTotalPages: totalPaginas,
+    // 14 páginas não se percorrem nos 60s do padrão; `idle` reinicia a cada clique
+    idle: 3 * 60 * 1000,
+    time: 15 * 60 * 1000,
+    prevId: 'prev_lbguilda',
+    nextId: 'next_lbguilda',
+    extraButtons: () => [
+      new ButtonBuilder()
+        .setCustomId('toggle_ordem_lbguilda')
+        .setLabel(ordem === ORDENS_LB_GUILDA.SEMANAL ? 'Ver Totais' : 'Ver da Semana')
+        .setEmoji(ordem === ORDENS_LB_GUILDA.SEMANAL ? '🏛️' : '📈')
+        .setStyle(ButtonStyle.Secondary),
+    ],
+    onExtra: async (interaction) => {
+      if (interaction.customId === 'toggle_ordem_lbguilda') {
+        ordem = ordem === ORDENS_LB_GUILDA.SEMANAL ? ORDENS_LB_GUILDA.TOTAL : ORDENS_LB_GUILDA.SEMANAL;
+        return 1;
+      }
+    },
+  });
 }
 
 // .missoes

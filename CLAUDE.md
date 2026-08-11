@@ -167,6 +167,17 @@ semana de missões. Alt não entra — as duas medem a conta que está na guilda
 medido volta com `motivo` (`SEM_BASE`, `BASE_ZERADA`, `FORA_DA_GUILDA`) em vez de sumir: 0 e "não
 sei" são coisas diferentes, e tratar os dois como 0 daria MVP a quem não jogou e inativaria quem jogou.
 
+O `.lb-guilda` lê o mesmo número (ordenação e embed em
+[src/handlers/publicHandlers.js](src/handlers/publicHandlers.js)), filtrando `FORA_DA_GUILDA`: mostra quem tem cadastro **e** está na guilda do jogo. A rota devolve 643
+contas (11/08/2026) mas a base semanal só existe para as cadastradas — sem o filtro, dois terços da
+lista seria `—`. Registro incompleto da API (sem `rank`/`join_date`/`guild_points`, 38 das 643) vira
+`points: null`, que o cálculo continua lendo como 0 e o leaderboard mostra como `—`.
+
+O `.lb-guilda` também marca com 🏅 quem está elegível ao MVP, chamando `selecionarMvpsDasLinhas`
+(a parte pura de `calcularMvpsDaSemana`, extraída para os dois lados usarem a mesma regra em vez de
+recopiar o ranking). É prévia da quarta: mesma ordenação, mesmo `ocupaVaga`, mesmo fechamento na
+última vaga — inclusive o efeito de officer que aparece depois do corte ficar de fora.
+
 **MVP (quarta 06:00)** — cargo `weeklyMvp.roleId` para os 14 primeiros. Staff recebe sem ocupar
 vaga; a contagem fecha quando a 14ª vaga é preenchida, então officer que aparece depois fica de
 fora. Staff aqui é quem é staff em **qualquer** das duas fontes (`users.role` **ou** o `rank` do

@@ -64,3 +64,129 @@ export function calculateGamesFromClosedWeek(week) {
 
   return {totalGames, casualGames, games1v1, games2v2, games3v3};
 }
+
+// ---- Leaderboard da guilda (usado por handleLbGuilda, o .lb-guilda) ----
+
+export const POR_PAGINA_LB_GUILDA = 14;
+
+export const ORDENS_LB_GUILDA = { TOTAL: 'TOTAL', SEMANAL: 'SEMANAL' };
+
+const RANK_EMOJI = {
+  leader: EMOJIS.leaderGuild,
+  officer: EMOJIS.officerGuild,
+  member: EMOJIS.memberGuild,
+  recruit: EMOJIS.recruitGuild,
+};
+
+// Nome longo empurra a segunda coluna para baixo e desalinha a grade
+const MAX_NOME_LB_GUILDA = 22;
+
+function emojiDoRank(rank) {
+  return RANK_EMOJI[String(rank || '').toLowerCase()] ?? EMOJIS.square;
+}
+
+function numeroBR(valor) {
+  return Number(valor || 0).toLocaleString('pt-BR');
+}
+
+/**
+ * Ordena o leaderboard da guilda por total ou por semana.
+ *
+ * Quem não pôde ser medido na semana (`motivo` preenchido) vai para o fim em vez de valer 0 —
+ * senão a base não registrada de um membro ativo o jogaria para o rodapé junto de quem não jogou.
+ * Dentro desse grupo o desempate é o total, para a ordem não sair aleatória.
+ */
+export function ordenarLbGuilda(linhas, ordem) {
+  const copia = [...linhas];
+
+  if (ordem === ORDENS_LB_GUILDA.SEMANAL) {
+    return copia.sort((a, b) => {
+      if (!!a.motivo !== !!b.motivo) return a.motivo ? 1 : -1;
+      if (a.motivo && b.motivo) return (b.pontosTotais ?? 0) - (a.pontosTotais ?? 0);
+      return b.contribuicao - a.contribuicao;
+    });
+  }
+
+  return copia.sort((a, b) => {
+    // Total desconhecido vai para o fim, pelo mesmo motivo: não é o mesmo que ter zero
+    if ((a.pontosTotais == null) !== (b.pontosTotais == null)) return a.pontosTotais == null ? 1 : -1;
+    return (b.pontosTotais ?? 0) - (a.pontosTotais ?? 0);
+  });
+}
+
+function campoDoMembroLbGuilda(linha, posicao, ordem, mvp) {
+  const nome = linha.nome.length > MAX_NOME_LB_GUILDA
+    ? `${linha.nome.slice(0, MAX_NOME_LB_GUILDA - 1)}…`
+    : linha.nome;
+
+  const semana = linha.motivo ? '—' : `**${numeroBR(linha.contribuicao)}**`;
+  const total = linha.pontosTotais == null ? '—' : `**${numeroBR(linha.pontosTotais)}**`;
+
+  // A linha da ordenação em uso vai primeiro, para a coluna que o usuário está lendo ficar alinhada
+  const valor = ordem === ORDENS_LB_GUILDA.SEMANAL
+    ? [`📈 ${semana} na semana`, `🏛️ ${total} no total`]
+    : [`🏛️ ${total} no total`, `📈 ${semana} na semana`];
+
+  // Mesmo vocabulário do anúncio da quarta: número para quem ocupa vaga, ⭐ para staff
+  if (mvp) valor.push(mvp.posicao ? `🏅 MVP **${mvp.posicao}º**` : '🏅 MVP ⭐ staff');
+
+  return {
+    name: `${posicao}. ${emojiDoRank(linha.rankNoJogo)} ${nome}`,
+    value: valor.join('\n'),
+    inline: true,
+  };
+}
+
+/**
+ * Uma página do leaderboard da guilda, em duas colunas de sete.
+ *
+ * `mvpPorId` é o mapa discordId → `{ posicao }` de quem está elegível ao MVP da semana, montado com
+ * a regra do cron (`selecionarMvpsDasLinhas`). A marca aparece nas duas ordenações: elegibilidade é
+ * da semana, não da coluna que está sendo olhada.
+ */
+export function embedLbGuilda({ linhas, pagina, ordem, weekStart, totalPaginas, mvpPorId }) {
+  const inicio = (pagina - 1) * POR_PAGINA_LB_GUILDA;
+  const daPagina = linhas.slice(inicio, inicio + POR_PAGINA_LB_GUILDA);
+
+  const campos = [];
+
+  daPagina.forEach((linha, i) => {
+    campos.push(campoDoMembroLbGuilda(linha, inicio + i + 1, ordem, mvpPorId?.get(linha.discordId)));
+    // O Discord empacota 3 campos inline por fileira; o campo vazio força a quebra em 2 colunas
+    if (i % 2 === 1) campos.push({ name: '​', value: '​', inline: true });
+  });
+
+  // As duas colunas ficam sem dado por motivos diferentes, e juntar os dois números numa nota só
+  // faria parecer que a API está falhando com a guilda toda. O total falta quando a rota devolve o
+  // registro incompleto; a semana falta quando ninguém gravou a base da conta.
+  const semTotal = linhas.filter(l => l.pontosTotais == null).length;
+  const semSemana = linhas.filter(l => l.motivo).length;
+
+  const nota = ordem === ORDENS_LB_GUILDA.SEMANAL
+    ? semSemana && `\`—\` na semana = base não gravada para a conta (${semSemana} de ${linhas.length}); ` +
+      'sem ela não dá para medir o ganho.'
+    : semTotal && `\`—\` no total = a API devolveu o registro incompleto (${semTotal} de ${linhas.length}).`;
+
+  // A elegibilidade é uma prévia: quem está marcado leva o cargo se a semana fechar agora
+  const notaMvp = mvpPorId?.size
+    ? `🏅 = elegível ao MVP da semana (${mvpPorId.size} hoje), pela regra da quarta 06:00. ` +
+      '⭐ = staff, leva o cargo sem ocupar vaga.'
+    : null;
+
+  const descricao = [
+    ordem === ORDENS_LB_GUILDA.SEMANAL
+      ? '📈 Ordenado pelos **guild points desta semana**.'
+      : '🏛️ Ordenado pelos **guild points totais**.',
+    `Semana de missões iniciada em ${String(weekStart).slice(0, 10).split('-').reverse().join('/')}.`,
+    notaMvp ? `\n${notaMvp}` : null,
+    nota ? `${notaMvp ? '' : '\n'}${nota}` : null,
+  ].filter(Boolean).join('\n');
+
+  return new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle('🏆 Leaderboard da Guilda')
+    .setDescription(descricao)
+    .addFields(campos)
+    .setFooter({ text: `Página ${pagina}/${totalPaginas} • ${linhas.length} membros cadastrados` })
+    .setTimestamp();
+}

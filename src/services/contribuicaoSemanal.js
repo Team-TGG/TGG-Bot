@@ -42,6 +42,7 @@ export function calcularContribuicoes({ users, baseByAccount, membrosDaGuilda, i
       rankNoJogo: membro?.rank ?? null,
       joinDate: membro?.joinDate ?? 0,
       entrouNaSemana,
+      pontosTotais: membro?.points ?? null,
       contribuicao: 0,
       motivo: null,
     };
@@ -95,7 +96,11 @@ export async function calcularContribuicaoSemanal() {
     (guildMembers.guild_members ?? []).map(m => [String(m.brawlhalla_id), {
       name: m.name,
       rank: m.rank ?? null,
-      points: Number(m.guild_points || 0),
+      // A rota devolve alguns registros só com id/nome/xp - sem rank, join_date nem guild_points
+      // (38 de 643, medido em 11/08/2026). Guardar null em vez de 0 mantém "não sei" separado de
+      // "zerou a semana". O cálculo abaixo ainda lê null como 0, como sempre leu; quem precisa da
+      // diferença é o `.lb-guilda`, que mostra "—".
+      points: m.guild_points == null ? null : Number(m.guild_points),
       // join_date separa base 0 legítima (entrou nesta semana) de base 0 não registrada
       joinDate: Number(m.join_date || 0),
     }])
