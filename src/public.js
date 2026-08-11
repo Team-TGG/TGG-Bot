@@ -1,9 +1,10 @@
 // public.js - Comandos públicos
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
 import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getMonthWeekStartDateTime, getCurrentSeason, getSeasonWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID, incrementCrz, getUserByDiscordId, getContasVinculadas, getMemberJustifications } from './db.js';
-import { getGuildWeeklyGuildPoints, getDuelGuildWeeklyGuildPoints, getPlayerWeeklyGuildPoints } from './guild.js';
+import { getPlayerWeeklyGuildPoints } from './guild.js';
+import { calcularDueloDaSemana, SEM_DUELO } from './services/dueloSemanal.js';
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI, fetchPlayerGuildStatsNewAPI, fetchPlayerBasicNewAPI } from './brawlhalla.js';
-import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, videoGuilda as videoGuildaConfig, guildDuel as guildDuelConfig, justificativas as justificativasConfig, weeklyMvp as weeklyMvpConfig } from '../config/index.js';
+import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, videoGuilda as videoGuildaConfig, justificativas as justificativasConfig, weeklyMvp as weeklyMvpConfig } from '../config/index.js';
 import { criarPedidoDeBlindagem, decidirBlindagem, getBlindagem, getPedidoPendenteDoMembro, registrarMensagemDoPedido, MAX_SEMANAS, STATUS } from './inactivity.js';
 import { calculateGames, calculateGamesFromClosedWeek, ORDENS_LB_GUILDA, POR_PAGINA_LB_GUILDA, ordenarLbGuilda, embedLbGuilda } from './handlers/publicHandlers.js';
 import { calcularContribuicaoSemanal, MOTIVOS } from './services/contribuicaoSemanal.js';
@@ -1729,57 +1730,30 @@ export async function handleVideoGuilda(message, args, client) {
 // .duel
 export async function handleDuel(message, args, client) {
   try {
-    const OUR_GUILD_ID = guildDuelConfig.ourGuildId;
+    // O placar mora em services/dueloSemanal.js: o `.ia` responde sobre o duelo lendo o mesmo
+    // cálculo, e um número que discorda do `.duel` seria pior que não responder.
+    const duelo = await calcularDueloDaSemana();
 
-    // Busca os dados da nossa guilda pela API
-    const ourGuild = await fetchGuildStatsNewAPI(OUR_GUILD_ID);
-
-    // Busca os pontos da nossa guilda salvos no início da semana
-    const ourGuildWeekly = await getGuildWeeklyGuildPoints();
-
-    // Busca os dados da guilda rival no banco
-    const duelGuildData = await getDuelGuildWeeklyGuildPoints();
-
-    if (!duelGuildData) {
+    if (duelo.motivo === SEM_DUELO.SEM_OPONENTE) {
       return message.reply('Nenhuma guilda rival configurada para esta semana.');
     }
 
-    const enemyGuildId = duelGuildData.guild_id;
-
-    if (!enemyGuildId) {
+    if (duelo.motivo === SEM_DUELO.OPONENTE_SEM_ID) {
       return message.reply('Guilda rival sem guild_id configurado.');
     }
 
-    // Busca os dados atuais da guilda rival na API
-    const enemyGuild = await fetchGuildStatsNewAPI(enemyGuildId);
+    const { nos, eles } = duelo;
+    const ourDiff = nos.ganhoNaSemana;
+    const enemyDiff = eles.ganhoNaSemana;
 
-    // Pontos atuais
-    const ourCurrentPoints = Number(ourGuild.guild_points || 0);
-    const enemyCurrentPoints = Number(enemyGuild.guild_points || 0);
-
-    // Pontos do início da semana
-    const ourInitialPoints = Number(ourGuildWeekly?.total_guild_points || 0);
-    const enemyInitialPoints = Number(duelGuildData.guild_points || 0);
-
-    // Diferença semanal
-    const ourDiff = ourCurrentPoints - ourInitialPoints;
-    const enemyDiff = enemyCurrentPoints - enemyInitialPoints;
-
-    // Quem está vencendo
     let winnerText = '🤝 Empate';
 
-    if (ourDiff > enemyDiff) {
-      winnerText = `🏆 ${ourGuild.name} está vencendo`;
-    } else if (enemyDiff > ourDiff) {
-      winnerText = `🏆 ${enemyGuild.name} está vencendo`;
-    }
-
-    // Diferença entre as guildas
-    const duelDifference = Math.abs(ourDiff - enemyDiff);
+    if (duelo.vencendo === 'nos') winnerText = `🏆 ${nos.nome} está vencendo`;
+    else if (duelo.vencendo === 'eles') winnerText = `🏆 ${eles.nome} está vencendo`;
 
     // Convite do Discord de cada guilda, quando a guilda cadastrou um
-    const discordDaGuilda = (guild) => guild?.discord_invite_code
-      ? `💬 **Discord:** discord.gg/${guild.discord_invite_code}`
+    const discordDaGuilda = (lado) => lado.convite
+      ? `💬 **Discord:** discord.gg/${lado.convite}`
       : '💬 **Discord:** não informado';
 
     // Top 5 nossos na semana. Falha no cálculo não derruba o duelo.
@@ -1803,30 +1777,30 @@ export async function handleDuel(message, args, client) {
       .setDescription(winnerText)
       .addFields(
         {
-          name: `${ourGuild.name}`,
+          name: `${nos.nome}`,
           value:
-            `👥 **Membros:** ${ourGuild.member_count}\n` +
-            `📈 **Guild Points:** ${ourCurrentPoints.toLocaleString()}\n` +
+            `👥 **Membros:** ${nos.membros}\n` +
+            `📈 **Guild Points:** ${nos.pontosAtuais.toLocaleString()}\n` +
             `🔥 **Pontos na semana:** ${ourDiff.toLocaleString()}\n` +
-            discordDaGuilda(ourGuild),
+            discordDaGuilda(nos),
           inline: true
         },
         {
-          name: `${enemyGuild.name}`,
+          name: `${eles.nome}`,
           value:
-            `👥 **Membros:** ${enemyGuild.member_count}\n` +
-            `📈 **Guild Points:** ${enemyCurrentPoints.toLocaleString()}\n` +
+            `👥 **Membros:** ${eles.membros}\n` +
+            `📈 **Guild Points:** ${eles.pontosAtuais.toLocaleString()}\n` +
             `🔥 **Pontos na semana:** ${enemyDiff.toLocaleString()}\n` +
-            discordDaGuilda(enemyGuild),
+            discordDaGuilda(eles),
           inline: true
         },
         {
           name: '📊 Diferença',
-          value: `${duelDifference.toLocaleString()} pontos`,
+          value: `${duelo.diferenca.toLocaleString()} pontos`,
           inline: false
         },
         {
-          name: `🏅 Top 5 da semana - ${ourGuild.name}`,
+          name: `🏅 Top 5 da semana - ${nos.nome}`,
           value: topTexto,
           inline: false
         }

@@ -470,6 +470,25 @@ export async function getEventosNaoAvisados(limite = 100) {
   return data ?? [];
 }
 
+/**
+ * Movimentação na guilda do jogo a partir de uma data, avisada ou não.
+ *
+ * Diferente de `getEventosNaoAvisados`, que é a fila do aviso de 15 em 15 min: aqui a pergunta é
+ * "o que aconteceu na semana", e o que já foi avisado continua fazendo parte da resposta.
+ */
+export async function getMovimentacaoDesde(desde, limite = 200) {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('guild_membership_history')
+    .select('brawlhalla_id, nome, rank, action, occurred_at')
+    .gte('occurred_at', desde)
+    .order('occurred_at', { ascending: false })
+    .limit(limite);
+
+  if (error) throw error;
+  return data ?? [];
+}
+
 /** Marca eventos como avisados. Chamado só depois do envio dar certo. */
 export async function marcarEventosAvisados(ids) {
   if (!ids.length) return;

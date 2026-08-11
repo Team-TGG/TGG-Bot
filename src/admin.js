@@ -2644,8 +2644,9 @@ export const handleIa = adminOnly(async (message, args) => {
       return sendCleanMessage(loading, {
         embeds: [createErrorEmbed(
           'Não sei responder isso',
-          'Por enquanto eu só respondo sobre **contribuição da semana**, **MVPs**, **inativação** ' +
-          'e a situação de **um membro específico**. Tente reformular.'
+          'Por enquanto eu só respondo sobre **contribuição da semana**, **MVPs**, **inativação**, ' +
+          '**jogos e situação de um membro**, **movimentação da guilda** e o **duelo semanal**. ' +
+          'Tente reformular.'
         )]
       });
     }

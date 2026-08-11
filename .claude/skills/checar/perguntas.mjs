@@ -33,14 +33,21 @@ const CASOS = [
   ['me mostra o top 5 da semana', 'ranking_contribuicao', { limite: 5 }],
   ['quanto o Feijao contribuiu?', 'contribuicao_de_membro', { nome: 'Feijao' }],
   ['o Pizzolho corre risco de ser inativado?', 'contribuicao_de_membro', { nome: 'Pizzolho' }],
+  // Nome de pessoa + partidas vai para jogos_de_membro, não para contribuicao_de_membro: as duas
+  // casam com "cita uma pessoa" e a instrução de escolha desempata.
+  ['quantos jogos o Feijao fez essa semana?', 'jogos_de_membro', { nome: 'Feijao' }],
+  ['o Pizzolho jogou muito e contribuiu pouco?', 'jogos_de_membro', { nome: 'Pizzolho' }],
+  ['quem entrou na guilda essa semana?', 'movimentacao_da_guilda'],
+  ['teve muita saída nos últimos 7 dias?', 'movimentacao_da_guilda', { dias: 7 }],
+  ['quem foi promovido?', 'movimentacao_da_guilda'],
+  ['contra quem a gente joga o duelo essa semana?', 'duelo_da_semana'],
+  ['a gente tá ganhando o duelo?', 'duelo_da_semana'],
   // Fora do catálogo: sem `nao_sei_responder` o `mode: 'ANY'` obriga o modelo a escolher uma das
   // outras e a resposta sai confiante e errada. Ferramenta nova pode reabrir esse buraco.
   ['quantos membros a guilda tem?', 'nao_sei_responder'],
-  ['quem entrou na guilda essa semana?', 'nao_sei_responder'],
   ['qual o elo mais alto da guilda?', 'nao_sei_responder'],
   ['quem tem mais TGG Coins?', 'nao_sei_responder'],
-  ['contra quem a gente joga o duelo essa semana?', 'nao_sei_responder'],
-  ['quantos jogos o Feijao fez essa semana?', 'nao_sei_responder'],
+  ['quais são as missões dessa semana?', 'nao_sei_responder'],
 ];
 
 // Resultado inventado, com a forma que `ranking_contribuicao` devolve. Serve para checar a segunda
@@ -59,6 +66,7 @@ const RESULTADO_DE_MENTIRA = {
 // abaixo do teto e o retry cobre o caso de a lista crescer ou de o bot estar sendo usado junto.
 const INTERVALO_MS = 5_000;
 const ESPERA_APOS_429_MS = 65_000;
+const ESPERA_APOS_FALHA_MS = 3_000;
 
 const linha = '─'.repeat(72);
 const falhas = [];
@@ -66,15 +74,26 @@ let gastas = 0;
 
 const dormir = (ms) => new Promise(r => setTimeout(r, ms));
 
-/** Uma tentativa a mais quando o 429 é de ritmo. Cota diária estourada falha nas duas. */
+/**
+ * Uma tentativa a mais quando a falha é de ritmo ou de rede. Cota diária estourada falha nas duas,
+ * e roteamento errado não é falha — chega aqui como resposta normal.
+ *
+ * Timeout entra no retry porque o teto de 20s do `iaProvider` estoura sozinho de vez em quando, e
+ * sem isso a lista acusa erro de roteamento onde só houve rede ruim.
+ */
 async function comRetry(fn) {
   gastas++;
   try {
     return await fn();
   } catch (e) {
-    if (!e.message.includes('429')) throw e;
-    console.log(`  ...  429 (limite por minuto), esperando ${ESPERA_APOS_429_MS / 1000}s`);
-    await dormir(ESPERA_APOS_429_MS);
+    const porRitmo = e.message.includes('429');
+    const transitoria = /timeout|abort|fetch failed|ECONNRESET/i.test(e.message);
+
+    if (!porRitmo && !transitoria) throw e;
+
+    const espera = porRitmo ? ESPERA_APOS_429_MS : ESPERA_APOS_FALHA_MS;
+    console.log(`  ...  ${porRitmo ? '429 (limite por minuto)' : 'falha transitória'}, esperando ${espera / 1000}s`);
+    await dormir(espera);
     gastas++;
     return fn();
   }

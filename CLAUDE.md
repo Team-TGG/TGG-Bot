@@ -261,6 +261,30 @@ então o valor lido é o fechamento da semana **e** a linha de base da seguinte.
 Não sobrescreve semana já cadastrada. Sem oponente no rank alvo (guilda nova no topo), avisa a
 staff chamando o líder em vez de gravar palpite.
 
+### `.ia` — pergunta em linguagem natural
+
+A IA **não calcula nada**. Ela faz duas coisas: escolhe qual função do bot responde a pergunta e
+escreve a frase em português a partir do resultado. Todo número sai dos mesmos serviços que decidem
+o MVP, a inativação e o `.duel` — se a IA somasse dados crus, o `.ia` daria um número que discorda
+da quarta-feira, que é exatamente o que [contribuicaoSemanal.js](src/services/contribuicaoSemanal.js)
+existe para evitar.
+
+Cada ferramenta é um **par**: a declaração que a IA lê e o executor que roda no bot, ambos em
+[src/handlers/iaHandlers.js](src/handlers/iaHandlers.js). Ferramenta nova exige os dois. A exceção é
+`nao_sei_responder`, declaração sem executor de propósito: o roteador usa `mode: 'ANY'`, que obriga o
+modelo a escolher alguma ferramenta, e sem essa saída pergunta fora do catálogo vira resposta
+confiante e errada. Ao adicionar ferramenta, **tire o assunto novo da descrição de
+`nao_sei_responder`** e da mensagem de "não sei responder isso" em `handleIa`.
+
+O que volta para a IA leva só apelido do jogo e números — `discord_id` e `brawlhalla_id` nunca saem
+daqui, porque o free tier pode usar o conteúdo para treino.
+
+Quem decide o roteamento é a `description` de cada ferramenta, então mexer numa pode roubar
+pergunta da vizinha. Depois de qualquer edição ali, rode
+`node .claude/skills/checar/perguntas.mjs` — a lista de perguntas de referência é o que separa
+"consertei" de "troquei um erro por outro". A segunda chamada precisa devolver o `thoughtSignature`
+da primeira; sem ele os modelos Gemini 3 recusam com 400 e a frase some do embed sem erro visível.
+
 ### API do Brawlhalla
 
 Referência completa em [docs/brawlhalla-api.md](docs/brawlhalla-api.md): endpoints, schemas, o que ainda
