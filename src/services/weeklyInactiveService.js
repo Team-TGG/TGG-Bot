@@ -189,16 +189,18 @@ export function montarAnuncio(inativos) {
   };
 }
 
+// O anúncio vai para `avisoChannelId` (log-guilda), não para o canal dos inativos: o `<#...>` da DM
+// e o `.active` continuam apontando para `channelId`, que é onde o membro interage.
 async function anunciar(client, payload) {
-  if (!config.channelId) {
-    console.warn('[INATIVOS] channelId não configurado - anúncio pulado');
+  if (!config.avisoChannelId) {
+    console.warn('[INATIVOS] avisoChannelId não configurado - anúncio pulado');
     return false;
   }
 
-  const canal = await client.channels.fetch(config.channelId).catch(() => null);
+  const canal = await client.channels.fetch(config.avisoChannelId).catch(() => null);
 
   if (!canal) {
-    console.warn(`[INATIVOS] canal ${config.channelId} não encontrado - anúncio pulado`);
+    console.warn(`[INATIVOS] canal ${config.avisoChannelId} não encontrado - anúncio pulado`);
     return false;
   }
 

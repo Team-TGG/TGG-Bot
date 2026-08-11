@@ -450,6 +450,59 @@ export async function getMembershipHistory(brawlhallaId) {
 }
 
 /**
+ * Movimentação na guilda do jogo ainda não avisada no Discord, em ordem crescente.
+ * Todas as ações: entrou, saiu, promovido, rebaixado.
+ *
+ * `avisado` é a única coluna desta tabela que o bot escreve — o resto é do cron do site.
+ * O `is.null` cobre linha criada antes da coluna existir; com o `default false` do schema
+ * ela nunca deveria aparecer, mas ignorar em silêncio seria pior que avisar de novo.
+ */
+export async function getEventosNaoAvisados(limite = 100) {
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('guild_membership_history')
+    .select('id, brawlhalla_id, nome, rank, action, occurred_at')
+    .or('avisado.is.false,avisado.is.null')
+    .order('occurred_at', { ascending: true })
+    .limit(limite);
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Marca eventos como avisados. Chamado só depois do envio dar certo. */
+export async function marcarEventosAvisados(ids) {
+  if (!ids.length) return;
+
+  const supabase = getClient();
+  const { error } = await supabase
+    .from('guild_membership_history')
+    .update({ avisado: true })
+    .in('id', ids);
+
+  if (error) throw error;
+}
+
+/**
+ * Cadastro no bot de uma lista de brawlhalla_ids.
+ * Diferente de `getUsersByBrawlhallaIds`, mantém quem não tem `discord_id` e traz `active`/`role` —
+ * quem saiu do jogo e continua ativo no cadastro é justamente o que a staff precisa ver.
+ */
+export async function getCadastroPorBrawlhallaIds(brawlhallaIds) {
+  if (!brawlhallaIds.length) return new Map();
+
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('users')
+    .select('discord_id, brawlhalla_id, role, active')
+    .in('brawlhalla_id', brawlhallaIds.map(String));
+
+  if (error) throw error;
+
+  return new Map((data ?? []).map(row => [String(row.brawlhalla_id), row]));
+}
+
+/**
  * Início da semana de missões anterior (quinta 06:00 da semana passada).
  * Mesmo cálculo que o botão "Semana passada" do .games faz inline.
  */

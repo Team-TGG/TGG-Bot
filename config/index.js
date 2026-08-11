@@ -51,7 +51,11 @@ export const brawlhalla = {
 
 export const inactivePlayers = {
   inactiveRoleId: '1468593277363290304',
+  // Canal dos inativos: onde o lembrete de 3h é postado e o único lugar onde `.active` funciona.
+  // Não confundir com `avisoChannelId` — este aqui é o canal em que o inativo interage.
   channelId: '1468600851290521692',
+  // Anúncio da inativação semanal (quarta 06:10, src/services/weeklyInactiveService.js).
+  avisoChannelId: '1536704688689516624', // log-guilda
   messageEnabled: true,
   messageInterval: process.env.INACTIVE_MESSAGE_INTERVAL,
 };
@@ -59,7 +63,7 @@ export const inactivePlayers = {
 // Pedidos de blindagem do `.justificativa`: onde a staff aprova ou recusa
 // (ver src/services/weeklyInactiveService.js e o roteamento em src/interactions.js).
 export const justificativas = {
-  channelId: '1448392117410857092', // canal de helper
+  channelId: '1536704688689516624', // log-guilda
 };
 
 // Lembrete de domingo 12:00 para quem ainda não bateu a contribuição mínima
@@ -87,8 +91,8 @@ export const tggCoinsEvents = {
 // Cadastro automático das missões, toda quinta 06:00 (ver src/services/weeklyMissionsService.js).
 // Sem channelId as missões continuam sendo cadastradas - só o anúncio é pulado.
 export const weeklyMissions = {
-  channelId: '1448392117410857092', // canal de helper
-  correcaoUrl: 'https://teamtgg.com.br/cadastro_usuario', // onde corrigir divergência
+  channelId: '1536704688689516624', // log-guilda
+  correcaoUrl: 'https://teamtgg.com.br/cadastro_missao', // onde corrigir divergência
 };
 
 // MVP da semana, trocado sozinho na quarta 06:00 (ver src/services/weeklyMvpService.js).
@@ -97,14 +101,24 @@ export const weeklyMissions = {
 // anúncio é pulado.
 export const weeklyMvp = {
   roleId: '1448466041997889769',
-  channelId: '1448392117410857092', // canal de helper
+  channelId: '1536704688689516624', // log-guilda
   limite: 14,
 };
 
 // Duelo semanal de guildas, cadastrado sozinho na quarta 07:00 (ver src/services/guildDuelService.js).
 export const guildDuel = {
   ourGuildId: '396943',
-  channelId: '1448392117410857092', // canal de helper
+  channelId: '1536704688689516624', // log-guilda
+};
+
+// Aviso de movimentação na guilda do jogo - entrou, saiu, promovido, rebaixado
+// (ver src/services/guildHistoryService.js). A tabela `guild_membership_history` é alimentada
+// pelo cron do site a cada 15 min; o bot só lê e avisa.
+export const guildHistory = {
+  channelId: '1536704688689516624', // log-guilda
+  // Teto por ação em cada aviso: leva grande vira uma linha de resumo em vez de estourar
+  // o limite de 1024 caracteres do campo do embed.
+  maxPorAcao: 15,
 };
 
 export const motd = {

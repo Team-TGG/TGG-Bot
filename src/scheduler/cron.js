@@ -7,6 +7,7 @@ import { registrarDueloDaSemana } from '../services/guildDuelService.js';
 import { trocarMvpsDaSemana } from '../services/weeklyMvpService.js';
 import { inativarSemana } from '../services/weeklyInactiveService.js';
 import { lembrarContribuicao } from '../services/contributionReminderService.js';
+import { avisarMovimentacao } from '../services/guildHistoryService.js';
 
 export function startCronJobs(client, services) {
   const {
@@ -116,6 +117,19 @@ export function startCronJobs(client, services) {
       await registrarDueloDaSemana(client);
     } catch (err) {
       console.error('[CRON ERROR - Duelo]', err);
+    }
+  }, {
+    timezone: 'America/Sao_Paulo'
+  });
+
+  // Movimentação da guilda - 5 min depois de cada quarto de hora. O cron do site grava
+  // `guild_membership_history` nos :00/:15/:30/:45, então a folga evita ler no meio da gravação
+  // e partir uma leva em dois avisos.
+  cron.schedule('5,20,35,50 * * * *', async () => {
+    try {
+      await avisarMovimentacao(client);
+    } catch (err) {
+      console.error('[CRON ERROR - Historico]', err);
     }
   }, {
     timezone: 'America/Sao_Paulo'

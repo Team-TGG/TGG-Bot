@@ -184,7 +184,36 @@ condição só, e vale para o cron e para o `.inativar`.
 **Blindagem** (`inactivity_shields`): quem nunca é inativado. Officer e admin não precisam de linha
 — são pulados pelo `users.role`. Membro específico entra por insert manual no Supabase (`weeks`
 nulo = permanente). O `.justificativa <motivo> <semanas>` do membro cria a linha como `pendente`,
-que **não protege nada** até um officer/admin aprovar pelos botões no canal de helper.
+que **não protege nada** até um officer/admin aprovar pelos botões no canal de log-guilda.
+
+Os avisos automáticos de missões, MVP, inativação, duelo e pedido de blindagem vão todos para
+**log-guilda** (`1536704688689516624`), para não misturar log com chat. Os botões de
+`justificativa_*` não passam pela allowlist de canal (só `isChatInputCommand` passa), então mover
+o pedido de canal não quebra a aprovação. O canal dos inativos (`inactivePlayers.channelId`)
+continua sendo outro — é onde o lembrete de 3h é postado e o único lugar onde `.active` funciona.
+
+### Movimentação da guilda
+
+`guild_membership_history` é escrita pelo cron do site (`automations/guild_history.php`) a cada 15 min,
+com `action` em `entrou`/`saiu`/`promovido`/`rebaixado` (medido em 11/08/2026: 639/478/124/10 linhas).
+O bot **só lê**: a cada quarto de hora + 5 min, `avisarMovimentacao`
+([src/services/guildHistoryService.js](src/services/guildHistoryService.js)) procura linhas novas e
+posta um embed em log-guilda, com um campo por ação. `action` fora dessas quatro é ignorada no aviso,
+mas ainda avança a marca — senão a rotina releria a mesma linha para sempre.
+
+O controle do que já foi avisado é a coluna **`avisado`** (`boolean not null default false`), a
+**única** coluna desta tabela que o bot escreve — exceção deliberada ao "site escreve, bot lê",
+porque o estado precisa sobreviver a rodar o bot de outra máquina, coisa que arquivo local não faz.
+O cron do site não precisa saber da coluna: o `default false` marca cada linha nova como pendente.
+O histórico antigo foi zerado com um `update ... set avisado = true` na criação da coluna, senão o
+primeiro boot despejaria as ~1.250 linhas de uma vez.
+
+A marcação vem **depois** do envio dar certo, então falha do Discord repete o aviso em vez de
+engoli-lo. Se a coluna não existir (`42703`), a rotina loga o SQL que falta e desiste da passada, em
+vez de estourar a cada 15 min.
+O aviso anota o estado no cadastro do bot, que é o que gera trabalho para a staff: quem saiu do jogo e
+continua `active` segue contando em sync, missões e inatividade; quem entrou e não tem cadastro ainda
+precisa do `.entrou`. **Não existe comando de saída** — a desativação é feita fora do bot.
 
 ### Duelo semanal de guildas
 
@@ -251,6 +280,8 @@ Todos registrados no `ClientReady`:
   ([src/services/weeklyInactiveService.js](src/services/weeklyInactiveService.js)). Ver abaixo.
 - Cron `0 7 * * 3` — cadastra o duelo da semana seguinte
   ([src/services/guildDuelService.js](src/services/guildDuelService.js)). Ver abaixo.
+- Cron `5,20,35,50 * * * *` — avisa entradas, saídas, promoções e rebaixamentos na guilda do jogo
+  ([src/services/guildHistoryService.js](src/services/guildHistoryService.js)). Ver abaixo.
 - `setInterval` — lembrete de inativos (3h por padrão, `INACTIVE_MESSAGE_INTERVAL`).
 - `restoreMutes` / `restoreTemporaryWarnings` — reagendam expirações persistidas em `mutes` / `warnings`
   depois de um restart.
