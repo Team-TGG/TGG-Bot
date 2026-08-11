@@ -801,7 +801,7 @@ export const handleBan = adminOnly(async (message, args, client) => {
     if (confirmed === null) return;
 
     if (!confirmed) {
-      return interaction.update({
+      return interaction.editReply({
         embeds: [createErrorEmbed('Ação Cancelada', 'O banimento foi cancelado.')],
         components: []
       });
@@ -809,7 +809,7 @@ export const handleBan = adminOnly(async (message, args, client) => {
 
     await member.ban({ reason });
 
-    await interaction.update({
+    await interaction.editReply({
       embeds: [createSuccessEmbed('Usuário Banido', `${member.user.tag} foi banido.\n**Motivo:** ${reason}`)],
       components: []
     });
@@ -881,7 +881,7 @@ export const handleBam = adminOnly(async (message, args, client) => {
     if (confirmed === null) return;
 
     if (!confirmed) {
-      return interaction.update({
+      return interaction.editReply({
         embeds: [createErrorEmbed('Ação Cancelada', 'O BAM foi cancelado.')],
         components: []
       });
@@ -899,7 +899,7 @@ export const handleBam = adminOnly(async (message, args, client) => {
         text: 'Este comando é fake e não faz absolutamente nada.'
       });
 
-    await interaction.update({
+    await interaction.editReply({
       embeds: [fakeEmbed],
       components: []
     });
@@ -1078,7 +1078,7 @@ export const handleInativar = adminOnly(async (message, args, client) => {
 
     if (!confirmed) {
       if (interaction) {
-        await interaction.update({
+        await interaction.editReply({
           embeds: [createErrorEmbed('Cancelado', 'Ninguém foi inativado.')],
           components: [],
         });
@@ -1086,7 +1086,7 @@ export const handleInativar = adminOnly(async (message, args, client) => {
       return;
     }
 
-    await interaction.update({
+    await interaction.editReply({
       embeds: [createLoadingEmbed(`${EMOJIS.loading} Inativando...`, 'Gravando a lista, aplicando cargo e mandando as mensagens.')],
       components: [],
     });
@@ -1373,7 +1373,7 @@ export const handleEntrou = adminOnly(async (message, args, client) => {
     if (confirmed === null) return;
 
     if (!confirmed) {
-      return interaction.update({
+      return interaction.editReply({
         embeds: [createErrorEmbed('Operação Cancelada', 'O cadastro do usuário foi cancelado.')],
         components: []
       });
@@ -1416,7 +1416,7 @@ export const handleEntrou = adminOnly(async (message, args, client) => {
       `${weeklyInfoNote}\n\n` +
       `Cargos atualizados com sucesso!`
     );
-    return interaction.update({ embeds: [successEmbed], components: [] });
+    return interaction.editReply({ embeds: [successEmbed], components: [] });
 
   } catch (err) {
     console.error(err);

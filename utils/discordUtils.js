@@ -125,6 +125,18 @@ export async function awaitConfirmation(message, embed, {
       if (interaction.user.id !== authorId) {
         return interaction.reply({ content: 'Você não pode usar isso.', ephemeral: true });
       }
+
+      // Confirma o clique ANTES de devolver o controle. O token de um componente vale 3s, e quem
+      // chama costuma gastar mais que isso entre a resposta e o aviso final (API do Brawlhalla,
+      // banco, cargos, criação de canal) — sem isso o Discord invalida a interação e o handler
+      // estoura com "Unknown interaction" depois de já ter feito o trabalho.
+      //
+      // Por isso quem recebe a `interaction` daqui responde com `editReply`, não com `update`:
+      // interação já reconhecida não aceita `update`.
+      await interaction.deferUpdate().catch(err => {
+        console.warn(`[awaitConfirmation] deferUpdate falhou: ${err.message}`);
+      });
+
       collector.stop('answered');
       resolve({ confirmed: interaction.customId === confirmId, interaction, msg });
     });

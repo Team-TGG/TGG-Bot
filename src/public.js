@@ -1019,8 +1019,14 @@ export async function handleJustificativa(message, args, client) {
 export async function handleJustificativaButton(interaction, client) {
   const [, acao, id] = interaction.customId.split('_');
 
+  // Reconhece antes de qualquer consulta: são até três idas ao banco até a resposta, e o token
+  // do botão vale 3s. Sem isso a decisão era gravada e a staff via "Esta interação falhou".
+  await interaction.deferUpdate().catch(err => {
+    console.warn(`[JUSTIFICATIVA] deferUpdate falhou: ${err.message}`);
+  });
+
   if (!(await isAdmin(interaction.user.id))) {
-    return interaction.reply({
+    return interaction.followUp({
       embeds: [createErrorEmbed('Acesso Negado', 'Apenas officers e administradores decidem justificativas.')],
       ephemeral: true,
     }).catch(() => {});
@@ -1036,7 +1042,7 @@ export async function handleJustificativaButton(interaction, client) {
   if (!pedido) {
     const atual = await getBlindagem(id).catch(() => null);
 
-    return interaction.reply({
+    return interaction.followUp({
       embeds: [createErrorEmbed(
         'Já decidido',
         atual?.approved_by
@@ -1064,7 +1070,7 @@ export async function handleJustificativaButton(interaction, client) {
     )
     .setTimestamp();
 
-  await interaction.update({ embeds: [embedDecidido], components: [] }).catch(() => {});
+  await interaction.editReply({ embeds: [embedDecidido], components: [] }).catch(() => {});
 
   const dm = new EmbedBuilder()
     .setColor(aprovar ? 0x57f287 : 0xed4245)

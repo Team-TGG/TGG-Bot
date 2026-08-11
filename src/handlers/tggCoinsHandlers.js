@@ -95,11 +95,18 @@ export async function handleBuyService(ctx) {
       });
     }
 
+    // Daqui pra frente são cinco idas ao banco antes da resposta, e o token do menu vale 3s.
+    // Reconhecer agora é o que impede o "Esta interação falhou" DEPOIS de a compra ter sido
+    // cobrada. Reconhecida a interação, o resto responde por editReply/followUp.
+    await interaction.deferUpdate().catch(err => {
+      console.warn(`[BuyService] deferUpdate falhou: ${err.message}`);
+    });
+
     // Dupla validação no saldo
     const balanceNow = await tggCoins.getBalance(discordId);
 
     if (balanceNow < finalPrice) {
-      return interaction.reply({
+      return interaction.followUp({
         embeds: [createErrorEmbed('Saldo insuficiente', 'Você não tem saldo suficiente.')],
         ephemeral: true
       });
@@ -116,7 +123,7 @@ export async function handleBuyService(ctx) {
     // Registrar compra
     await tggCoins.createPurchase(discordId, item);
 
-    await interaction.update({
+    await interaction.editReply({
       content: `<@${providerId}>`,
       embeds: [
         createSuccessEmbed(
@@ -682,18 +689,24 @@ export async function handleBuyCoach(ctx) {
       });
     }
 
+    // Mesmo motivo do handleBuyService: o token do menu vale 3s e daqui em diante há consulta
+    // de preço e de saldo antes de responder.
+    await interaction.deferUpdate().catch(err => {
+      console.warn(`[BuyCoach] deferUpdate falhou: ${err.message}`);
+    });
+
     const coachPrice = await tggCoins.getCoachPrice(item.id, coach.discord_id);
     const finalPrice = Number(coachPrice.price);
     const balanceNow = await tggCoins.getBalance(discordId);
 
     if (balanceNow < finalPrice) {
-      return interaction.reply({
+      return interaction.followUp({
         embeds: [createErrorEmbed('Saldo insuficiente', `Você precisa de ${finalPrice.toLocaleString('pt-BR')} TGG-Coins.`)],
         ephemeral: true
       });
     }
 
-    await interaction.update({
+    await interaction.editReply({
       content: 'Abrindo confirmação...',
       components: []
     });
@@ -724,7 +737,7 @@ export async function handleBuyCoach(ctx) {
     }
 
     if (!confirmed) {
-      return confirmInteraction.update({
+      return confirmInteraction.editReply({
         embeds: [createErrorEmbed('Compra cancelada', 'A contratação foi cancelada.')],
         components: []
       });
@@ -784,7 +797,7 @@ export async function handleBuyCoach(ctx) {
       ]
     });
 
-    await confirmInteraction.update({
+    await confirmInteraction.editReply({
       embeds: [
         createSuccessEmbed(
           'Coach contratado!',

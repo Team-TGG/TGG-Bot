@@ -1021,13 +1021,13 @@ export async function handleBuy(message, args) {
     if (confirmed === null) return;
 
     if (!confirmed) {
-      return interaction.update({
+      return interaction.editReply({
         embeds: [createErrorEmbed('Compra cancelada', 'A compra foi cancelada.')],
         components: []
       });
     }
 
-    await interaction.update({
+    await interaction.editReply({
       embeds: [createSuccessEmbed('Compra confirmada!', 'Processando compra...')],
       components: []
     });
