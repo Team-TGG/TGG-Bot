@@ -38,6 +38,9 @@ const CASOS = [
   ['movimentacao_da_guilda', {}],
   ['movimentacao_da_guilda', { dias: 7 }],
   ['duelo_da_semana', {}],
+  // A semana que vem nunca está cadastrada, então este caso é o que exercita a previsão pelo ciclo
+  ['missoes_da_semana', {}],
+  ['missoes_da_semana', { quando: 'proxima' }],
   // O "eu": nome vazio resolve pelo discord_id de quem perguntou. O autor é lido do banco na hora
   // (ver `autorDeVerdade`) porque cravar um ID aqui quebraria o teste quando essa pessoa saísse.
   ['contribuicao_de_membro', {}, { comoAutor: true, exigeEncontrado: true }],

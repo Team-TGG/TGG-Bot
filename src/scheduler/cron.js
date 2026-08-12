@@ -111,8 +111,8 @@ export function startCronJobs(client, services) {
     timezone: 'America/Sao_Paulo'
   });
 
-  // Duelo da semana - quarta 07:00. As missões fecham 06:00 e na quarta não dá mais para farmar, então o valor lido aqui é o fechamento da semana e a linha de base da seguinte.
-  cron.schedule('0 7 * * 3', async () => {
+  // Duelo da semana - quarta 09:00. As missões fecham 06:00 e na quarta não dá mais para farmar, então o valor lido aqui é o fechamento da semana e a linha de base da seguinte.
+  cron.schedule('0 9 * * 3', async () => {
     try {
       await registrarDueloDaSemana(client);
     } catch (err) {

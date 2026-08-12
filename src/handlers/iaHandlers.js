@@ -4,7 +4,8 @@ import { calcularMediasHistoricas, estatisticasDasMedias, GUILD_POINTS_DESDE } f
 import { selecionarMvpsDasLinhas } from '../services/weeklyMvpService.js';
 import { calcularInativosDaSemana, CONTRIBUICAO_MINIMA, LIMIAR_INATIVACAO } from '../services/weeklyInactiveService.js';
 import { calcularDueloDaSemana, calcularGanhoDaGuildaNaSemana, SEM_DUELO } from '../services/dueloSemanal.js';
-import { getMissionWeekStart, getMissionWeekStartDateTime, getWeeklyInitial, getMovimentacaoDesde, getCadastroPorBrawlhallaIds, getUserByDiscordId, loadAliases, resolveBrawlhallaId, formatDateTime } from '../db.js';
+import { getMissionWeekStart, getMissionWeekStartDateTime, getWeeklyInitial, getMovimentacaoDesde, getCadastroPorBrawlhallaIds, getUserByDiscordId, getMissionsByWeekStart, loadAliases, resolveBrawlhallaId, formatDateTime } from '../db.js';
+import { missoesDaSemana as missoesDoCiclo, semanaVigente, semanaSeguinte } from '../services/weeklyMissionsService.js';
 import { fetchPlayerStats } from '../brawlhalla.js';
 import { calculateGames } from './publicHandlers.js';
 import { weeklyMvp as mvpConfig } from '../../config/index.js';
@@ -289,13 +290,32 @@ export const FERRAMENTAS = [
     parameters: { type: 'OBJECT', properties: {} },
   },
   {
+    name: 'missoes_da_semana',
+    description:
+      'As 4 missões semanais da guilda: o que cada uma pede, o alvo de pontos, a dica de como ' +
+      'fazer e quais já foram concluídas. Use para perguntas sobre missões, quais faltam, o que a ' +
+      'guilda ainda precisa fazer, como fazer uma missão, e também sobre as missões da próxima ' +
+      'semana ou das que vêm por aí.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        quando: {
+          type: 'STRING',
+          enum: ['atual', 'proxima'],
+          description: 'atual = as missões desta semana, com o que já foi concluído; proxima = as '
+            + 'da semana que vem. Padrão: atual.',
+        },
+      },
+    },
+  },
+  {
     // De propósito sem executor: `handleIa` trata ferramenta sem executor como "não sei responder",
     // que é exatamente a resposta certa aqui. Dar um executor a ela é desfazer o efeito.
     name: 'nao_sei_responder',
     description:
       'Use quando a pergunta não for sobre contribuição da semana, MVP, inativação, jogos de um ' +
-      'membro, movimentação da guilda nem o duelo semanal. Exemplos: elo e ranked, TGG Coins, ' +
-      'loja, missões cadastradas, blindagens, aniversários, punições, qualquer assunto fora dessa ' +
+      'membro, movimentação da guilda, missões semanais nem o duelo semanal. Exemplos: elo e ' +
+      'ranked, TGG Coins, loja, blindagens, aniversários, punições, qualquer assunto fora dessa ' +
       'lista. É melhor dizer que não sabe do que responder outra coisa.',
     parameters: { type: 'OBJECT', properties: {} },
   },
@@ -837,6 +857,75 @@ async function dueloDaSemana() {
   };
 }
 
+/**
+ * As 4 missões de uma semana, com dica e o que já foi concluído.
+ *
+ * Duas fontes, e qual delas respondeu vai dito no `dados`:
+ *
+ * - **cadastro** (`weekly_missions`): o que vale. É o que o `.missoes` mostra, e o único lugar onde
+ *   existe `status` — marcado pela staff no `.missaoConcluida`, nunca deduzido pelo bot.
+ * - **ciclo** ([weeklyMissionsService.js](../services/weeklyMissionsService.js)): previsão. A semana
+ *   seguinte só é cadastrada na quinta 06:00, então para ela é a única resposta possível. Pode
+ *   divergir do que for cadastrado, porque a staff corrige divergência com o jogo pelo site — daí
+ *   a previsão sair rotulada em vez de se passar pelo cadastro.
+ */
+async function missoesDaSemana({ quando = 'atual' }) {
+  const proxima = String(quando).toLowerCase().startsWith('prox');
+  const weekStart = proxima ? semanaSeguinte() : semanaVigente();
+
+  const cadastradas = await getMissionsByWeekStart(weekStart);
+  const previsao = !cadastradas.length;
+  const missoes = previsao ? missoesDoCiclo(weekStart) : cadastradas;
+
+  const linhas = missoes.map((m, i) => ({
+    posicao: i + 1,
+    missao: m.mission,
+    alvo_de_pontos: m.target,
+    dica: m.tip,
+    // null = semana que ainda não começou. "Não concluída" e "não dá para saber" são coisas
+    // diferentes, e dizer que falta fazer uma missão da semana que vem não quer dizer nada.
+    concluida: previsao ? null : m.status === 'done',
+  }));
+
+  const concluidas = linhas.filter(l => l.concluida).length;
+
+  return {
+    dados: {
+      semana: dataBR(weekStart),
+      qual_semana: proxima ? 'a próxima semana' : 'a semana corrente',
+      periodo: 'de quinta 06:00 até a quarta seguinte 06:00',
+      fonte: previsao
+        ? 'previsão pelo ciclo de rotação — esta semana AINDA NÃO foi cadastrada'
+        : 'missões cadastradas',
+      // Dito como afirmação de propósito. Na primeira versão a observação dizia "ainda não foi
+      // cadastrada", e o modelo leu isso como falta de dado e respondeu "não tenho essa informação"
+      // — com as quatro missões na mão (12/08/2026). Ressalva não pode soar como ausência.
+      observacao: previsao
+        ? 'Estas SÃO as missões dessa semana, calculadas pelo ciclo fixo de rotação que o próprio '
+          + 'bot usa para cadastrá-las. Responda com a lista normalmente, chamando-as de '
+          + '"previstas" e nunca de "cadastradas", e avise que o cadastro oficial sai na quinta '
+          + '06:00, quando a staff ainda pode ajustar divergência com o jogo.'
+        : 'concluida é o que a staff marcou no .missaoConcluida; missão feita e ainda não marcada '
+          + 'aparece como não concluída.',
+      total: linhas.length,
+      // Em previsão os dois campos ficam de fora: a semana não começou, então "0 concluídas" seria
+      // uma informação inventada sobre uma semana que ninguém jogou.
+      ...(previsao
+        ? { a_semana_ainda_nao_comecou: true }
+        : { concluidas, faltam: linhas.length - concluidas }),
+      missoes: linhas,
+    },
+    titulo: previsao ? `📋 Missões previstas para ${dataBR(weekStart)}` : '📋 Missões da semana',
+    campos: linhas.map(l => ({
+      name: `${l.concluida ? '✅' : previsao ? '🔜' : '📌'} ${l.posicao}. ${l.missao}`.slice(0, 256),
+      value: `🎯 Alvo: **${numeroBR(l.alvo_de_pontos)}**\n💡 ${l.dica}`.slice(0, MAX_CARACTERES_CAMPO),
+    })),
+    rodape: previsao
+      ? `Semana de ${dataBR(weekStart)} • previsão pelo ciclo, o cadastro sai na quinta 06:00`
+      : `Semana de ${dataBR(weekStart)} • ${concluidas} de ${linhas.length} concluídas`,
+  };
+}
+
 export const EXECUTORES = {
   ranking_contribuicao: rankingContribuicao,
   media_de_contribuicao: mediaDeContribuicao,
@@ -846,6 +935,7 @@ export const EXECUTORES = {
   jogos_de_membro: jogosDeMembro,
   movimentacao_da_guilda: movimentacaoDaGuilda,
   duelo_da_semana: dueloDaSemana,
+  missoes_da_semana: missoesDaSemana,
 };
 
 // ---- Instruções ----
@@ -870,6 +960,11 @@ export const INSTRUCAO_ESCOLHA =
   'media_de_contribuicao é a média por semana ao longo de todo o tempo de guilda, e é ela que ' +
   'responde qualquer pergunta sobre média sem dizer de qual período; ranking_contribuicao é a ' +
   'semana corrente, inclusive para "a semana está fraca?". ' +
+  // Missão é da guilda e contribuição é da pessoa, mas as duas vivem na mesma semana e a pergunta
+  // costuma misturar ("o que falta essa semana?"). O desempate é o objeto: tarefa x número.
+  'Pergunta sobre as missões em si — quais são, o que cada uma pede, quais faltam, como fazer — é ' +
+  'missoes_da_semana; se ela fala da semana que vem ou das próximas missões, use quando=proxima. ' +
+  'Quanto alguém ou a guilda pontuou continua sendo ranking_contribuicao. ' +
   'Se nenhuma função responder a pergunta, use nao_sei_responder em vez de escolher a mais parecida.';
 
 export const INSTRUCAO_RESPOSTA =
@@ -877,6 +972,12 @@ export const INSTRUCAO_RESPOSTA =
   'Use SOMENTE os números que vierem no resultado da função. Nunca some, calcule, estime ou ' +
   'complete com conhecimento próprio — se um dado não está no resultado, diga que não tem essa ' +
   'informação. ' +
+  // Sem esta ressalva a regra acima vira recusa: com as quatro missões da semana que vem na mão,
+  // o modelo leu "previsão, ainda não cadastrada" como ausência de dado e respondeu "não tenho
+  // essa informação" (12/08/2026). Previsão e medição parcial são respostas, com ressalva junto.
+  'Isso vale só para o que realmente não veio: se o resultado traz a lista ou o número, responda ' +
+  'com ele mesmo que venha marcado como previsão, prévia ou medição parcial, dizendo a ressalva ' +
+  'junto. Nunca diga que não tem a informação tendo recebido os dados. ' +
   // A unidade tem que ser dita aqui: a instrução de escolha explica o que é contribuição, mas quem
   // escreve a frase é a segunda chamada, que não vê aquela instrução. Sem isto o modelo preenche a
   // lacuna sozinho e chamou os guild points de "XP" — que no jogo é outra medida, ganha em qualquer

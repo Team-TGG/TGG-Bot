@@ -302,6 +302,13 @@ XP é outra medida, ganha em qualquer partida, e é a que *não* conta como cont
 unidade vai dita no `dados` (`UNIDADE`) **e** em `INSTRUCAO_RESPOSTA`: quem redige é uma segunda
 chamada, que não enxerga a instrução de roteamento. `perguntas.mjs` reprova resposta que diga "XP".
 
+Ressalva também não pode soar como ausência: `missoes_da_semana` com `quando: 'proxima'` responde
+pela **previsão do ciclo** (a semana seguinte só é cadastrada na quinta 06:00), e na primeira versão
+o `dados` dizia "ainda não foi cadastrada" — o modelo leu isso como falta de dado e respondeu "não
+tenho essa informação" com as quatro missões na mão. O `dados` afirma a lista e põe a ressalva
+depois; `INSTRUCAO_RESPOSTA` proíbe recusar tendo recebido dados. O erro espelho é apresentar a
+previsão como cadastro, e `perguntas.mjs` cobra os dois lados.
+
 Pela mesma razão o `ranking_contribuicao` devolve os dois totais da semana com o nome dizendo de
 quem é cada um: `ganho_da_guilda_nesta_semana` (o que a staff vê no jogo) e
 `soma_do_que_os_membros_ganharam`, que é sempre maior e **não** é o total da guilda (ver a mecânica

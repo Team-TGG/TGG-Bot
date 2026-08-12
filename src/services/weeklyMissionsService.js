@@ -141,6 +141,14 @@ export function semanaVigente() {
   return getMissionWeekStart().slice(0, 10);
 }
 
+/**
+ * A quinta seguinte a `weekStart`. Em UTC, como o resto do cálculo de ciclo: somar 7 dias em hora
+ * local passaria a semana errada na virada do horário de verão.
+ */
+export function semanaSeguinte(weekStart = semanaVigente()) {
+  return new Date(paraUTC(weekStart) + 7 * DIA).toISOString().slice(0, 10);
+}
+
 function montarEmbed(weekStart, missoes) {
   const [ano, mes, dia] = weekStart.split('-');
 

@@ -2644,8 +2644,9 @@ export const handleIa = adminOnly(async (message, args) => {
           'Não sei responder isso',
           'Por enquanto eu só respondo sobre **contribuição da semana** (ranking), ' +
           '**média de contribuição por semana**, **MVPs**, **inativação**, ' +
-          '**jogos e situação de um membro** (inclusive a sua), ' +
-          '**movimentação da guilda** e o **duelo semanal**. Tente reformular.'
+          '**jogos e situação de um membro** (inclusive a sua), **missões semanais** ' +
+          '(as desta semana e as da próxima), **movimentação da guilda** e o ' +
+          '**duelo semanal**. Tente reformular.'
         )]
       });
     }

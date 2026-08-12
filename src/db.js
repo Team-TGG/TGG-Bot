@@ -691,7 +691,7 @@ export async function getMissionsByWeekStart(weekStart) {
 
   const { data, error } = await supabase
     .from('weekly_missions')
-    .select('id, mission, tip, target')
+    .select('id, mission, tip, target, status')
     .eq('week_start', weekStart)
     .order('created_at', { ascending: true });
 

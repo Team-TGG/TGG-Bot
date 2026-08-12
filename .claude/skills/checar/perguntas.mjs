@@ -61,43 +61,102 @@ const CASOS = [
   ['quantos membros a guilda tem?', 'nao_sei_responder'],
   ['qual o elo mais alto da guilda?', 'nao_sei_responder'],
   ['quem tem mais TGG Coins?', 'nao_sei_responder'],
-  ['quais são as missões dessa semana?', 'nao_sei_responder'],
+  // Missão é tarefa da guilda; contribuição é número de gente. As duas vivem na mesma semana e a
+  // pergunta mistura ("o que falta essa semana?"), então os dois lados ficam na lista.
+  ['quais são as missões dessa semana?', 'missoes_da_semana'],
+  ['quais missões ainda faltam?', 'missoes_da_semana'],
+  ['como faço a missão de crew battle?', 'missoes_da_semana'],
+  ['quais as missões da próxima semana?', 'missoes_da_semana', { quando: 'proxima' }],
+  ['quais as próximas missões?', 'missoes_da_semana', { quando: 'proxima' }],
 ];
 
-// Resultado inventado, com a forma que `ranking_contribuicao` devolve. Serve para checar a segunda
-// chamada sem tocar no banco nem na API do Brawlhalla.
-const PERGUNTA_DA_RESPOSTA = 'a semana tá fraca?';
-
-const RESULTADO_DE_MENTIRA = {
-  semana: '06/08/2026',
-  unidade: 'guild points ganhos nas missões da guilda (não é XP)',
-  ordem: 'menor',
-  pontuaram_nesta_semana: 178,
-  zeraram_nesta_semana: 18,
-  media_desta_semana_entre_quem_pontuou: 2186,
-  ganho_da_guilda_nesta_semana: 343497,
-  soma_do_que_os_membros_ganharam: 432826,
-  por_que_os_dois_totais_diferem: 'Membro pontua a cada partida que avança uma missão, mas a guilda '
-    + 'só pontua quando um tier da missão fecha (mais as guild battles). A soma dos membros é '
-    + 'normalmente maior e NÃO é o total da guilda. Ao falar do total da semana da guilda, use '
-    + 'ganho_da_guilda_nesta_semana.',
-  membros: [
-    { nome: 'Fulano', contribuicao_na_semana: 120, posicao: 196 },
-    { nome: 'Beltrano', contribuicao_na_semana: 340, posicao: 195 },
-  ],
-};
-
-// O executor sabe a unidade e o modelo não: sem ela dita, ele preenche a lacuna e chamou os guild
-// points de "XP" (relatado pela staff em 12/08/2026). No jogo XP é outra medida, ganha em qualquer
-// partida, inclusive contra bot, e é justamente a que **não** conta como contribuição — a resposta
-// sai plausível e ensina a coisa errada. Vale para qualquer ferramenta: o número é sempre o mesmo.
-const UNIDADE_ERRADA = /\bxp\b/i;
-
-// O outro jeito de a frase sair plausível e errada: os dois totais da semana medem coisas
-// diferentes, e o dos membros é sempre o maior. A staff compara com o que vê no jogo, que é o da
-// guilda — apresentar 432.826 onde o jogo mostra 343.497 é o erro relatado em 12/08/2026.
-const TOTAL_DOS_MEMBROS = /432[.\s]?826/;
-const TOTAL_DA_GUILDA = /343[.\s]?497/;
+/**
+ * A segunda chamada do `.ia`: a que escreve a frase. Cada caso é um resultado inventado, com a
+ * forma que o executor devolve, e o que a frase precisa (ou não pode) dizer sobre ele — dá para
+ * medir o texto sem tocar no banco nem na API do Brawlhalla.
+ *
+ * Tudo aqui nasceu de erro relatado pela staff. A frase é o comando inteiro: o embed sai com os
+ * números do mesmo jeito, então resposta plausível e errada passa por certa.
+ */
+const RESPOSTAS = [
+  {
+    pergunta: 'a semana tá fraca?',
+    // Forma de `ranking_contribuicao`
+    resultado: {
+      semana: '06/08/2026',
+      unidade: 'guild points ganhos nas missões da guilda (não é XP)',
+      ordem: 'menor',
+      pontuaram_nesta_semana: 178,
+      zeraram_nesta_semana: 18,
+      media_desta_semana_entre_quem_pontuou: 2186,
+      ganho_da_guilda_nesta_semana: 343497,
+      soma_do_que_os_membros_ganharam: 432826,
+      por_que_os_dois_totais_diferem: 'Membro pontua a cada partida que avança uma missão, mas a '
+        + 'guilda só pontua quando um tier da missão fecha (mais as guild battles). A soma dos '
+        + 'membros é normalmente maior e NÃO é o total da guilda. Ao falar do total da semana da '
+        + 'guilda, use ganho_da_guilda_nesta_semana.',
+      membros: [
+        { nome: 'Fulano', contribuicao_na_semana: 120, posicao: 196 },
+        { nome: 'Beltrano', contribuicao_na_semana: 340, posicao: 195 },
+      ],
+    },
+    checagens: [
+      {
+        // O executor sabe a unidade e o modelo não: sem ela dita, ele preencheu a lacuna com "XP".
+        // No jogo XP é outra medida, ganha em qualquer partida, inclusive contra bot, e é
+        // justamente a que **não** conta como contribuição (12/08/2026).
+        rotulo: 'a unidade sai certa (guild points, não XP)',
+        erro: 'a resposta chamou os guild points de "XP" - XP é a medida que não conta como contribuição',
+        ok: (texto) => !/\bxp\b/i.test(texto),
+      },
+      {
+        // Os dois totais da semana medem coisas diferentes e o dos membros é sempre o maior. A
+        // staff compara com o que vê no jogo, que é o da guilda (12/08/2026).
+        rotulo: 'o total da semana é o da guilda, não a soma dos membros',
+        erro: 'a resposta usou a soma dos membros (432.826) como total da semana, em vez do ganho da guilda (343.497)',
+        ok: (texto) => !/432[.\s]?826/.test(texto) || /343[.\s]?497/.test(texto),
+      },
+    ],
+  },
+  {
+    pergunta: 'quais as missões da próxima semana?',
+    // Forma de `missoes_da_semana` com `quando: 'proxima'`, que nunca está cadastrada
+    resultado: {
+      semana: '13/08/2026',
+      qual_semana: 'a próxima semana',
+      periodo: 'de quinta 06:00 até a quarta seguinte 06:00',
+      fonte: 'previsão pelo ciclo de rotação — esta semana AINDA NÃO foi cadastrada',
+      observacao: 'Estas SÃO as missões dessa semana, calculadas pelo ciclo fixo de rotação que o '
+        + 'próprio bot usa para cadastrá-las. Responda com a lista normalmente, chamando-as de '
+        + '"previstas" e nunca de "cadastradas", e avise que o cadastro oficial sai na quinta '
+        + '06:00, quando a staff ainda pode ajustar divergência com o jogo.',
+      total: 4,
+      a_semana_ainda_nao_comecou: true,
+      missoes: [
+        { posicao: 1, missao: 'Alcance a onda 26 no modo Horda', alvo_de_pontos: 16, dica: 'Criem um lobby com 4 pessoas.', concluida: null },
+        { posicao: 2, missao: 'Vitórias no Brawl of the Week', alvo_de_pontos: 750, dica: 'É necessário GANHAR.', concluida: null },
+        { posicao: 3, missao: 'Ranked 2v2 com membro da guilda', alvo_de_pontos: 3750, dica: 'Não precisa vencer.', concluida: null },
+        { posicao: 4, missao: 'Jogos de Brawlball', alvo_de_pontos: 1000, dica: 'Lobby cheio, 5 x 0.', concluida: null },
+      ],
+    },
+    checagens: [
+      {
+        // Previsão dita como ressalva vira "não tenho essa informação" com as quatro missões na
+        // mão (12/08/2026). O que separa uma ressalva de uma ausência é o texto do `dados`.
+        rotulo: 'a previsão do ciclo é respondida, não recusada',
+        erro: 'a resposta não citou nenhuma missão prevista - a ressalva do ciclo virou "não sei"',
+        ok: (texto) => /horda|brawl|2v2|brawlball/i.test(texto),
+      },
+      {
+        // O outro lado do mesmo campo: previsão apresentada como cadastro faz a staff planejar a
+        // semana em cima de uma lista que a quinta-feira ainda pode mudar (12/08/2026).
+        rotulo: 'a previsão não é apresentada como cadastro',
+        erro: 'a resposta chamou a previsão do ciclo de "missões cadastradas" - elas só são cadastradas na quinta 06:00',
+        ok: (texto) => !/missões cadastradas/i.test(texto) || /não (foram|estão|são)/i.test(texto),
+      },
+    ],
+  },
+];
 
 // O free tier limita por minuto, não só por dia: 16 perguntas seguidas levam 429 no fim da lista
 // (medido em 11/08/2026 — um minuto depois a mesma chave responde 200). O intervalo mantém o ritmo
@@ -186,50 +245,50 @@ for (const [indice, [pergunta, ferramenta, argsEsperados]] of CASOS.entries()) {
   }
 }
 
-// A segunda chamada do `.ia`. Ela falhava calada por um mês: o 400 de thought_signature cai no
-// `.catch` de handleIa, que devolve '' e deixa o embed sair só com os números - o comando parece
-// funcionar e a frase, que é o comando inteiro, nunca aparece. Só o texto vazio denuncia.
+// A frase escrita. Ela falhava calada por um mês: o 400 de thought_signature cai no `.catch` de
+// handleIa, que devolve '' e deixa o embed sair só com os números - o comando parece funcionar e a
+// frase, que é o comando inteiro, nunca aparece. Só o texto vazio denuncia.
 console.log(`${linha}`);
-try {
-  await dormir(INTERVALO_MS);
 
-  const escolha = await comRetry(() => escolherFerramenta({
-    pergunta: PERGUNTA_DA_RESPOSTA,
-    ferramentas: FERRAMENTAS,
-    instrucao: INSTRUCAO_ESCOLHA,
-  }));
+for (const { pergunta, resultado, checagens } of RESPOSTAS) {
+  try {
+    await dormir(INTERVALO_MS);
 
-  await dormir(INTERVALO_MS);
+    const escolha = await comRetry(() => escolherFerramenta({
+      pergunta,
+      ferramentas: FERRAMENTAS,
+      instrucao: INSTRUCAO_ESCOLHA,
+    }));
 
-  const texto = await comRetry(() => redigirResposta({
-    pergunta: PERGUNTA_DA_RESPOSTA,
-    escolha,
-    resultado: RESULTADO_DE_MENTIRA,
-    instrucao: INSTRUCAO_RESPOSTA,
-  }));
+    await dormir(INTERVALO_MS);
 
-  if (!texto) {
-    falhas.push('redigirResposta devolveu texto vazio - o embed sairia só com os números');
-  } else {
-    console.log(`  ok    a resposta é escrita: "${texto.slice(0, 90)}${texto.length > 90 ? '…' : ''}"`);
+    const texto = await comRetry(() => redigirResposta({
+      pergunta,
+      escolha,
+      resultado,
+      instrucao: INSTRUCAO_RESPOSTA,
+    }));
 
-    if (UNIDADE_ERRADA.test(texto)) {
-      console.log('  ERRO  a resposta chamou contribuição de XP');
-      falhas.push('a resposta chamou os guild points de "XP" - XP é a medida que não conta como contribuição');
-    } else {
-      console.log('  ok    a unidade sai certa (guild points, não XP)');
+    if (!texto) {
+      console.log(`  ERRO  ${JSON.stringify(pergunta)}: texto vazio`);
+      falhas.push(`redigirResposta devolveu texto vazio para ${JSON.stringify(pergunta)} - o embed sairia só com os números`);
+      continue;
     }
 
-    if (TOTAL_DOS_MEMBROS.test(texto) && !TOTAL_DA_GUILDA.test(texto)) {
-      console.log('  ERRO  a resposta deu a soma dos membros como total da guilda');
-      falhas.push('a resposta usou a soma dos membros (432.826) como total da semana, em vez do ganho da guilda (343.497)');
-    } else {
-      console.log('  ok    o total da semana é o da guilda, não a soma dos membros');
+    console.log(`  ok    ${JSON.stringify(pergunta)}: "${texto.slice(0, 80)}${texto.length > 80 ? '…' : ''}"`);
+
+    for (const { rotulo, erro, ok } of checagens) {
+      if (ok(texto)) {
+        console.log(`  ok      ${rotulo}`);
+      } else {
+        console.log(`  ERRO    ${rotulo}`);
+        falhas.push(erro);
+      }
     }
+  } catch (e) {
+    console.log(`  ERRO  redigirResposta: ${e.message.slice(0, 120)}`);
+    falhas.push(`redigirResposta falhou em ${JSON.stringify(pergunta)}: ${e.message.slice(0, 120)}`);
   }
-} catch (e) {
-  console.log(`  ERRO  redigirResposta: ${e.message.slice(0, 120)}`);
-  falhas.push(`redigirResposta falhou: ${e.message.slice(0, 120)}`);
 }
 
 // O par declaração + executor é conferido pelo executores.mjs, que roda sem gastar cota.
