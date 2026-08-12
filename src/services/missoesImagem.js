@@ -1,6 +1,5 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import sharp from 'sharp';
 
 const RAIZ = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'assets', 'missoes');
 const FUNDO = path.join(RAIZ, 'fundo-missoes.png');
@@ -20,11 +19,22 @@ const SLOT_W = 462;
 const SLOT_H = 484;
 
 /**
+ * `sharp` é binário nativo e exige Node >= 20.9, enquanto o projeto declara >= 18. Importado no
+ * topo, uma VM com Node velho não conseguiria nem iniciar o bot — a arte, que é a parte que pode
+ * faltar sem prejuízo, derrubaria tudo. Sob demanda, o mesmo erro vira só um post sem imagem.
+ */
+let sharpPromise;
+function carregarSharp() {
+  sharpPromise ??= import('sharp').then((m) => m.default);
+  return sharpPromise;
+}
+
+/**
  * Isola o card do print e o normaliza para o tamanho do slot. O recorte é medido em tempo de
  * execução (`trim`) porque os prints foram cortados à mão e variam ~3% entre si; fixar as
  * coordenadas exigiria remedir a tabela toda a cada arquivo que o usuário reexportasse.
  */
-function recortarCard(slug) {
+async function recortarCard(sharp, slug) {
   return sharp(path.join(RAIZ, `${slug}.png`))
     .trim({ threshold: 0 })
     .resize(SLOT_W, SLOT_H, { fit: 'fill' })
@@ -39,7 +49,8 @@ function recortarCard(slug) {
  * pronto para virar anexo. Estoura se faltar print — quem chama decide se anuncia sem imagem.
  */
 export async function gerarImagemMissoes(slugs) {
-  const cards = await Promise.all(slugs.map(recortarCard));
+  const sharp = await carregarSharp();
+  const cards = await Promise.all(slugs.map((slug) => recortarCard(sharp, slug)));
 
   return sharp(FUNDO)
     .composite(cards.map((input, i) => ({ input, left: SLOT_X[i], top: SLOT_Y })))
