@@ -279,6 +279,11 @@ confiante e errada. Ao adicionar ferramenta, **tire o assunto novo da descriçã
 O que volta para a IA leva só apelido do jogo e números — `discord_id` e `brawlhalla_id` nunca saem
 daqui, porque o free tier pode usar o conteúdo para treino.
 
+Executor recebe `(args, contexto)`, e `contexto.discordId` é quem perguntou. É o que faz "quanto eu
+contribuí?" funcionar: a declaração manda deixar `nome` vazio na primeira pessoa e o executor
+resolve pelo cadastro. Procurar "eu" no apelido casaria com meia guilda, então a resolução é por
+`discord_id`, nunca por texto.
+
 Quem decide o roteamento é a `description` de cada ferramenta, então mexer numa pode roubar
 pergunta da vizinha. Depois de qualquer edição ali, rode
 `node .claude/skills/checar/perguntas.mjs` — a lista de perguntas de referência é o que separa

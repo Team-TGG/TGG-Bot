@@ -33,6 +33,14 @@ const CASOS = [
   ['me mostra o top 5 da semana', 'ranking_contribuicao', { limite: 5 }],
   ['quanto o Feijao contribuiu?', 'contribuicao_de_membro', { nome: 'Feijao' }],
   ['o Pizzolho corre risco de ser inativado?', 'contribuicao_de_membro', { nome: 'Pizzolho' }],
+  ['qual a média de contribuição da semana?', 'media_de_contribuicao'],
+  ['a semana tá fraca?', 'media_de_contribuicao'],
+  ['quem está abaixo da média?', 'media_de_contribuicao', { ordem: 'menor' }],
+  // Primeira pessoa: tem que chegar sem `nome` para o executor resolver pelo discord_id de quem
+  // perguntou. `nome: null` afirma que o argumento veio vazio.
+  ['quanto eu contribuí essa semana?', 'contribuicao_de_membro', { nome: null }],
+  ['eu tô acima da média?', 'contribuicao_de_membro', { nome: null }],
+  ['quantos jogos eu fiz?', 'jogos_de_membro', { nome: null }],
   // Nome de pessoa + partidas vai para jogos_de_membro, não para contribuicao_de_membro: as duas
   // casam com "cita uma pessoa" e a instrução de escolha desempata.
   ['quantos jogos o Feijao fez essa semana?', 'jogos_de_membro', { nome: 'Feijao' }],
@@ -104,10 +112,16 @@ if (!iaConfigurada()) {
   process.exit(2);
 }
 
-/** Só os campos que o caso declara. String compara sem caixa: o modelo pode devolver o nome cru. */
+/**
+ * Só os campos que o caso declara. String compara sem caixa: o modelo pode devolver o nome cru.
+ *
+ * `null` afirma **ausência**, que é o que define o "eu": a pergunta em primeira pessoa tem que
+ * chegar ao executor sem `nome`, senão ele procura "eu" no apelido e casa com meia guilda.
+ */
 function argumentosBatem(esperados, recebidos = {}) {
   return Object.entries(esperados).every(([chave, valor]) => {
     const veio = recebidos[chave];
+    if (valor === null) return veio === undefined || veio === null || String(veio).trim() === '';
     if (typeof valor === 'string') return String(veio ?? '').toLowerCase() === valor.toLowerCase();
     return veio === valor;
   });

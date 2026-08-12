@@ -3,7 +3,7 @@ import { calcularContribuicaoSemanal, MOTIVOS } from '../services/contribuicaoSe
 import { selecionarMvpsDasLinhas } from '../services/weeklyMvpService.js';
 import { calcularInativosDaSemana, CONTRIBUICAO_MINIMA, LIMIAR_INATIVACAO } from '../services/weeklyInactiveService.js';
 import { calcularDueloDaSemana, SEM_DUELO } from '../services/dueloSemanal.js';
-import { getMissionWeekStart, getMissionWeekStartDateTime, getWeeklyInitial, getMovimentacaoDesde, getCadastroPorBrawlhallaIds, loadAliases, resolveBrawlhallaId, formatDateTime } from '../db.js';
+import { getMissionWeekStart, getMissionWeekStartDateTime, getWeeklyInitial, getMovimentacaoDesde, getCadastroPorBrawlhallaIds, getUserByDiscordId, loadAliases, resolveBrawlhallaId, formatDateTime } from '../db.js';
 import { fetchPlayerStats } from '../brawlhalla.js';
 import { calculateGames } from './publicHandlers.js';
 import { weeklyMvp as mvpConfig } from '../../config/index.js';
@@ -53,6 +53,95 @@ function dataBR(weekStart) {
 /** Mensuráveis: quem tem número de verdade. Motivo preenchido é "não sei", não é zero. */
 function medidas(linhas) {
   return linhas.filter(l => !l.motivo);
+}
+
+/**
+ * Estatística da semana sobre **quem pontuou** (contribuição > 0).
+ *
+ * Decisão do usuário (11/08/2026): média sobre a guilda inteira mede quantas contas existem, não
+ * como a semana está indo — quem nem abriu o jogo puxa o número para baixo e some no meio da conta.
+ *
+ * Mora aqui, e não dentro do executor da média, porque `contribuicao_de_membro` também precisa
+ * dela: "eu tô acima da média?" é uma pergunta só, e duas fórmulas dariam duas respostas.
+ */
+function estatisticasDaSemana(medidos) {
+  const ativos = medidos.filter(l => l.contribuicao > 0);
+  const soma = ativos.reduce((total, l) => total + l.contribuicao, 0);
+  const media = ativos.length ? Math.round(soma / ativos.length) : 0;
+
+  const ordenados = [...ativos].sort((a, b) => a.contribuicao - b.contribuicao);
+  const meio = Math.floor(ordenados.length / 2);
+  const mediana = !ordenados.length ? 0
+    : ordenados.length % 2 ? ordenados[meio].contribuicao
+      : Math.round((ordenados[meio - 1].contribuicao + ordenados[meio].contribuicao) / 2);
+
+  return {
+    ativos,
+    ordenados,
+    zerados: medidos.length - ativos.length,
+    soma,
+    media,
+    mediana,
+    // A média sobre todo mundo fica disponível, mas dizendo que o divisor é outro
+    mediaGeral: medidos.length ? Math.round(soma / medidos.length) : 0,
+    acima: ativos.filter(l => l.contribuicao > media).length,
+  };
+}
+
+/** Palavras que a IA costuma mandar em `nome` quando a pergunta é sobre quem perguntou. */
+const PRIMEIRA_PESSOA = new Set(['eu', 'mim', 'meu', 'minha', 'me', 'eu mesmo', 'eu mesma']);
+
+/**
+ * Quem a pergunta é sobre: o nome pedido, ou quem perguntou.
+ *
+ * `nome` vazio é o caminho normal do "eu" — a declaração manda deixar em branco nesse caso. O
+ * conjunto acima existe porque o modelo às vezes preenche com o pronome mesmo assim, e procurar
+ * "eu" no apelido casaria com meia guilda (Deiucu, Feijão…).
+ *
+ * Devolve `{ linhas, achados, sobre }`, com `sobre` dizendo se a busca foi por nome ou pelo autor —
+ * quem chama usa isso para escrever "você" em vez de repetir o apelido.
+ */
+async function encontrarMembro({ nome, linhas, discordId }) {
+  const pedido = String(nome ?? '').trim();
+  const souEu = !pedido || PRIMEIRA_PESSOA.has(pedido.toLowerCase());
+
+  if (!souEu) {
+    const busca = pedido.toLowerCase();
+    return { achados: linhas.filter(l => l.nome.toLowerCase().includes(busca)), sobre: 'nome', pedido };
+  }
+
+  if (!discordId) return { achados: [], sobre: 'autor', pedido, semContexto: true };
+
+  const user = await getUserByDiscordId(String(discordId)).catch(() => null);
+
+  if (!user?.brawlhalla_id) return { achados: [], sobre: 'autor', pedido, semCadastro: true };
+
+  return {
+    achados: linhas.filter(l => l.brawlhallaId === String(user.brawlhalla_id)),
+    sobre: 'autor',
+    pedido,
+  };
+}
+
+/** Embed de "não achei", com o motivo certo para cada caminho. */
+function membroNaoEncontrado({ weekStart, busca, titulo = '🔍 Membro não encontrado' }) {
+  const motivo = busca.semCadastro
+    ? 'Quem perguntou não tem Brawlhalla ID cadastrado no bot.'
+    : busca.sobre === 'autor'
+      ? 'Não deu para identificar quem perguntou.'
+      : 'Nenhum membro casou com a busca.';
+
+  return {
+    dados: {
+      semana: dataBR(weekStart),
+      procurado: busca.sobre === 'autor' ? 'quem perguntou' : busca.pedido,
+      encontrado: false,
+      motivo,
+    },
+    titulo,
+    campos: [{ name: 'Procurado', value: busca.sobre === 'autor' ? '_você_' : `\`${busca.pedido}\`` }],
+    rodape: `Semana de ${dataBR(weekStart)}`,
+  };
 }
 
 /**
@@ -123,6 +212,27 @@ export const FERRAMENTAS = [
     parameters: { type: 'OBJECT', properties: {} },
   },
   {
+    name: 'media_de_contribuicao',
+    description:
+      'Média de contribuição da semana na guilda, com quantos estão acima e abaixo dela, e o topo ' +
+      'ou o fim da lista. Use para perguntas sobre média, sobre como a guilda está indo na semana, ' +
+      'se a semana está fraca ou forte, e sobre quem está acima ou abaixo da média.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        ordem: {
+          type: 'STRING',
+          enum: ['maior', 'menor'],
+          description: 'Qual ponta listar junto da média: maior = acima dela; menor = abaixo. Padrão: menor.',
+        },
+        limite: {
+          type: 'INTEGER',
+          description: `Quantos membros listar, de 1 a ${MAX_LIMITE}. Padrão: 10.`,
+        },
+      },
+    },
+  },
+  {
     name: 'jogos_de_membro',
     description:
       'Quantas partidas um membro jogou na semana e no total, com a divisão entre ranked 1v1, ' +
@@ -131,9 +241,12 @@ export const FERRAMENTAS = [
     parameters: {
       type: 'OBJECT',
       properties: {
-        nome: { type: 'STRING', description: 'Apelido do membro no Brawlhalla, ou parte dele.' },
+        nome: {
+          type: 'STRING',
+          description: 'Apelido do membro no Brawlhalla, ou parte dele. ' +
+            'Deixe vazio quando a pergunta for sobre quem está perguntando ("eu", "meu", "minha").',
+        },
       },
-      required: ['nome'],
     },
   },
   {
@@ -175,16 +288,17 @@ export const FERRAMENTAS = [
     name: 'contribuicao_de_membro',
     description:
       'Contribuição da semana e posição no ranking de um membro específico, buscado pelo apelido ' +
-      'no jogo. Use quando a pergunta cita o nome de uma pessoa.',
+      'no jogo. Use quando a pergunta cita o nome de uma pessoa, e também quando ela é sobre quem ' +
+      'está perguntando ("quanto eu contribuí?", "estou acima da média?").',
     parameters: {
       type: 'OBJECT',
       properties: {
         nome: {
           type: 'STRING',
-          description: 'Apelido do membro no Brawlhalla, ou parte dele.',
+          description: 'Apelido do membro no Brawlhalla, ou parte dele. ' +
+            'Deixe vazio quando a pergunta for sobre quem está perguntando ("eu", "meu", "minha").',
         },
       },
-      required: ['nome'],
     },
   },
 ];
@@ -223,6 +337,65 @@ async function rankingContribuicao({ ordem = 'maior', limite = 10 }) {
         `**${i + 1}.** ${l.nome} — ${numeroBR(l.contribuicao)}`)),
     }],
     rodape: `Semana de ${dataBR(weekStart)} • ${medidos.length} membros medidos`,
+  };
+}
+
+/**
+ * Média da semana. O divisor é **quem pontuou** (contribuição > 0), não todo mundo medido.
+ *
+ * Decisão do usuário (11/08/2026): a média sobre a guilda inteira mede quantas contas existem, não
+ * como a semana está indo — quem nem abriu o jogo puxa o número para baixo e some no meio da
+ * conta. As duas saem no `dados` para a IA poder dizer que são diferentes, mas o número que a
+ * resposta usa é o dos ativos.
+ *
+ * A mediana vai junto porque a média é sensível a quem farma muito: com um punhado de membros na
+ * casa dos 20 mil, ela sozinha diria que a semana está melhor do que está para a maioria.
+ */
+async function mediaDeContribuicao({ ordem = 'menor', limite = 10 }) {
+  const { weekStart, linhas } = await calcularContribuicaoSemanal();
+
+  const medidos = medidas(linhas);
+  const { ativos, ordenados, zerados, soma, media, mediana, mediaGeral, acima } = estatisticasDaSemana(medidos);
+
+  const crescente = String(ordem).toLowerCase() !== 'maior';
+  const quantos = Math.min(Math.max(Number(limite) || 10, 1), MAX_LIMITE);
+
+  const lista = (crescente ? ordenados : [...ordenados].reverse()).slice(0, quantos);
+
+  return {
+    dados: {
+      semana: dataBR(weekStart),
+      media_dos_que_pontuaram: media,
+      mediana_dos_que_pontuaram: mediana,
+      quantos_pontuaram: ativos.length,
+      quantos_zeraram: zerados,
+      total_de_membros_medidos: medidos.length,
+      media_sobre_todos_os_medidos: mediaGeral,
+      acima_da_media: acima,
+      abaixo_da_media: ativos.length - acima,
+      total_contribuido_na_semana: soma,
+      observacao: 'A média usa só quem pontuou nesta semana; quem zerou entra em quantos_zeraram.',
+      ponta_listada: crescente ? 'quem menos pontuou, entre os que pontuaram' : 'quem mais pontuou',
+      membros: lista.map((l, i) => ({ posicao: i + 1, nome: l.nome, contribuicao_na_semana: l.contribuicao })),
+    },
+    titulo: '📊 Média de contribuição da semana',
+    campos: [
+      {
+        name: 'A semana',
+        value:
+          `Média: **${numeroBR(media)}**\n` +
+          `Mediana: **${numeroBR(mediana)}**\n` +
+          `Pontuaram: **${ativos.length}** • Zeraram: **${zerados}**\n` +
+          `Acima da média: **${acima}** • Abaixo: **${ativos.length - acima}**`,
+        inline: true,
+      },
+      {
+        name: crescente ? `${lista.length} que menos pontuaram` : `${lista.length} que mais pontuaram`,
+        value: listaEmEmbed(lista.map((l, i) => `**${i + 1}.** ${l.nome} — ${numeroBR(l.contribuicao)}`)),
+        inline: true,
+      },
+    ],
+    rodape: `Semana de ${dataBR(weekStart)} • média sobre ${ativos.length} que pontuaram`,
   };
 }
 
@@ -308,23 +481,19 @@ async function inativosDaSemana() {
   };
 }
 
-async function contribuicaoDeMembro({ nome }) {
+async function contribuicaoDeMembro({ nome }, contexto = {}) {
   const { weekStart, linhas } = await calcularContribuicaoSemanal();
 
-  const busca = String(nome || '').trim().toLowerCase();
-  const achados = linhas.filter(l => l.nome.toLowerCase().includes(busca));
+  const busca = await encontrarMembro({ nome, linhas, discordId: contexto.discordId });
+  const achados = busca.achados;
 
-  if (!achados.length) {
-    return {
-      dados: { semana: dataBR(weekStart), procurado: nome, encontrado: false },
-      titulo: '🔍 Membro não encontrado',
-      campos: [{ name: 'Procurado', value: `\`${nome}\`` }],
-      rodape: `Semana de ${dataBR(weekStart)}`,
-    };
-  }
+  if (!achados.length) return membroNaoEncontrado({ weekStart, busca });
 
   // Posição só faz sentido entre quem tem número; quem não pôde ser medido fica sem
   const ranking = medidas(linhas).sort((a, b) => b.contribuicao - a.contribuicao);
+  // A média vai junto porque "eu tô acima da média?" é uma pergunta de membro, não de guilda:
+  // sem ela aqui, a resposta teria o número da pessoa e nada com que comparar.
+  const { media } = estatisticasDaSemana(ranking);
   const posicaoDe = (linha) => {
     const i = ranking.findIndex(r => r.brawlhallaId === linha.brawlhallaId);
     return i === -1 ? null : i + 1;
@@ -341,9 +510,12 @@ async function contribuicaoDeMembro({ nome }) {
   return {
     dados: {
       semana: dataBR(weekStart),
-      procurado: nome,
+      procurado: busca.sobre === 'autor' ? 'quem perguntou' : busca.pedido,
+      // A IA escreve "você" em vez do apelido quando a pergunta foi em primeira pessoa
+      sobre_quem_perguntou: busca.sobre === 'autor',
       encontrado: true,
       total_de_membros_medidos: ranking.length,
+      media_dos_que_pontuaram: media,
       // Busca curta casa com meio mundo. Sem esta contagem a IA leria os 15 de `resultados` como
       // se fossem todos e diria "encontrei 15" quando o certo é pedir um nome mais específico.
       total_encontrado: achados.length,
@@ -368,28 +540,21 @@ async function contribuicaoDeMembro({ nome }) {
  * mesma divisão do `.scan` e do dossiê de blindagem. Juntar as duas medidas numa resposta só é o
  * ponto da ferramenta: quem joga muito e contribui pouco está jogando fora de missão.
  */
-async function jogosDeMembro({ nome }) {
+async function jogosDeMembro({ nome }, contexto = {}) {
   const { weekStart, linhas } = await calcularContribuicaoSemanal();
 
-  const busca = String(nome || '').trim().toLowerCase();
-  const achados = linhas.filter(l => l.nome.toLowerCase().includes(busca));
+  const busca = await encontrarMembro({ nome, linhas, discordId: contexto.discordId });
+  const achados = busca.achados;
 
-  if (!achados.length) {
-    return {
-      dados: { semana: dataBR(weekStart), procurado: nome, encontrado: false },
-      titulo: '🔍 Membro não encontrado',
-      campos: [{ name: 'Procurado', value: `\`${nome}\`` }],
-      rodape: `Semana de ${dataBR(weekStart)}`,
-    };
-  }
+  if (!achados.length) return membroNaoEncontrado({ weekStart, busca });
 
   // Cada membro custa uma chamada à API de stats, então busca ampla pede nome melhor em vez de
-  // consultar todo mundo que casou.
+  // consultar todo mundo que casou. O caminho do "eu" nunca cai aqui: resolve para uma conta só.
   if (achados.length > 1) {
     return {
       dados: {
         semana: dataBR(weekStart),
-        procurado: nome,
+        procurado: busca.pedido,
         encontrado: true,
         total_encontrado: achados.length,
         observacao: 'Mais de um membro casou com a busca. É preciso um nome mais específico.',
@@ -420,6 +585,8 @@ async function jogosDeMembro({ nome }) {
     dados: {
       semana: dataBR(weekStart),
       nome: membro.nome,
+      encontrado: true,
+      sobre_quem_perguntou: busca.sobre === 'autor',
       jogos_totais: stats?.games ?? null,
       jogos_na_semana: jogos?.totalGames ?? null,
       ranked_1v1_na_semana: jogos?.games1v1 ?? null,
@@ -579,6 +746,7 @@ async function dueloDaSemana() {
 
 export const EXECUTORES = {
   ranking_contribuicao: rankingContribuicao,
+  media_de_contribuicao: mediaDeContribuicao,
   mvps_da_semana: mvpsDaSemana,
   inativos_da_semana: inativosDaSemana,
   contribuicao_de_membro: contribuicaoDeMembro,
@@ -599,8 +767,12 @@ export const INSTRUCAO_ESCOLHA =
   // para uma pergunta sobre uma pessoa (medido em 11/08/2026).
   'Pergunta que cita o nome de uma pessoa é sempre sobre ela, mesmo que fale de inativação ou de ' +
   'risco: use jogos_de_membro se for sobre partidas jogadas e contribuicao_de_membro no resto. ' +
+  'Pergunta em primeira pessoa ("eu", "meu", "minha") é sobre quem perguntou: use as mesmas duas ' +
+  'ferramentas e deixe o argumento nome vazio, mesmo que ela compare com a média — ' +
+  'contribuicao_de_membro já traz a média da semana junto. ' +
   'inativos_da_semana é só para contagem da guilda inteira, sem nome de ninguém. ' +
-  'Na dúvida entre ranking e MVP, use ranking_contribuicao. ' +
+  'Na dúvida entre ranking e MVP, use ranking_contribuicao; se a pergunta fala em média ou em como ' +
+  'a guilda está indo na semana, use media_de_contribuicao. ' +
   'Se nenhuma função responder a pergunta, use nao_sei_responder em vez de escolher a mais parecida.';
 
 export const INSTRUCAO_RESPOSTA =
@@ -608,7 +780,9 @@ export const INSTRUCAO_RESPOSTA =
   'Use SOMENTE os números que vierem no resultado da função. Nunca some, calcule, estime ou ' +
   'complete com conhecimento próprio — se um dado não está no resultado, diga que não tem essa ' +
   'informação. Responda em no máximo 3 frases curtas, direto ao ponto, sem saudação e sem repetir ' +
-  'a pergunta. A lista completa já aparece abaixo da sua resposta, então não repita a lista ' +
+  'a pergunta. Se o resultado trouxer sobre_quem_perguntou verdadeiro, fale em segunda pessoa ' +
+  '("você contribuiu...") em vez de repetir o apelido. ' +
+  'A lista completa já aparece abaixo da sua resposta, então não repita a lista ' +
   'inteira: cite no máximo dois ou três nomes. Se o resultado indicar que a medição é parcial, ' +
   'diga isso. Se uma busca por nome tiver encontrado mais gente do que foi mostrado, diga quantos ' +
   'foram encontrados e peça um nome mais específico.';

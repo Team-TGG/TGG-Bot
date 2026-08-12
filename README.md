@@ -126,6 +126,8 @@ reconferida contra as perguntas que já funcionavam.
 - [ ] Calibrar tom e tamanho da resposta em `INSTRUCAO_RESPOSTA` a partir do que a staff achar útil na prática.
 - [ ] Criar a ferramenta de média semanal por membro: query nova em `player_weekly_info`, cortando o histórico anterior a agosto/2026 (guild points não confiáveis).
 - [x] Avaliar ferramentas novas conforme as perguntas aparecerem: entraram `jogos_de_membro`, `movimentacao_da_guilda` e `duelo_da_semana` (11/08/2026), somando 7 ferramentas. O duelo saiu para [services/dueloSemanal.js](src/services/dueloSemanal.js) para o `.ia` e o `.duel` lerem o mesmo placar.
+- [x] Média de contribuição da semana (`media_de_contribuicao`), com mediana e o topo de qualquer uma das pontas. O divisor é quem pontuou, não todo mundo medido — medido em 11/08/2026: 178 pontuaram e 18 zeraram, e a média cai de 2.408 para 2.186 quando os zerados entram na conta.
+- [x] Perguntar sobre si mesmo: "quanto eu contribuí?", "quantos jogos eu fiz?". A ferramenta resolve pelo `discord_id` de quem perguntou, não por texto.
 - [ ] Ferramentas ainda de fora, que hoje caem em `nao_sei_responder`: histórico de blindagem, TGG Coins, elo e missões cadastradas.
 - [ ] Decidir se o `.ia` precisa de cooldown próprio (staff é isenta do rate limit de 5s). O teto diário deixou de ser o problema (500 requisições, ~250 perguntas), mas o free tier **também limita por minuto**: 16 chamadas seguidas tomaram 429 em 11/08/2026, e cada pergunta gasta duas.
 - [x] Comparar `gemini-3.6-flash` com um modelo mais barato no roteamento, que é tarefa simples. Trocado para `gemini-3.5-flash-lite`: 8/8 nas perguntas de referência, 678ms por pergunta e 500 requisições por dia contra 20 do flash (medido em 11/08/2026).

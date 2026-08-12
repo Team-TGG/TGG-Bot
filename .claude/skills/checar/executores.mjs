@@ -27,6 +27,8 @@ const MAX_TITULO = 256;
 const CASOS = [
   ['ranking_contribuicao', {}],
   ['ranking_contribuicao', { ordem: 'menor', limite: 15 }],
+  ['media_de_contribuicao', {}],
+  ['media_de_contribuicao', { ordem: 'maior', limite: 5 }],
   ['mvps_da_semana', {}],
   ['inativos_da_semana', {}],
   ['contribuicao_de_membro', { nome: 'a' }],
@@ -36,6 +38,14 @@ const CASOS = [
   ['movimentacao_da_guilda', {}],
   ['movimentacao_da_guilda', { dias: 7 }],
   ['duelo_da_semana', {}],
+  // O "eu": nome vazio resolve pelo discord_id de quem perguntou. O autor é lido do banco na hora
+  // (ver `autorDeVerdade`) porque cravar um ID aqui quebraria o teste quando essa pessoa saísse.
+  ['contribuicao_de_membro', {}, { comoAutor: true, exigeEncontrado: true }],
+  ['jogos_de_membro', {}, { comoAutor: true, exigeEncontrado: true }],
+  ['contribuicao_de_membro', { nome: 'eu' }, { comoAutor: true, exigeEncontrado: true }],
+  // Sem autor no contexto (ou autor sem cadastro) a resposta é "não achei", nunca um estouro
+  ['contribuicao_de_membro', {}, { semAutor: true }],
+  ['contribuicao_de_membro', {}, { autorFalso: true }],
 ];
 
 const linha = '─'.repeat(72);
@@ -68,7 +78,23 @@ function procurarIdentificadores(valor, caminho = 'dados') {
   return [];
 }
 
+/**
+ * Um discord_id de verdade, com cadastro e conta na guilda, para exercitar o caminho do "eu".
+ * Sai do banco em vez de estar cravado aqui: ID fixo faz o teste falhar no dia em que a pessoa sai.
+ */
+async function autorDeVerdade() {
+  const { getActiveUsersWithBrawlhallaId } = await importar('src/db.js');
+  const users = await getActiveUsersWithBrawlhallaId();
+  const escolhido = users.find(u => u.discord_id && u.brawlhalla_id);
+
+  if (!escolhido) err('nenhum usuário ativo com discord_id e brawlhalla_id - o caminho do "eu" não foi testado');
+
+  return escolhido ? String(escolhido.discord_id) : null;
+}
+
 console.log(`\n${linha}\n  EXECUTORES DO .ia\n${linha}`);
+
+const AUTOR = await autorDeVerdade();
 
 // Estrutural: par declaração + executor. `nao_sei_responder` é a exceção documentada — handleIa
 // trata ferramenta sem executor como "não sei responder", que é a resposta certa para ela.
@@ -84,7 +110,13 @@ for (const nome of Object.keys(EXECUTORES)) {
 }
 
 for (const [nome, args, opcoes = {}] of CASOS) {
-  const rotulo = `${nome}(${JSON.stringify(args)})`;
+  const contexto = opcoes.semAutor ? {}
+    : opcoes.autorFalso ? { discordId: '000000000000000001' }
+      : opcoes.comoAutor ? { discordId: AUTOR }
+        : {};
+
+  const sufixo = opcoes.comoAutor ? ' [como autor]' : opcoes.semAutor ? ' [sem autor]' : opcoes.autorFalso ? ' [autor sem cadastro]' : '';
+  const rotulo = `${nome}(${JSON.stringify(args)})${sufixo}`;
   const executor = EXECUTORES[nome];
 
   if (!executor) {
@@ -92,10 +124,12 @@ for (const [nome, args, opcoes = {}] of CASOS) {
     continue;
   }
 
+  if (opcoes.comoAutor && !AUTOR) continue;
+
   let resultado;
 
   try {
-    resultado = await executor(args);
+    resultado = await executor(args, contexto);
   } catch (e) {
     err(`${rotulo}: estourou — ${e.message}`);
     console.log(`  ERRO ${rotulo}: ${e.message}`);
@@ -125,6 +159,18 @@ for (const [nome, args, opcoes = {}] of CASOS) {
     if (!/e mais \d+/.test(maior.value ?? '')) {
       problemas.push('lista longa sem o aviso "… e mais N" — o corte estaria calado');
     }
+  }
+
+  // "eu" com autor de verdade tem que achar a pessoa e dizer que a resposta é sobre ela — é o que
+  // faz a IA escrever "você contribuiu" em vez do apelido.
+  if (opcoes.exigeEncontrado) {
+    if (!dados?.encontrado) problemas.push('não encontrou quem perguntou');
+    else if (!dados?.sobre_quem_perguntou) problemas.push('encontrou, mas não marcou sobre_quem_perguntou');
+  }
+
+  // Sem autor utilizável a saída é "não achei" com motivo, nunca uma resposta sobre outra pessoa
+  if ((opcoes.semAutor || opcoes.autorFalso) && dados?.encontrado !== false) {
+    problemas.push('sem autor identificável deveria voltar encontrado: false');
   }
 
   problemas.push(...procurarIdentificadores(dados));

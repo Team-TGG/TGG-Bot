@@ -2644,16 +2644,17 @@ export const handleIa = adminOnly(async (message, args) => {
       return sendCleanMessage(loading, {
         embeds: [createErrorEmbed(
           'Não sei responder isso',
-          'Por enquanto eu só respondo sobre **contribuição da semana**, **MVPs**, **inativação**, ' +
-          '**jogos e situação de um membro**, **movimentação da guilda** e o **duelo semanal**. ' +
-          'Tente reformular.'
+          'Por enquanto eu só respondo sobre **contribuição da semana** (ranking e média), ' +
+          '**MVPs**, **inativação**, **jogos e situação de um membro** (inclusive a sua), ' +
+          '**movimentação da guilda** e o **duelo semanal**. Tente reformular.'
         )]
       });
     }
 
     console.log(`[IA] ${message.author.tag}: "${pergunta}" -> ${escolha.nome}(${JSON.stringify(escolha.args)})`);
 
-    const { dados, titulo, campos, rodape } = await executor(escolha.args);
+    // O autor vai junto para as ferramentas de membro resolverem "quanto eu contribuí?" sem nome
+    const { dados, titulo, campos, rodape } = await executor(escolha.args, { discordId: message.author.id });
 
     // Falha ao redigir não perde o trabalho: os dados abaixo já respondem a pergunta sozinhos
     const texto = await redigirResposta({
