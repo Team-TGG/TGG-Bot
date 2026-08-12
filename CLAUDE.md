@@ -285,6 +285,12 @@ pergunta da vizinha. Depois de qualquer edição ali, rode
 "consertei" de "troquei um erro por outro". A segunda chamada precisa devolver o `thoughtSignature`
 da primeira; sem ele os modelos Gemini 3 recusam com 400 e a frase some do embed sem erro visível.
 
+Mexeu no **executor**, rode `node .claude/skills/checar/executores.mjs`, que é outra pergunta e
+outro script: um mede qual ferramenta a IA escolhe, o outro o que a ferramenta produz. Os dois
+existem porque o roteamento marcou 19/19 enquanto todo embed cortava lista em 15 linhas sem avisar
+(11/08/2026). Lista longa **sempre** termina em `… e mais N` — corte calado faz resposta parcial
+passar por completa, e ninguém tem como saber.
+
 ### API do Brawlhalla
 
 Referência completa em [docs/brawlhalla-api.md](docs/brawlhalla-api.md): endpoints, schemas, o que ainda

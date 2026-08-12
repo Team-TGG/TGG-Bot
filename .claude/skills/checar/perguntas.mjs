@@ -16,7 +16,7 @@ import { pathToFileURL } from 'node:url';
 const ROOT = process.cwd();
 const importar = (rel) => import(pathToFileURL(join(ROOT, rel)).href);
 
-const { FERRAMENTAS, EXECUTORES, INSTRUCAO_ESCOLHA, INSTRUCAO_RESPOSTA } = await importar('src/handlers/iaHandlers.js');
+const { FERRAMENTAS, INSTRUCAO_ESCOLHA, INSTRUCAO_RESPOSTA } = await importar('src/handlers/iaHandlers.js');
 const { escolherFerramenta, redigirResposta, iaConfigurada } = await importar('src/services/iaProvider.js');
 const { ia: config } = await importar('config/index.js');
 
@@ -171,13 +171,7 @@ try {
   falhas.push(`redigirResposta falhou: ${e.message.slice(0, 120)}`);
 }
 
-// Declaração sem executor é "não sei responder" (handleIa trata assim), e hoje só
-// `nao_sei_responder` é assim de propósito. Ferramenta nova sem executor é esquecimento.
-for (const f of FERRAMENTAS) {
-  if (!EXECUTORES[f.name] && f.name !== 'nao_sei_responder') {
-    falhas.push(`${f.name} está declarada mas não tem executor - toda pergunta que cair nela vira "não sei responder"`);
-  }
-}
+// O par declaração + executor é conferido pelo executores.mjs, que roda sem gastar cota.
 
 console.log(linha);
 console.log(`  ${CASOS.length - falhas.filter(f => f.startsWith('"')).length}/${CASOS.length} perguntas, ${gastas} requisições gastas`);

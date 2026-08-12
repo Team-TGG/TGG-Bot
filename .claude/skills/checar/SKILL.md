@@ -20,6 +20,23 @@ e lê arquivos. Precisa do `.env` porque `src/discord.js` cria o client do Supab
 Saída: lista de `ok` / `aviso` / `ERRO`. Exit code 0 se não houver erro, 1 se houver, 2 se os
 módulos nem carregarem.
 
+## Executores do `.ia`
+
+```bash
+node .claude/skills/checar/executores.mjs
+```
+
+Roda cada ferramenta de verdade e confere o que ela devolve: campo dentro dos 1024 do Discord,
+lista cortada sempre com o aviso `… e mais N`, `dados` sem `discord_id` nem `brawlhalla_id`, e o
+par declaração + executor completo. Lê banco e API do Brawlhalla; **não gasta cota do Gemini**.
+
+Roda depois de mexer em qualquer executor, e antes de commitar ferramenta nova.
+
+É o par do script abaixo, e a divisão é o que faz os dois valerem: em 11/08/2026 o roteamento
+marcava 19/19 enquanto todo embed cortava lista em 15 linhas sem avisar — 7 MVPs e 16 dos 31 da
+prévia de inativação sumiam da resposta. Um testa qual ferramenta a IA escolhe, o outro testa o
+que a ferramenta produz.
+
 ## Roteamento do `.ia`
 
 Script separado, porque gasta rede e cota da API do Gemini — não entre no `check.mjs`, senão a
