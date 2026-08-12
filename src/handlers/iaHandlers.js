@@ -26,7 +26,14 @@ import { weeklyMvp as mvpConfig } from '../../config/index.js';
  * provedor pode usar o conteúdo para treino, e não há motivo para mandar identificador de membro.
  */
 
+/** Teto de linhas do que volta **para a IA** em lista longa. Não é o teto do embed. */
 const MAX_LINHAS_EMBED = 15;
+
+/** Teto de um campo de embed no Discord. Passar disso derruba a mensagem inteira. */
+const MAX_CARACTERES_CAMPO = 1024;
+
+/** Folga para o "_… e mais 999_" caber depois da última linha que entrou. */
+const RESERVA_TRUNCAGEM = 24;
 
 /** Teto do `limite` que a IA pode pedir: acima disso o campo do embed passa de 1024 caracteres. */
 const MAX_LIMITE = 15;
@@ -48,9 +55,31 @@ function medidas(linhas) {
   return linhas.filter(l => !l.motivo);
 }
 
+/**
+ * Lista para campo de embed: enche até o teto do Discord e **diz quantos ficaram de fora**.
+ *
+ * Era um corte fixo em 15 linhas, calado. A lista de MVP passa disso quase toda semana — 22 em
+ * 11/08/2026, 14 com vaga mais 8 da staff, que recebe o cargo sem ocupar vaga — então 7 sumiam
+ * sem nenhum sinal de que havia mais, e a resposta parecia completa. Os 22 dão 573 caracteres,
+ * bem dentro do teto: o limite de linhas nunca foi o que protegia o campo.
+ */
 function listaEmEmbed(itens) {
   if (!itens.length) return '_Ninguém._';
-  return itens.slice(0, MAX_LINHAS_EMBED).join('\n');
+
+  const linhas = [];
+  let tamanho = 0;
+
+  for (const item of itens) {
+    const custo = item.length + 1; // a quebra de linha entre as entradas
+    if (tamanho + custo > MAX_CARACTERES_CAMPO - RESERVA_TRUNCAGEM) break;
+
+    linhas.push(item);
+    tamanho += custo;
+  }
+
+  const restantes = itens.length - linhas.length;
+
+  return restantes ? `${linhas.join('\n')}\n_… e mais ${restantes}_` : linhas.join('\n');
 }
 
 // ---- Declarações (o que a IA enxerga) ----
