@@ -28,7 +28,7 @@ const CASOS = [
   ['ranking_contribuicao', {}],
   ['ranking_contribuicao', { ordem: 'menor', limite: 15 }],
   ['media_de_contribuicao', {}],
-  ['media_de_contribuicao', { ordem: 'maior', limite: 5 }],
+  ['media_de_contribuicao', { ordem: 'menor', limite: 15 }],
   ['mvps_da_semana', {}],
   ['inativos_da_semana', {}],
   ['contribuicao_de_membro', { nome: 'a' }],

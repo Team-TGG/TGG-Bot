@@ -16,6 +16,7 @@ import { scheduleMuteRenewal } from './services/muteManager.js';
 import { ensurePlayerWeeklyInfo } from './tggCoins.js';
 import { getBlindagensAprovadas, getBlindagensPendentes, cobreSemana, ehPermanente, fimDaBlindagem } from './inactivity.js';
 import { calcularInativosDaSemana, inativarSemana, CONTRIBUICAO_MINIMA, LIMIAR_INATIVACAO, TOLERANCIA_INATIVACAO } from './services/weeklyInactiveService.js';
+import { calcularMediaHistorica } from './services/mediaHistorica.js';
 import { escolherFerramenta, redigirResposta, iaConfigurada } from './services/iaProvider.js';
 import { FERRAMENTAS, EXECUTORES, INSTRUCAO_ESCOLHA, INSTRUCAO_RESPOSTA } from './handlers/iaHandlers.js';
 
@@ -2125,10 +2126,6 @@ export const handleBlindagens = adminOnly(async (message, args, client) => {
   });
 });
 
-// Data em que os guild points passaram a existir. Serve de piso pra média semanal
-// do .scan: dividir pelo tempo total de guilda achataria quem é membro antigo.
-const GUILD_POINTS_DESDE = new Date(2025, 11, 3); // 03/12/2025 (mês é 0-indexado)
-
 // .scan <@usuario/id> - visão de staff sobre um membro, em abas
 export const handleScan = adminOnly(async (message, args, client) => {
   let loadingMsg = null;
@@ -2226,17 +2223,20 @@ export const handleScan = adminOnly(async (message, args, client) => {
       semanasNaGuilda = Math.max(1, Math.floor(dias / 7));
     }
 
-    // Divisor da média: guild points só passaram a existir em 03/12/2025, então semana
-    // anterior a isso não conta. Quem entrou depois conta a partir da própria entrada.
-    const entradaMs = ultimaEntrada ? new Date(ultimaEntrada.occurred_at).getTime() : 0;
-    const inicioContagem = Math.max(entradaMs, GUILD_POINTS_DESDE.getTime());
-
-    const divisorSemanas = Math.max(1, Math.floor((Date.now() - inicioContagem) / (7 * 86400000)));
-    const baseDivisor = inicioContagem === GUILD_POINTS_DESDE.getTime()
-      ? 'semanas desde 03/12/2025 (inicio dos guild points)'
-      : 'semanas desde a entrada na guilda';
-
     const pontosTotais = guildStats?.personal_points ?? null;
+
+    // A média por semana é a mesma do `.ia`, por isso a fórmula mora em mediaHistorica.js: os dois
+    // mostram o número da mesma pessoa e não podem discordar. A entrada sai do `join_date` da API
+    // porque é o campo que o `.ia` lê (na rota em lote); o histórico do site é o plano B, e ele só
+    // tem linha de `entrou` para quem entrou depois que aquele cron começou a gravar.
+    const entradaMs = Number(guildStats?.join_date || 0) > 0
+      ? Number(guildStats.join_date) * 1000
+      : (ultimaEntrada ? new Date(ultimaEntrada.occurred_at).getTime() : 0);
+
+    const { media: mediaSemanal, semanas: divisorSemanas, base: baseDivisor } = calcularMediaHistorica({
+      pontosTotais,
+      entradaEmMs: entradaMs,
+    });
 
     // guild_points em player_weekly_info é a linha de base do início da semana.
     // O ganho da semana passada é a diferença entre a base desta semana e a da anterior.
@@ -2267,8 +2267,6 @@ export const handleScan = adminOnly(async (message, args, client) => {
         pontosSemanaAtual = Math.max(0, pontosTotais - Number(base));
       }
     }
-
-    const mediaSemanal = pontosTotais != null ? Math.round(pontosTotais / divisorSemanas) : null;
 
     const jogosAtual = stats && jogosSemanaAtual ? calculateGames(stats, stats.ranked, jogosSemanaAtual) : null;
 
@@ -2410,7 +2408,7 @@ export const handleScan = adminOnly(async (message, args, client) => {
         );
 
       if (mediaSemanal != null) {
-        embed.setFooter({ text: `Media sobre ${divisorSemanas} ${baseDivisor}` });
+        embed.setFooter({ text: `Media sobre ${Math.round(divisorSemanas)} ${baseDivisor}` });
       }
 
       return embed;
@@ -2644,8 +2642,9 @@ export const handleIa = adminOnly(async (message, args) => {
       return sendCleanMessage(loading, {
         embeds: [createErrorEmbed(
           'Não sei responder isso',
-          'Por enquanto eu só respondo sobre **contribuição da semana** (ranking e média), ' +
-          '**MVPs**, **inativação**, **jogos e situação de um membro** (inclusive a sua), ' +
+          'Por enquanto eu só respondo sobre **contribuição da semana** (ranking), ' +
+          '**média de contribuição por semana**, **MVPs**, **inativação**, ' +
+          '**jogos e situação de um membro** (inclusive a sua), ' +
           '**movimentação da guilda** e o **duelo semanal**. Tente reformular.'
         )]
       });

@@ -1,8 +1,9 @@
 // Catálogo de ferramentas do `.ia` (usado por handleIa, em admin.js)
 import { calcularContribuicaoSemanal, MOTIVOS } from '../services/contribuicaoSemanal.js';
+import { calcularMediasHistoricas, estatisticasDasMedias, GUILD_POINTS_DESDE } from '../services/mediaHistorica.js';
 import { selecionarMvpsDasLinhas } from '../services/weeklyMvpService.js';
 import { calcularInativosDaSemana, CONTRIBUICAO_MINIMA, LIMIAR_INATIVACAO } from '../services/weeklyInactiveService.js';
-import { calcularDueloDaSemana, SEM_DUELO } from '../services/dueloSemanal.js';
+import { calcularDueloDaSemana, calcularGanhoDaGuildaNaSemana, SEM_DUELO } from '../services/dueloSemanal.js';
 import { getMissionWeekStart, getMissionWeekStartDateTime, getWeeklyInitial, getMovimentacaoDesde, getCadastroPorBrawlhallaIds, getUserByDiscordId, loadAliases, resolveBrawlhallaId, formatDateTime } from '../db.js';
 import { fetchPlayerStats } from '../brawlhalla.js';
 import { calculateGames } from './publicHandlers.js';
@@ -41,6 +42,15 @@ const MAX_LIMITE = 15;
 /** Teto da janela de movimentação. Acima de um mês a lista deixa de responder "e essa semana?". */
 const MAX_DIAS_MOVIMENTACAO = 30;
 
+/**
+ * Unidade de todo número de contribuição que sai daqui, dita junto do número.
+ *
+ * O executor sabe a unidade e a IA não: sem isso ela preenche a lacuna e já chamou guild points de
+ * "XP" (12/08/2026), que no Brawlhalla é a medida que **não** conta como contribuição. Vai no
+ * `dados` e também em `INSTRUCAO_RESPOSTA`, porque quem redige é uma segunda chamada.
+ */
+const UNIDADE = 'guild points ganhos nas missões da guilda (não é XP)';
+
 function numeroBR(valor) {
   return Number(valor || 0).toLocaleString('pt-BR');
 }
@@ -56,13 +66,14 @@ function medidas(linhas) {
 }
 
 /**
- * Estatística da semana sobre **quem pontuou** (contribuição > 0).
+ * Como a **semana corrente** está indo, sobre quem pontuou (contribuição > 0).
  *
  * Decisão do usuário (11/08/2026): média sobre a guilda inteira mede quantas contas existem, não
  * como a semana está indo — quem nem abriu o jogo puxa o número para baixo e some no meio da conta.
  *
- * Mora aqui, e não dentro do executor da média, porque `contribuicao_de_membro` também precisa
- * dela: "eu tô acima da média?" é uma pergunta só, e duas fórmulas dariam duas respostas.
+ * Não é a "média de contribuição" que a staff pergunta: aquela é a de longo prazo, em
+ * [mediaHistorica.js](../services/mediaHistorica.js). Esta aqui vai junto do ranking da semana, como
+ * contexto de "a semana tá fraca?", e é só disso que ela dá conta.
  */
 function estatisticasDaSemana(medidos) {
   const ativos = medidos.filter(l => l.contribuicao > 0);
@@ -177,9 +188,11 @@ export const FERRAMENTAS = [
   {
     name: 'ranking_contribuicao',
     description:
-      'Ranking de contribuição da semana corrente (guild points ganhos desde quinta 06:00). ' +
-      'Use para perguntas sobre quem contribuiu mais ou menos, quem está no topo, quem está no ' +
-      'fim da lista, e para qualquer pedido de ranking ou leaderboard da semana.',
+      'Ranking de contribuição da semana corrente (guild points ganhos desde quinta 06:00), com o ' +
+      'resumo de como a semana está indo: quanto a guilda ganhou, quantos pontuaram, quantos ' +
+      'zeraram e quanto foi a contribuição típica. Use para perguntas sobre quem contribuiu mais ou menos ' +
+      'nesta semana, quem está no topo ou no fim da lista, qualquer pedido de ranking ou ' +
+      'leaderboard da semana, e para saber se a semana está fraca ou forte.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -214,16 +227,18 @@ export const FERRAMENTAS = [
   {
     name: 'media_de_contribuicao',
     description:
-      'Média de contribuição da semana na guilda, com quantos estão acima e abaixo dela, e o topo ' +
-      'ou o fim da lista. Use para perguntas sobre média, sobre como a guilda está indo na semana, ' +
-      'se a semana está fraca ou forte, e sobre quem está acima ou abaixo da média.',
+      'Média de contribuição por semana de cada membro ao longo de todo o tempo de guilda (guild ' +
+      'points totais divididos pelas semanas), com o ranking de quem tem a maior e a menor média. ' +
+      'Use para perguntas sobre média de contribuição, quem rende mais ou menos por semana no ' +
+      'geral, quem é consistente e quem contribui pouco de forma constante. Não é sobre a semana ' +
+      'corrente: para isso use ranking_contribuicao.',
     parameters: {
       type: 'OBJECT',
       properties: {
         ordem: {
           type: 'STRING',
           enum: ['maior', 'menor'],
-          description: 'Qual ponta listar junto da média: maior = acima dela; menor = abaixo. Padrão: menor.',
+          description: 'maior = quem tem a maior média; menor = quem tem a menor média. Padrão: maior.',
         },
         limite: {
           type: 'INTEGER',
@@ -287,9 +302,10 @@ export const FERRAMENTAS = [
   {
     name: 'contribuicao_de_membro',
     description:
-      'Contribuição da semana e posição no ranking de um membro específico, buscado pelo apelido ' +
-      'no jogo. Use quando a pergunta cita o nome de uma pessoa, e também quando ela é sobre quem ' +
-      'está perguntando ("quanto eu contribuí?", "estou acima da média?").',
+      'Contribuição da semana, posição no ranking e média de contribuição por semana de um membro ' +
+      'específico, buscado pelo apelido no jogo. Use quando a pergunta cita o nome de uma pessoa, ' +
+      'e também quando ela é sobre quem está perguntando ("quanto eu contribuí?", "qual a minha ' +
+      'média?", "estou acima da média?").',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -318,12 +334,38 @@ async function rankingContribuicao({ ordem = 'maior', limite = 10 }) {
 
   const escolhidos = ordenados.slice(0, quantos);
 
+  // O resumo da semana vem de carona porque sai do mesmo cálculo e responde "a semana tá fraca?",
+  // que antes tinha ferramenta só dela. Média de contribuição, sem qualificação, virou a histórica.
+  const { ativos, zerados, media, mediana, soma } = estatisticasDaSemana(medidos);
+
+  // A soma dos membros não é o que a guilda ganhou, e é o número da guilda que a staff vê no jogo.
+  // Ler o do jogo aqui é o que evita a resposta discordar da tela (relatado em 12/08/2026).
+  const guilda = await calcularGanhoDaGuildaNaSemana().catch((err) => {
+    console.warn(`[IA] ganho da guilda indisponível: ${err.message}`);
+    return null;
+  });
+
   return {
     dados: {
       semana: dataBR(weekStart),
+      unidade: UNIDADE,
       ordem: crescente ? 'menor contribuição primeiro' : 'maior contribuição primeiro',
       total_de_membros_medidos: medidos.length,
       sem_medicao: linhas.length - medidos.length,
+      pontuaram_nesta_semana: ativos.length,
+      zeraram_nesta_semana: zerados,
+      media_desta_semana_entre_quem_pontuou: media,
+      mediana_desta_semana_entre_quem_pontuou: mediana,
+      // Os dois totais vão com o nome dizendo de quem é cada um: só o da guilda é "o total da
+      // semana", e é o que aparece no jogo. O dos membros é soma de ganhos individuais.
+      ganho_da_guilda_nesta_semana: guilda?.ganhoNaSemana ?? null,
+      soma_do_que_os_membros_ganharam: soma,
+      por_que_os_dois_totais_diferem: 'Membro pontua a cada partida que avança uma missão, mas a '
+        + 'guilda só pontua quando um tier da missão fecha (mais as guild battles). A soma dos '
+        + 'membros é normalmente maior e NÃO é o total da guilda. Ao falar do total da semana da '
+        + 'guilda, use ganho_da_guilda_nesta_semana.',
+      observacao: 'Estes números são só da semana corrente. A média por semana de cada membro ao '
+        + 'longo do tempo de guilda é outra coisa, e sai em media_de_contribuicao.',
       membros: escolhidos.map((l, i) => ({
         posicao: i + 1,
         nome: l.nome,
@@ -331,71 +373,103 @@ async function rankingContribuicao({ ordem = 'maior', limite = 10 }) {
       })),
     },
     titulo: crescente ? '📉 Menores contribuições da semana' : '📈 Maiores contribuições da semana',
-    campos: [{
-      name: `Top ${escolhidos.length}`,
-      value: listaEmEmbed(escolhidos.map((l, i) =>
-        `**${i + 1}.** ${l.nome} — ${numeroBR(l.contribuicao)}`)),
-    }],
+    campos: [
+      {
+        name: `Top ${escolhidos.length}`,
+        value: listaEmEmbed(escolhidos.map((l, i) =>
+          `**${i + 1}.** ${l.nome} — ${numeroBR(l.contribuicao)}`)),
+      },
+      {
+        name: 'A semana até agora',
+        value:
+          `Guilda ganhou: **${guilda?.ganhoNaSemana == null ? '—' : numeroBR(guilda.ganhoNaSemana)}**\n` +
+          `Soma dos membros: **${numeroBR(soma)}** _(sobe a cada partida; a guilda só no fecha-tier)_\n` +
+          `Pontuaram: **${ativos.length}** • Zeraram: **${zerados}**\n` +
+          `Média de quem pontuou: **${numeroBR(media)}** • Mediana: **${numeroBR(mediana)}**`,
+      },
+    ],
     rodape: `Semana de ${dataBR(weekStart)} • ${medidos.length} membros medidos`,
   };
 }
 
 /**
- * Média da semana. O divisor é **quem pontuou** (contribuição > 0), não todo mundo medido.
+ * Tempo mínimo de guilda para entrar no **ranking**. Abaixo disso a média ainda é palpite: uma
+ * semana boa ou ruim move o número inteiro, e quem entrou há dias ocupava quase toda a ponta de
+ * baixo (medido em 12/08/2026: 51 dos 196 medidos, e 7 dos 8 últimos colocados). Decisão do usuário.
  *
- * Decisão do usuário (11/08/2026): a média sobre a guilda inteira mede quantas contas existem, não
- * como a semana está indo — quem nem abriu o jogo puxa o número para baixo e some no meio da
- * conta. As duas saem no `dados` para a IA poder dizer que são diferentes, mas o número que a
- * resposta usa é o dos ativos.
- *
- * A mediana vai junto porque a média é sensível a quem farma muito: com um punhado de membros na
- * casa dos 20 mil, ela sozinha diria que a semana está melhor do que está para a maioria.
+ * O corte é só da lista — a média da guilda continua sobre todo mundo, e a contagem de quem ficou
+ * de fora sai no `dados` e no rodapé: lista cortada tem que dizer que foi cortada.
  */
-async function mediaDeContribuicao({ ordem = 'menor', limite = 10 }) {
-  const { weekStart, linhas } = await calcularContribuicaoSemanal();
+const SEMANAS_PARA_RANKEAR = 4;
 
-  const medidos = medidas(linhas);
-  const { ativos, ordenados, zerados, soma, media, mediana, mediaGeral, acima } = estatisticasDaSemana(medidos);
+/**
+ * Média de contribuição **por semana**, ao longo de todo o tempo de guilda — o mesmo número do
+ * `.scan`, agora para a guilda inteira e ordenável pelas duas pontas.
+ *
+ * Cada membro tem o próprio divisor (semanas desde 03/12/2025 ou desde a entrada, o que for mais
+ * recente), então `semanas_contadas` sai junto de cada linha: sem ele os 5.000/semana de quem está
+ * há um mês parecem a mesma coisa que os 5.000/semana de quem está há oito meses.
+ */
+async function mediaDeContribuicao({ ordem = 'maior', limite = 10 }) {
+  const { linhas } = await calcularMediasHistoricas();
 
-  const crescente = String(ordem).toLowerCase() !== 'maior';
+  const comMedia = linhas.filter(l => !l.motivoMedia);
+  const { media, mediana, acima, abaixo } = estatisticasDasMedias(comMedia);
+
+  const crescente = String(ordem).toLowerCase() === 'menor';
   const quantos = Math.min(Math.max(Number(limite) || 10, 1), MAX_LIMITE);
 
-  const lista = (crescente ? ordenados : [...ordenados].reverse()).slice(0, quantos);
+  const rankeaveis = comMedia.filter(l => l.semanas >= SEMANAS_PARA_RANKEAR);
+  const novatos = comMedia.length - rankeaveis.length;
+
+  const ordenadas = [...rankeaveis].sort((a, b) => crescente ? a.media - b.media : b.media - a.media);
+  const lista = ordenadas.slice(0, quantos);
+
+  const desde = GUILD_POINTS_DESDE.toLocaleDateString('pt-BR');
 
   return {
     dados: {
-      semana: dataBR(weekStart),
-      media_dos_que_pontuaram: media,
-      mediana_dos_que_pontuaram: mediana,
-      quantos_pontuaram: ativos.length,
-      quantos_zeraram: zerados,
-      total_de_membros_medidos: medidos.length,
-      media_sobre_todos_os_medidos: mediaGeral,
-      acima_da_media: acima,
-      abaixo_da_media: ativos.length - acima,
-      total_contribuido_na_semana: soma,
-      observacao: 'A média usa só quem pontuou nesta semana; quem zerou entra em quantos_zeraram.',
-      ponta_listada: crescente ? 'quem menos pontuou, entre os que pontuaram' : 'quem mais pontuou',
-      membros: lista.map((l, i) => ({ posicao: i + 1, nome: l.nome, contribuicao_na_semana: l.contribuicao })),
+      o_que_e: `Guild points totais de cada membro divididos pelas semanas desde ${desde}, quando os `
+        + 'guild points passaram a existir. Quem entrou depois é dividido pelas semanas desde a entrada.',
+      unidade: UNIDADE,
+      media_da_guilda: media,
+      mediana_da_guilda: mediana,
+      membros_com_media: comMedia.length,
+      sem_media_possivel: linhas.length - comMedia.length,
+      acima_da_media_da_guilda: acima,
+      abaixo_da_media_da_guilda: abaixo,
+      ponta_listada: crescente ? 'as menores médias' : 'as maiores médias',
+      membros_no_ranking: rankeaveis.length,
+      fora_do_ranking_por_pouco_tempo_de_guilda: novatos,
+      regra_do_ranking: `Só entra na lista quem tem ${SEMANAS_PARA_RANKEAR} semanas ou mais de `
+        + 'guilda; com menos que isso a média ainda oscila demais. A média da guilda conta todos.',
+      membros: lista.map((l, i) => ({
+        posicao: i + 1,
+        nome: l.nome,
+        media_por_semana: l.media,
+        semanas_contadas: Math.round(l.semanas),
+        guild_points_totais: l.pontosTotais,
+        contagem_desde: l.desdeEntrada ? 'a entrada na guilda' : desde,
+      })),
     },
-    titulo: '📊 Média de contribuição da semana',
+    titulo: crescente ? '📉 Menores médias de contribuição' : '📈 Maiores médias de contribuição',
     campos: [
       {
-        name: 'A semana',
-        value:
-          `Média: **${numeroBR(media)}**\n` +
-          `Mediana: **${numeroBR(mediana)}**\n` +
-          `Pontuaram: **${ativos.length}** • Zeraram: **${zerados}**\n` +
-          `Acima da média: **${acima}** • Abaixo: **${ativos.length - acima}**`,
-        inline: true,
+        name: crescente ? `${lista.length} menores médias` : `${lista.length} maiores médias`,
+        value: listaEmEmbed(lista.map((l, i) =>
+          `**${i + 1}.** ${l.nome} — ${numeroBR(l.media)}/sem \`${Math.round(l.semanas)}s\``)),
       },
       {
-        name: crescente ? `${lista.length} que menos pontuaram` : `${lista.length} que mais pontuaram`,
-        value: listaEmEmbed(lista.map((l, i) => `**${i + 1}.** ${l.nome} — ${numeroBR(l.contribuicao)}`)),
-        inline: true,
+        name: 'A guilda',
+        value:
+          `Média das médias: **${numeroBR(media)}**\n` +
+          `Mediana: **${numeroBR(mediana)}**\n` +
+          `Acima da média: **${acima}** • Abaixo: **${abaixo}**\n` +
+          `Medidos: **${comMedia.length}** • No ranking: **${rankeaveis.length}**`,
       },
     ],
-    rodape: `Semana de ${dataBR(weekStart)} • média sobre ${ativos.length} que pontuaram`,
+    rodape: `Média por semana desde ${desde} • \`Ns\` = semanas contadas • `
+      + `${novatos} com menos de ${SEMANAS_PARA_RANKEAR} semanas fora da lista`,
   };
 }
 
@@ -409,6 +483,7 @@ async function mvpsDaSemana() {
   return {
     dados: {
       semana: dataBR(weekStart),
+      unidade: UNIDADE,
       previa: true,
       vagas: mvpConfig.limite,
       observacao: 'Staff recebe o cargo sem ocupar vaga (posicao nula).',
@@ -442,6 +517,7 @@ async function inativosDaSemana() {
   return {
     dados: {
       semana: dataBR(weekStart),
+      unidade: UNIDADE,
       medicao_definitiva: fechada,
       observacao: fechada
         ? 'A semana fechou: estes números são os definitivos.'
@@ -482,7 +558,10 @@ async function inativosDaSemana() {
 }
 
 async function contribuicaoDeMembro({ nome }, contexto = {}) {
-  const { weekStart, linhas } = await calcularContribuicaoSemanal();
+  // A média histórica vem junto porque "qual a minha média?" e "eu tô acima da média?" são
+  // perguntas de membro: sem elas aqui a resposta teria o número da semana e nada com que comparar.
+  // É a mesma leitura da semana por dentro, então continua sendo uma chamada à API.
+  const { weekStart, linhas } = await calcularMediasHistoricas();
 
   const busca = await encontrarMembro({ nome, linhas, discordId: contexto.discordId });
   const achados = busca.achados;
@@ -491,9 +570,7 @@ async function contribuicaoDeMembro({ nome }, contexto = {}) {
 
   // Posição só faz sentido entre quem tem número; quem não pôde ser medido fica sem
   const ranking = medidas(linhas).sort((a, b) => b.contribuicao - a.contribuicao);
-  // A média vai junto porque "eu tô acima da média?" é uma pergunta de membro, não de guilda:
-  // sem ela aqui, a resposta teria o número da pessoa e nada com que comparar.
-  const { media } = estatisticasDaSemana(ranking);
+  const { media } = estatisticasDasMedias(linhas.filter(l => !l.motivoMedia));
   const posicaoDe = (linha) => {
     const i = ranking.findIndex(r => r.brawlhallaId === linha.brawlhallaId);
     return i === -1 ? null : i + 1;
@@ -503,6 +580,8 @@ async function contribuicaoDeMembro({ nome }, contexto = {}) {
     nome: l.nome,
     contribuicao_na_semana: l.motivo ? null : l.contribuicao,
     posicao_no_ranking: posicaoDe(l),
+    media_por_semana: l.media,
+    semanas_contadas: l.semanas == null ? null : Math.round(l.semanas),
     guild_points_totais: l.pontosTotais,
     motivo_sem_medicao: l.motivo,
   }));
@@ -514,8 +593,11 @@ async function contribuicaoDeMembro({ nome }, contexto = {}) {
       // A IA escreve "você" em vez do apelido quando a pergunta foi em primeira pessoa
       sobre_quem_perguntou: busca.sobre === 'autor',
       encontrado: true,
+      unidade: UNIDADE,
       total_de_membros_medidos: ranking.length,
-      media_dos_que_pontuaram: media,
+      media_da_guilda_por_semana: media,
+      observacao: 'contribuicao_na_semana é o ganho desta semana; media_por_semana é a média do '
+        + 'membro ao longo de todo o tempo de guilda, comparável com media_da_guilda_por_semana.',
       // Busca curta casa com meio mundo. Sem esta contagem a IA leria os 15 de `resultados` como
       // se fossem todos e diria "encontrei 15" quando o certo é pedir um nome mais específico.
       total_encontrado: achados.length,
@@ -527,9 +609,15 @@ async function contribuicaoDeMembro({ nome }, contexto = {}) {
       name: detalhes.length < achados.length
         ? `Mostrando ${detalhes.length} de ${achados.length}`
         : 'Resultado',
-      value: listaEmEmbed(detalhes.map(d => d.motivo_sem_medicao
-        ? `**${d.nome}** — sem medição (${d.motivo_sem_medicao})`
-        : `**${d.nome}** — ${numeroBR(d.contribuicao_na_semana)} (${d.posicao_no_ranking}º)`)),
+      value: listaEmEmbed(detalhes.map(d => {
+        const semana = d.motivo_sem_medicao
+          ? `sem medição (${d.motivo_sem_medicao})`
+          : `${numeroBR(d.contribuicao_na_semana)} (${d.posicao_no_ranking}º)`;
+
+        const media = d.media_por_semana == null ? '' : ` • média ${numeroBR(d.media_por_semana)}/sem`;
+
+        return `**${d.nome}** — ${semana}${media}`;
+      })),
     }],
     rodape: `Semana de ${dataBR(weekStart)}`,
   };
@@ -587,6 +675,10 @@ async function jogosDeMembro({ nome }, contexto = {}) {
       nome: membro.nome,
       encontrado: true,
       sobre_quem_perguntou: busca.sobre === 'autor',
+      // Aqui convivem duas unidades: partidas e guild points. Dizer qual é qual evita a frase
+      // trocar "jogou 40 partidas" por "ganhou 40" e vice-versa.
+      unidade_dos_jogos: 'partidas jogadas',
+      unidade_da_contribuicao: UNIDADE,
       jogos_totais: stats?.games ?? null,
       jogos_na_semana: jogos?.totalGames ?? null,
       ranked_1v1_na_semana: jogos?.games1v1 ?? null,
@@ -712,6 +804,7 @@ async function dueloDaSemana() {
   return {
     dados: {
       tem_duelo: true,
+      unidade: UNIDADE,
       nossa_guilda: nos.nome,
       guilda_adversaria: eles.nome,
       nossos_pontos_na_semana: nos.ganhoNaSemana,
@@ -768,18 +861,34 @@ export const INSTRUCAO_ESCOLHA =
   'Pergunta que cita o nome de uma pessoa é sempre sobre ela, mesmo que fale de inativação ou de ' +
   'risco: use jogos_de_membro se for sobre partidas jogadas e contribuicao_de_membro no resto. ' +
   'Pergunta em primeira pessoa ("eu", "meu", "minha") é sobre quem perguntou: use as mesmas duas ' +
-  'ferramentas e deixe o argumento nome vazio, mesmo que ela compare com a média — ' +
-  'contribuicao_de_membro já traz a média da semana junto. ' +
+  'ferramentas e deixe o argumento nome vazio, mesmo que ela fale em média — ' +
+  'contribuicao_de_membro já traz a média do membro e a da guilda junto. ' +
   'inativos_da_semana é só para contagem da guilda inteira, sem nome de ninguém. ' +
-  'Na dúvida entre ranking e MVP, use ranking_contribuicao; se a pergunta fala em média ou em como ' +
-  'a guilda está indo na semana, use media_de_contribuicao. ' +
+  'Na dúvida entre ranking e MVP, use ranking_contribuicao. ' +
+  // "média" sem qualificação é a histórica: foi a decisão do usuário ao refazer a ferramenta, e é
+  // o que o `.scan` mostra há mais tempo. O que a semana corrente tem de resumo vai no ranking.
+  'media_de_contribuicao é a média por semana ao longo de todo o tempo de guilda, e é ela que ' +
+  'responde qualquer pergunta sobre média sem dizer de qual período; ranking_contribuicao é a ' +
+  'semana corrente, inclusive para "a semana está fraca?". ' +
   'Se nenhuma função responder a pergunta, use nao_sei_responder em vez de escolher a mais parecida.';
 
 export const INSTRUCAO_RESPOSTA =
   'Você responde à staff de uma guilda de Brawlhalla, em português do Brasil. ' +
   'Use SOMENTE os números que vierem no resultado da função. Nunca some, calcule, estime ou ' +
   'complete com conhecimento próprio — se um dado não está no resultado, diga que não tem essa ' +
-  'informação. Responda em no máximo 3 frases curtas, direto ao ponto, sem saudação e sem repetir ' +
+  'informação. ' +
+  // A unidade tem que ser dita aqui: a instrução de escolha explica o que é contribuição, mas quem
+  // escreve a frase é a segunda chamada, que não vê aquela instrução. Sem isto o modelo preenche a
+  // lacuna sozinho e chamou os guild points de "XP" — que no jogo é outra medida, ganha em qualquer
+  // partida, e é justamente a que não conta como contribuição (relatado pela staff em 12/08/2026).
+  'Contribuição é medida em guild points, ganhos nas missões semanais da guilda. Chame esses ' +
+  'números de "contribuição" ou de "guild points", NUNCA de XP: XP é outra coisa no Brawlhalla e ' +
+  'não conta como contribuição. ' +
+  // Os dois totais existem e medem coisas diferentes; sem esta regra o modelo pega a soma dos
+  // membros, que é sempre a maior, e a apresenta como o total da guilda (relatado em 12/08/2026).
+  'Se o resultado trouxer ganho_da_guilda_nesta_semana, é ESSE o total da semana da guilda, e é ele ' +
+  'que a staff vê no jogo. Nunca apresente a soma do que os membros ganharam como total da guilda. ' +
+  'Responda em no máximo 3 frases curtas, direto ao ponto, sem saudação e sem repetir ' +
   'a pergunta. Se o resultado trouxer sobre_quem_perguntou verdadeiro, fale em segunda pessoa ' +
   '("você contribuiu...") em vez de repetir o apelido. ' +
   'A lista completa já aparece abaixo da sua resposta, então não repita a lista ' +

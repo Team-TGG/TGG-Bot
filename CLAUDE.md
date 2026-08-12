@@ -220,6 +220,24 @@ Os avisos automáticos de missões, MVP, inativação, duelo e pedido de blindag
 o pedido de canal não quebra a aprovação. O canal dos inativos (`inactivePlayers.channelId`)
 continua sendo outro — é onde o lembrete de 3h é postado e o único lugar onde `.active` funciona.
 
+### Média histórica de contribuição
+
+Guild points totais divididos pelas semanas de guilda, em
+[src/services/mediaHistorica.js](src/services/mediaHistorica.js). É a leitura de longo prazo, o
+oposto da contribuição da semana — e é o que "média de contribuição" quer dizer sem qualificação:
+a média *da semana* mede quantas contas existem, não como alguém rende (decisão do usuário,
+12/08/2026). Lida pelo `.scan` (um membro) e pelo `.ia` (guilda inteira), pela mesma função.
+
+O divisor de cada membro é o tempo desde **03/12/2025**, quando os guild points passaram a existir,
+ou desde a entrada na guilda para quem chegou depois — dividir o total de quem está há duas semanas
+pelas 36 da guilda mede a idade da guilda, não a pessoa. E ele é **fracionário**: contar semanas
+inteiras dividia 13 dias e meio por 1 e dobrava a média de quem entrou há pouco (medido em
+12/08/2026: 18.244/semana virando ~9.400, com o membro saindo do 3º lugar da guilda).
+
+O ranking do `.ia` só lista quem tem **4 semanas ou mais**; a média da guilda conta todos. Sem esse
+piso a ponta de baixo era quase toda de quem entrou nos últimos dias (51 dos 196 medidos, 7 dos 8
+últimos colocados). O corte sai dito no rodapé e no `dados` — lista cortada tem que dizer que foi.
+
 ### Movimentação da guilda
 
 `guild_membership_history` é escrita pelo cron do site (`automations/guild_history.php`) a cada 15 min,
@@ -279,10 +297,26 @@ confiante e errada. Ao adicionar ferramenta, **tire o assunto novo da descriçã
 O que volta para a IA leva só apelido do jogo e números — `discord_id` e `brawlhalla_id` nunca saem
 daqui, porque o free tier pode usar o conteúdo para treino.
 
+Número sem unidade a IA batiza sozinha, e ela chamou guild points de **XP** (12/08/2026) — no jogo
+XP é outra medida, ganha em qualquer partida, e é a que *não* conta como contribuição. Por isso a
+unidade vai dita no `dados` (`UNIDADE`) **e** em `INSTRUCAO_RESPOSTA`: quem redige é uma segunda
+chamada, que não enxerga a instrução de roteamento. `perguntas.mjs` reprova resposta que diga "XP".
+
+Pela mesma razão o `ranking_contribuicao` devolve os dois totais da semana com o nome dizendo de
+quem é cada um: `ganho_da_guilda_nesta_semana` (o que a staff vê no jogo) e
+`soma_do_que_os_membros_ganharam`, que é sempre maior e **não** é o total da guilda (ver a mecânica
+de tier em [API do Brawlhalla](#api-do-brawlhalla)). Campo genérico como `total_da_semana` é o que
+faz a IA escolher o maior e a resposta discordar da tela.
+
 Executor recebe `(args, contexto)`, e `contexto.discordId` é quem perguntou. É o que faz "quanto eu
 contribuí?" funcionar: a declaração manda deixar `nome` vazio na primeira pessoa e o executor
 resolve pelo cadastro. Procurar "eu" no apelido casaria com meia guilda, então a resolução é por
 `discord_id`, nunca por texto.
+
+Duas ferramentas dividem o assunto "contribuição" e é fácil uma roubar a pergunta da outra:
+`media_de_contribuicao` é a **média histórica** (ver acima) e responde "média" sem período dito;
+`ranking_contribuicao` é a **semana corrente**, e leva junto o resumo dela — quantos pontuaram,
+quantos zeraram, média e mediana da semana — que é o que responde "a semana tá fraca?".
 
 Quem decide o roteamento é a `description` de cada ferramenta, então mexer numa pode roubar
 pergunta da vizinha. Depois de qualquer edição ali, rode
@@ -307,6 +341,14 @@ está na v0 depreciada e as pegadinhas. Dois pontos que atravessam o código tod
 - **Guild points acumulam.** A doc diz "resets weekly", mas isso é comportamento in-game; a API devolve
   o total acumulado. Ganho de uma semana é sempre **diferença entre duas capturas** de
   `player_weekly_info`, nunca o valor lido direto.
+- **O ponto do membro e o ponto da guilda não são a mesma contagem.** O membro pontua a cada partida
+  que avança uma missão; a **guilda** só pontua quando um **tier** da missão fecha (uma missão tem
+  vários: 5 partidas → 500, 15 → 1.000, 30 → 2.000…), mais as guild battles. Enquanto ninguém fecha o
+  tier seguinte, os membros somam e a guilda não — medido em 12/08/2026: 432.826 somando membro a
+  membro contra 343.497 do lado da guilda, na mesma semana. **Somar os membros não dá o total da
+  guilda**, e é o da guilda que a staff vê no jogo: ele sai de `calcularGanhoDaGuildaNaSemana()`
+  ([dueloSemanal.js](src/services/dueloSemanal.js)), guild points atuais menos a base de
+  `guild_weekly_guild_points`.
 
 O histórico de guild points anterior a **agosto/2026 não é confiável** (a API devolvia valores errados,
 corrigida pouco antes de 04/08/2026). Não monte análise de membro em cima dele.

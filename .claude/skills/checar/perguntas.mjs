@@ -33,13 +33,19 @@ const CASOS = [
   ['me mostra o top 5 da semana', 'ranking_contribuicao', { limite: 5 }],
   ['quanto o Feijao contribuiu?', 'contribuicao_de_membro', { nome: 'Feijao' }],
   ['o Pizzolho corre risco de ser inativado?', 'contribuicao_de_membro', { nome: 'Pizzolho' }],
-  ['qual a média de contribuição da semana?', 'media_de_contribuicao'],
-  ['a semana tá fraca?', 'media_de_contribuicao'],
+  // "Média" sem período é a histórica (total ÷ semanas de guilda); a semana corrente é o ranking.
+  // As duas ferramentas falam de contribuição, então este par é o que denuncia uma roubando a
+  // pergunta da outra depois de qualquer mexida nas descrições.
+  ['quem tem a maior média de contribuição?', 'media_de_contribuicao', { ordem: 'maior' }],
+  ['quem tem as piores médias da guilda?', 'media_de_contribuicao', { ordem: 'menor' }],
   ['quem está abaixo da média?', 'media_de_contribuicao', { ordem: 'menor' }],
+  ['a semana tá fraca?', 'ranking_contribuicao'],
+  ['quanto a guilda contribuiu essa semana?', 'ranking_contribuicao'],
   // Primeira pessoa: tem que chegar sem `nome` para o executor resolver pelo discord_id de quem
   // perguntou. `nome: null` afirma que o argumento veio vazio.
   ['quanto eu contribuí essa semana?', 'contribuicao_de_membro', { nome: null }],
   ['eu tô acima da média?', 'contribuicao_de_membro', { nome: null }],
+  ['qual a minha média de contribuição?', 'contribuicao_de_membro', { nome: null }],
   ['quantos jogos eu fiz?', 'jogos_de_membro', { nome: null }],
   // Nome de pessoa + partidas vai para jogos_de_membro, não para contribuicao_de_membro: as duas
   // casam com "cita uma pessoa" e a instrução de escolha desempata.
@@ -60,14 +66,38 @@ const CASOS = [
 
 // Resultado inventado, com a forma que `ranking_contribuicao` devolve. Serve para checar a segunda
 // chamada sem tocar no banco nem na API do Brawlhalla.
+const PERGUNTA_DA_RESPOSTA = 'a semana tá fraca?';
+
 const RESULTADO_DE_MENTIRA = {
   semana: '06/08/2026',
+  unidade: 'guild points ganhos nas missões da guilda (não é XP)',
   ordem: 'menor',
+  pontuaram_nesta_semana: 178,
+  zeraram_nesta_semana: 18,
+  media_desta_semana_entre_quem_pontuou: 2186,
+  ganho_da_guilda_nesta_semana: 343497,
+  soma_do_que_os_membros_ganharam: 432826,
+  por_que_os_dois_totais_diferem: 'Membro pontua a cada partida que avança uma missão, mas a guilda '
+    + 'só pontua quando um tier da missão fecha (mais as guild battles). A soma dos membros é '
+    + 'normalmente maior e NÃO é o total da guilda. Ao falar do total da semana da guilda, use '
+    + 'ganho_da_guilda_nesta_semana.',
   membros: [
-    { nome: 'Fulano', contribuicao: 120, posicao: 196 },
-    { nome: 'Beltrano', contribuicao: 340, posicao: 195 },
+    { nome: 'Fulano', contribuicao_na_semana: 120, posicao: 196 },
+    { nome: 'Beltrano', contribuicao_na_semana: 340, posicao: 195 },
   ],
 };
+
+// O executor sabe a unidade e o modelo não: sem ela dita, ele preenche a lacuna e chamou os guild
+// points de "XP" (relatado pela staff em 12/08/2026). No jogo XP é outra medida, ganha em qualquer
+// partida, inclusive contra bot, e é justamente a que **não** conta como contribuição — a resposta
+// sai plausível e ensina a coisa errada. Vale para qualquer ferramenta: o número é sempre o mesmo.
+const UNIDADE_ERRADA = /\bxp\b/i;
+
+// O outro jeito de a frase sair plausível e errada: os dois totais da semana medem coisas
+// diferentes, e o dos membros é sempre o maior. A staff compara com o que vê no jogo, que é o da
+// guilda — apresentar 432.826 onde o jogo mostra 343.497 é o erro relatado em 12/08/2026.
+const TOTAL_DOS_MEMBROS = /432[.\s]?826/;
+const TOTAL_DA_GUILDA = /343[.\s]?497/;
 
 // O free tier limita por minuto, não só por dia: 16 perguntas seguidas levam 429 no fim da lista
 // (medido em 11/08/2026 — um minuto depois a mesma chave responde 200). O intervalo mantém o ritmo
@@ -164,7 +194,7 @@ try {
   await dormir(INTERVALO_MS);
 
   const escolha = await comRetry(() => escolherFerramenta({
-    pergunta: 'quem contribuiu menos essa semana?',
+    pergunta: PERGUNTA_DA_RESPOSTA,
     ferramentas: FERRAMENTAS,
     instrucao: INSTRUCAO_ESCOLHA,
   }));
@@ -172,14 +202,31 @@ try {
   await dormir(INTERVALO_MS);
 
   const texto = await comRetry(() => redigirResposta({
-    pergunta: 'quem contribuiu menos essa semana?',
+    pergunta: PERGUNTA_DA_RESPOSTA,
     escolha,
     resultado: RESULTADO_DE_MENTIRA,
     instrucao: INSTRUCAO_RESPOSTA,
   }));
 
-  if (texto) console.log(`  ok    a resposta é escrita: "${texto.slice(0, 90)}${texto.length > 90 ? '…' : ''}"`);
-  else falhas.push('redigirResposta devolveu texto vazio - o embed sairia só com os números');
+  if (!texto) {
+    falhas.push('redigirResposta devolveu texto vazio - o embed sairia só com os números');
+  } else {
+    console.log(`  ok    a resposta é escrita: "${texto.slice(0, 90)}${texto.length > 90 ? '…' : ''}"`);
+
+    if (UNIDADE_ERRADA.test(texto)) {
+      console.log('  ERRO  a resposta chamou contribuição de XP');
+      falhas.push('a resposta chamou os guild points de "XP" - XP é a medida que não conta como contribuição');
+    } else {
+      console.log('  ok    a unidade sai certa (guild points, não XP)');
+    }
+
+    if (TOTAL_DOS_MEMBROS.test(texto) && !TOTAL_DA_GUILDA.test(texto)) {
+      console.log('  ERRO  a resposta deu a soma dos membros como total da guilda');
+      falhas.push('a resposta usou a soma dos membros (432.826) como total da semana, em vez do ganho da guilda (343.497)');
+    } else {
+      console.log('  ok    o total da semana é o da guilda, não a soma dos membros');
+    }
+  }
 } catch (e) {
   console.log(`  ERRO  redigirResposta: ${e.message.slice(0, 120)}`);
   falhas.push(`redigirResposta falhou: ${e.message.slice(0, 120)}`);

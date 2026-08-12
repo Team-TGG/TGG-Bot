@@ -21,6 +21,36 @@ export const SEM_DUELO = {
   OPONENTE_SEM_ID: 'OPONENTE_SEM_ID',
 };
 
+/**
+ * Quanto a **guilda** ganhou nesta semana — o número que aparece no jogo.
+ *
+ * Não é a soma do que os membros ganharam, e a diferença não é erro: membro pontua a cada partida
+ * que avança uma missão, mas a guilda só pontua quando um **tier** da missão fecha (mais as guild
+ * battles). Enquanto ninguém fecha o tier seguinte, os membros continuam somando e a guilda não —
+ * medido em 12/08/2026: 432.826 do lado dos membros contra 343.497 do lado da guilda.
+ *
+ * A base é a mesma linha que o duelo usa (`guild_weekly_guild_points`, gravada pelo cron de quarta),
+ * então sem ela não há o que medir e volta `null` em vez de devolver o acumulado inteiro como ganho.
+ */
+export async function calcularGanhoDaGuildaNaSemana() {
+  const [api, base] = await Promise.all([
+    fetchGuildStatsNewAPI(config.ourGuildId),
+    getGuildWeeklyGuildPoints(),
+  ]);
+
+  const pontosNaVirada = base?.total_guild_points;
+
+  return {
+    nome: api?.name ?? 'Desconhecida',
+    membros: api?.member_count ?? null,
+    pontosAtuais: api?.guild_points == null ? null : Number(api.guild_points),
+    pontosNaVirada: pontosNaVirada == null ? null : Number(pontosNaVirada),
+    ganhoNaSemana: api?.guild_points == null || pontosNaVirada == null
+      ? null
+      : Number(api.guild_points) - Number(pontosNaVirada),
+  };
+}
+
 export async function calcularDueloDaSemana() {
   const [nossaApi, nossaBase, duelo] = await Promise.all([
     fetchGuildStatsNewAPI(config.ourGuildId),
