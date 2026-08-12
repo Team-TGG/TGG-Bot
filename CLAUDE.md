@@ -124,6 +124,29 @@ inatividade é outra: `getLastWednesdayReference` (quarta retrasada). Essas duas
 query de conquista/missão/inatividade — usar a errada zera o progresso da semana silenciosamente.
 Todos os cálculos de data usam o fuso local do processo; os crons declaram `timezone: 'America/Sao_Paulo'`.
 
+### A arte das missões
+
+[src/services/missoesImagem.js](src/services/missoesImagem.js) monta o PNG do post colando quatro
+prints do jogo sobre um fundo fixo, tudo em [assets/missoes/](assets/missoes/). **O nome do arquivo
+é o slug do `TEMPLATES`** (`ouro-2v2.png`), e é só isso que liga missão a imagem — não há tabela
+de-para. Print novo entra com o nome certo e funciona.
+
+Três coisas que parecem defeito e não são:
+
+- **O card do slot 1 vem com o botão destacado** (`INICIAR LOBBY` em ciano/rosa). É a seleção
+  padrão que o jogo dá ao primeiro card ao abrir a tela, não mouse por cima: medido em 12/08/2026,
+  11 dos 12 prints do slot 1 têm o destaque e nenhum dos 6 dos outros slots tem. Print do slot 1
+  **sem** destaque é que está fora do padrão.
+- **A arte mostra o primeiro tier e o texto do post o último.** O card diz "Alcance a onda 4" e a
+  descrição diz "onda 20"; o alvo da imagem é 500 e o do texto, 16. Não existe print "certo" — o
+  tier avança durante a semana. Decisão do usuário (12/08/2026): a imagem é ilustração, o texto
+  carrega a informação.
+- **O passo entre os slots (420) é menor que a largura do card (462).** Os cards são paralelogramos
+  que se encaixam; a sobra de um entra no vão do vizinho.
+
+O recorte de cada card é medido em execução (`trim` do sharp), não fixado numa tabela, justamente
+para o usuário poder reexportar um print sem ninguém remedir coordenada.
+
 ### `player_weekly_info` — nunca sobrescrever
 
 A linha de base semanal de cada conta é gravada por um **cron do site TGG (fora deste repo), a cada 15 min**,
@@ -215,7 +238,10 @@ vive por horas, a página vai no `customId` (`justificativa_histpg_<pedido>_<pá
 é consulta nova — **não use collector aqui**, ele morre no primeiro restart.
 
 Os avisos automáticos de missões, MVP, inativação, duelo e pedido de blindagem vão todos para
-**log-guilda** (`1536704688689516624`), para não misturar log com chat. Os botões de
+**log-guilda** (`1536704688689516624`), para não misturar log com chat. A única saída que também
+vai para fora dali é o **post das missões em guild-updates** (`1451542963854508227`) — o aviso em
+log-guilda continua existindo do mesmo jeito, com o link de correção; o post é outro público
+(a guilda, com ping do `@TGG`) e não substitui o aviso. Os botões de
 `justificativa_*` não passam pela allowlist de canal (só `isChatInputCommand` passa), então mover
 o pedido de canal não quebra a aprovação. O canal dos inativos (`inactivePlayers.channelId`)
 continua sendo outro — é onde o lembrete de 3h é postado e o único lugar onde `.active` funciona.
@@ -377,10 +403,14 @@ Todos registrados no `ClientReady`:
 - Cron `0 * * * *` — refresh do clã + `runSync` + `runEloSync` + `syncNicknames` (só `need_update`).
 - Cron `0 3 * * *` — full sync (todos os ativos).
 - Cron `0 0 * * *` — cargos de aniversário; `0 6 * * *` — publica MOTD (buscado de `teamtgg.com.br/api/motd.php`).
-- Cron `0 6 * * 4` — cadastra as 4 missões da semana e anuncia no canal
-  ([src/services/weeklyMissionsService.js](src/services/weeklyMissionsService.js)). Cada posição tem seu
-  ciclo (12, 1, 2 e 3 semanas), ancorado em 06/08/2026. Não sobrescreve semana que já tem missão.
-  Os textos espelham `$missionTemplates` de `cadastro_missao.php`, no repo do site — mudou lá, mude aqui.
+- Cron `0 6 * * 4` — cadastra as 4 missões da semana e faz **duas** saídas independentes
+  ([src/services/weeklyMissionsService.js](src/services/weeklyMissionsService.js)): o aviso da staff em
+  log-guilda (embed, com o link de correção) e o post da guilda em guild-updates (markdown, arte e ping
+  do `@TGG`). Uma falhar não cancela a outra — é o aviso que permite corrigir cadastro divergente antes
+  de alguém reclamar. Cada posição tem seu ciclo (12, 1, 2 e 3 semanas), ancorado em 06/08/2026. Não
+  sobrescreve semana que já tem missão. Os textos espelham `$missionTemplates` de `cadastro_missao.php`,
+  no repo do site — mudou lá, mude aqui; o `nome` curto de cada missão só existe aqui, é o que vira o
+  `##` do post.
 - Cron `0 12 * * 0` — lembrete de contribuição no tgg-geral + DM para quem ainda não bateu os 1.000
   ([src/services/contributionReminderService.js](src/services/contributionReminderService.js)).
   Mesmo público e mesmas isenções da inativação, exceto que quem já está na lista da semana passada

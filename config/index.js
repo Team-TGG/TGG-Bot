@@ -109,9 +109,15 @@ export const tggCoinsEvents = {
 
 // Cadastro automático das missões, toda quinta 06:00 (ver src/services/weeklyMissionsService.js).
 // Sem channelId as missões continuam sendo cadastradas - só o anúncio é pulado.
+//
+// São duas saídas com públicos diferentes, e uma não substitui a outra: o aviso da staff em
+// log-guilda existe pra alguém conferir o cadastro contra o jogo, e o post em guild-updates é
+// a chamada para a guilda, com a arte e o ping. Cada uma falha por conta própria.
 export const weeklyMissions = {
-  channelId: '1536704688689516624', // log-guilda
+  channelId: '1536704688689516624', // log-guilda - registro para a staff
   correcaoUrl: 'https://teamtgg.com.br/cadastro_missao', // onde corrigir divergência
+  postChannelId: '1451542963854508227', // guild-updates - post para a guilda
+  roleId: '1437441679572471940',        // @TGG - sem isso o post sai sem ping
 };
 
 // MVP da semana, trocado sozinho na quarta 06:00 (ver src/services/weeklyMvpService.js).
