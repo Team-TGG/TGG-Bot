@@ -17,7 +17,8 @@ Node >= 18 (usa `fetch` nativo), ESM (`"type": "module"` — todo import precisa
 `SUPABASE_SERVICE_ROLE_KEY` (ou `SUPABASE_ANON_KEY`), `BRAWLHALLA_API_KEY`.
 Opcionais: `BRAWLHALLA_CLAN_ID` (default `'396943'` no código), `INACTIVE_MESSAGE_INTERVAL` (default 3h),
 `GEMINI_API_KEY` (sem ela só o `.ia` fica desligado), `GEMINI_MODEL` (default `gemini-3.5-flash-lite`),
-`IGNORE_SSL_ERRORS=true` para desligar verificação TLS (uso local). `win-ca` carrega os certificados do Windows.
+`IGNORE_SSL_ERRORS=true` para desligar verificação TLS (uso local), `TICKET_CYCLE_SECONDS` (default 60,
+piso 15) para o ciclo da fila por tickets. `win-ca` carrega os certificados do Windows.
 O `.env` ainda tem `TGG_API_URL`, `TGG_API_KEY` e `GUILD_ACTIVITY_CHANNEL_ID` — sobras dos módulos removidos,
 nenhum código lê essas três.
 
@@ -246,6 +247,80 @@ log-guilda continua existindo do mesmo jeito, com o link de correção; o post �
 o pedido de canal não quebra a aprovação. O canal dos inativos (`inactivePlayers.channelId`)
 continua sendo outro — é onde o lembrete de 3h é postado e o único lugar onde `.active` funciona.
 
+### Fila de espera por tickets
+
+Os canais são criados pelo **Ticket Tool** (bot de terceiros) na categoria `cards`
+(`1460768037518180352`). O bot não os cria nem os apaga — ele observa, pontua e ordena.
+
+**Quem abriu o ticket** sai das *permission overwrites* do canal: o Ticket Tool dá acesso ao autor
+com uma overwrite individual, e tirando bots e staff sobra ele. Medido em 14/08/2026: resolveu
+todos os tickets abertos, sem uma divergência. Tópico do canal e primeira mensagem existem como
+plano B em [ticketQueue.js](src/services/ticketQueue.js) e o `.scan-tickets` mostra os três lado a
+lado — a primeira mensagem só é lida quando a overwrite não fecha sozinha, porque custa uma
+requisição por canal.
+
+**Pontuação** (`ticket_activity`, view `vw_ticket_pontos`):
+
+```
+(mensagens_iniciais + mensagens_contadas)
+  + ((horas_call_iniciais + segundos_call_contados/3600) × 30)
+  + prioridade
+```
+
+As colunas são divididas por **quem escreve**: `*_iniciais` e `prioridade` são digitadas pela staff
+no Supabase, `*_contadas` são do bot. É o que permite zerar um lado sem perder o outro. A soma
+acontece no Postgres (`incrementar_atividade_ticket`), nunca lendo-somando-gravando no bot — senão
+o valor que a staff digitasse entre a leitura e a escrita seria sobrescrito.
+
+Só conta quem tem **ticket aberto**, e mensagem conta em qualquer canal, inclusive no próprio
+ticket. Tempo de call exige a intent `GuildVoiceStates` (não é privilegiada) e **não tem como ser
+recuperado do passado** — só existe do dia em que ligou.
+
+**O ciclo de 1 min** ([ticketActivity.js](src/services/ticketActivity.js)) faz, nessa ordem:
+reconcilia a tabela com a categoria, credita quem está em call agora, grava os contadores, grava o
+estado das conversas e cobra os pendentes. Nada vai ao banco no momento do evento; tudo acumula em
+memória. O preço é perder até um ciclo se o processo cair, e é aceito porque a pontuação é
+comparativa. `TICKET_CYCLE_SECONDS` calibra sem editar código.
+
+**Reconciliação, não evento.** `channelCreate`/`channelDelete` só chegam com o bot de pé: ticket
+aberto durante um deploy nunca seria cadastrado e o sintoma — a pessoa não pontuar — é invisível.
+Comparar categoria × tabela se conserta sozinho depois de qualquer janela offline. Canal que saiu
+da categoria é fechado; canal que voltou é **reaberto** explicitamente, senão o insert com
+`ignoreDuplicates` o ignora calado e ele fica fora da fila para sempre.
+
+O diff é calculado contra a memória **antes** de qualquer escrita, então em regime o ciclo é uma
+consulta só. Sem isso, rodar de 1 em 1 min mandaria as ~60 linhas ao banco para descartar todas.
+
+**Responsável** é escolhido por botão (`ticket_assumir`), postado pelo bot **só em ticket
+recém-cadastrado** — é por isso que `inserirTicketsNovos` devolve os IDs inseridos e não a
+contagem. Exige helper+ e o `update` é condicionado a `responsavel_discord_id is null`, então dois
+cliques não se atropelam. Trocar depois é edição manual no Supabase; não existe "largar".
+
+**As DMs são assimétricas de propósito** ([ticketNudge.js](src/services/ticketNudge.js)):
+
+- **staff** — cobrança por tempo, quando o autor falou por último e não foi respondido. Repete a
+  cada `LIMITE_SEM_RESPOSTA_MS`. Resposta de **qualquer** staff zera a pendência.
+- **autor** — só quando é mencionado no próprio ticket, um ping = uma DM, na hora.
+
+A primeira versão cobrava os dois lados por tempo e nunca silenciava: como sempre existe um
+"último lado", todo ticket parado gerava DM para alguém, para sempre. O filtro
+`ultima_msg_lado = 'autor'` mora no SQL por isso. Gravar a conversa vem **antes** da cobrança no
+mesmo ciclo, senão quem respondeu há segundos levaria DM pela resposta que já deu — e responder
+zera `ultimo_aviso_em`, senão o outro lado herdaria a janela de silêncio do aviso anterior.
+
+**Janela de silêncio das 20h às 08h**: nenhuma DM de ticket sai, nem para staff nem para autor.
+Ping na janela é **descartado**, não guardado; a cobrança por tempo se resolve sozinha, porque é
+recalculada a cada ciclo e sai às 08h. Vale só para as DMs de ticket — aplicar global silenciaria
+a inativação da quarta, que manda DM às 06:10.
+
+**Cron `0 1 * * *`** ([ticketReorder.js](src/services/ticketReorder.js)) recalcula posição, renomeia
+`guild-<nick>-<posição>` e reordena os canais; `.organize-tickets` força o mesmo agora. Uma vez por
+dia porque **renomear canal é limitado a 2×/10min por canal** — o nome é foto do último recálculo,
+e isso é decisão do usuário (14/08/2026), não limitação escondida. O nick sai do **nome atual do
+canal**, não da coluna, para correção manual da staff sobreviver ao cron; sem nick legível o canal
+não é renomeado. Empate desempata por `aberto_em`, senão a ordem trocava sozinha entre dois dias e
+renomearia canal à toa. Só quem **mudou de posição** recebe aviso, e **só no canal, nunca DM**.
+
 ### Média histórica de contribuição
 
 Guild points totais divididos pelas semanas de guilda, em
@@ -424,6 +499,11 @@ Todos registrados no `ClientReady`:
   ([src/services/guildDuelService.js](src/services/guildDuelService.js)). Ver abaixo.
 - Cron `5,20,35,50 * * * *` — avisa entradas, saídas, promoções e rebaixamentos na guilda do jogo
   ([src/services/guildHistoryService.js](src/services/guildHistoryService.js)). Ver abaixo.
+- Cron `0 1 * * *` — recalcula a ordem da fila por tickets ([src/services/ticketReorder.js](src/services/ticketReorder.js)). Ver acima.
+- `setInterval` — ciclo da fila por tickets (1 min, `TICKET_CYCLE_SECONDS`): reconciliação,
+  contadores de mensagem e call, cobrança de resposta pendente. Roda **também em modo dev**
+  (decisão do usuário, 14/08/2026) — dois processos com o mesmo token contam cada mensagem duas
+  vezes, então pare a VM antes de subir local.
 - `setInterval` — lembrete de inativos (3h por padrão, `INACTIVE_MESSAGE_INTERVAL`).
 - `restoreMutes` / `restoreTemporaryWarnings` — reagendam expirações persistidas em `mutes` / `warnings`
   depois de um restart.
@@ -452,6 +532,8 @@ Sem migrations no repo — o schema vive no Supabase. Domínios principais:
   `_purchases`, `_inventory`, `_service_providers`, `_coach_prices`, `_daily_streak`, `_achievements`,
   `_achievements_alts`, `_achievements_finished`, view `vw_tgg_coins_wallet_total`.
   A variante `tgg_coins_event_*` é a carteira paralela de eventos/tickets — mesma lógica, tabelas separadas.
+- **Fila por tickets**: `ticket_queue`, `ticket_activity`, view `vw_ticket_pontos`, função
+  `incrementar_atividade_ticket`.
 - **Moderação/diversos**: `warnings`, `mutes`, `motd`, `birthdays`, `tgg_quiz_completed`, `contador_crz`.
 
 ## Convenções

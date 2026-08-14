@@ -8,6 +8,7 @@ import { trocarMvpsDaSemana } from '../services/weeklyMvpService.js';
 import { inativarSemana } from '../services/weeklyInactiveService.js';
 import { lembrarContribuicao } from '../services/contributionReminderService.js';
 import { avisarMovimentacao } from '../services/guildHistoryService.js';
+import { recalcularOrdemDaFila } from '../services/ticketReorder.js';
 
 export function startCronJobs(client, services) {
   const {
@@ -130,6 +131,18 @@ export function startCronJobs(client, services) {
       await avisarMovimentacao(client);
     } catch (err) {
       console.error('[CRON ERROR - Historico]', err);
+    }
+  }, {
+    timezone: 'America/Sao_Paulo'
+  });
+
+  // Ordem da fila por tickets - 1:00 AM. Uma vez por dia porque renomear canal é limitado a
+  // 2x/10min por canal; e de madrugada porque a mensagem de posição nova cai em ~60 tickets.
+  cron.schedule('0 1 * * *', async () => {
+    try {
+      await recalcularOrdemDaFila(client);
+    } catch (err) {
+      console.error('[CRON ERROR - Fila de tickets]', err);
     }
   }, {
     timezone: 'America/Sao_Paulo'

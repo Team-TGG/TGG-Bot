@@ -1,5 +1,5 @@
 // Handlers
-import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleEditWarn, handleMute, handleUnmute, handleBan, handleKick, handleBam, handleInacAll, handleInacList, handleInativar, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleAbrirTickets, handleFecharTickets, handleWam, handleJustificativas, handleScan, handleBlindagens, handleIa } from './admin.js';
+import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleEditWarn, handleMute, handleUnmute, handleBan, handleKick, handleBam, handleInacAll, handleInacList, handleInativar, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleScanTickets, handleImportarTickets, handleAbrirTickets, handleFecharTickets, handleWam, handleJustificativas, handleScan, handleBlindagens, handleIa } from './admin.js';
 import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes, handleDuel, handleCrz, handleVideoGuilda, handleAlts, handleJustificativa, handleResumo, handleLbGuilda } from './public.js';
 import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins, handleAddAccount, handleQuiz, handleInventory } from './tggCoinsCommands.js';
 
@@ -153,6 +153,12 @@ export const COMMAND_ALIASES = {
   'arrumartickets': 'organize-tickets',
   'organizar-tickets': 'organize-tickets',
   'arrumar-tickets': 'organize-tickets',
+  'scan-tickets': 'scan-tickets',
+  'scantickets': 'scan-tickets',
+  'escanear-tickets': 'scan-tickets',
+  'importar-tickets': 'importar-tickets',
+  'importartickets': 'importar-tickets',
+  'import-tickets': 'importar-tickets',
   'corrigirid': 'corrigir-id',
   'corrigir-id': 'corrigir-id',
   'addaccount': 'add-account',
@@ -274,6 +280,8 @@ export const commands = {
   entrou: handleEntrou,
   escrever: handleEscrever,
   'organize-tickets': handleOrganizeTickets,
+  'scan-tickets': handleScanTickets,
+  'importar-tickets': handleImportarTickets,
   'abrir-tickets': handleAbrirTickets,
   'fechar-tickets': handleFecharTickets,
   blindagens: handleBlindagens,

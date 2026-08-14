@@ -8,7 +8,7 @@ import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo, getUserByDi
 import { discord as discordConfig, STAFF_ROLE_IDS, inactivePlayers as inactivePlayersConfig, tickets as ticketsConfig, ia as iaConfig } from '../config/index.js';
 import { loadCustomNicknames } from './customNicknames.js';
 import { syncNicknames, updateMemberNicknameDiscordPortion, parseNickname, buildNickname, fetchBrawlhallaClanData, loadClanCache } from './nicknameSync.js';
-import { createErrorEmbed, createSuccessEmbed, createWarningEmbed, createLoadingEmbed, sendCleanMessage, awaitConfirmation } from '../utils/discordUtils.js';
+import { createErrorEmbed, createSuccessEmbed, createWarningEmbed, createLoadingEmbed, sendCleanMessage, awaitConfirmation, createPagination } from '../utils/discordUtils.js';
 import { isAdmin, adminOnly, hasPermission, getMemberLevel} from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
 import { scheduleTemporaryWarningRemoval } from './services/warningManager.js';
@@ -19,6 +19,9 @@ import { calcularInativosDaSemana, inativarSemana, CONTRIBUICAO_MINIMA, LIMIAR_I
 import { calcularMediaHistorica } from './services/mediaHistorica.js';
 import { escolherFerramenta, redigirResposta, iaConfigurada } from './services/iaProvider.js';
 import { FERRAMENTAS, EXECUTORES, INSTRUCAO_ESCOLHA, INSTRUCAO_RESPOSTA } from './handlers/iaHandlers.js';
+import { escanearTickets, reconciliarTickets, CATEGORIA_TICKETS_ID } from './services/ticketQueue.js';
+import { definirResponsavel, getTicket } from './tickets.js';
+import { recalcularOrdemDaFila } from './services/ticketReorder.js';
 
 // Funções auxiliares
 
@@ -1622,88 +1625,77 @@ export async function handleEscreverModalSubmit(interaction, client) {
   }
 }
 
-// .organize-tickets (Organiza os tickets dentro da categoria de tickets, renomeando e reordenando baseado no número no final do nome do canal)
+// .organize-tickets — força agora o recálculo que o cron faz às 01:00.
+//
+// A versão anterior renumerava pela ordem que já estava no nome do canal, que é justamente o
+// resultado da planilha manual. Agora a ordem sai de `vw_ticket_pontos`, e o nome passa a ser
+// consequência da pontuação em vez de entrada dela.
 export const handleOrganizeTickets = adminOnly(async (message, args, client) => {
-  const loading = await message.reply({ embeds: [createLoadingEmbed(`${EMOJIS.loading} Organizando tickets...`, 'Reordenando e renomeando canais...')] });
+  const loading = await message.reply({
+    embeds: [createLoadingEmbed(`${EMOJIS.loading} Recalculando a fila...`, 'Ordenando por pontuação, renomeando e reordenando os canais.')]
+  });
 
+  let r;
   try {
-    const guild = client.guilds.cache.get(discordConfig.guildId);
-    if (!guild) throw new Error('Guild não encontrada');
-
-    const categoryId = '1460768037518180352'; // ID da categoria de tickets
-    const category = guild.channels.cache.get(categoryId);
-
-    if (!category) throw new Error('Categoria não encontrada');
-
-    // pega apenas canais de texto dentro da categoria
-    let channels = guild.channels.cache
-      .filter(c => c.parentId === categoryId && c.isTextBased());
-
-    // transforma em array
-    channels = Array.from(channels.values());
-
-    // ordena baseado no número no final do nome
-    channels.sort((a, b) => {
-      const getNumber = (name) => {
-        const match = name.match(/-(\d+)$/);
-        return match ? parseInt(match[1]) : 9999;
-      };
-      return getNumber(a.name) - getNumber(b.name);
-    });
-
-    let position = 0;
-
-    for (let i = 0; i < channels.length; i++) {
-      const channel = channels[i];
-
-      // extrai base do nome (sem o número final)
-      const baseName = channel.name.replace(/-\d+$/, '');
-
-      const newName = `${baseName}-${i + 1}`;
-
-      // renomeia se necessário
-      if (channel.name !== newName) {
-        await channel.setName(newName).catch(() => {});
-      }
-
-      // reposiciona
-      await channel.setPosition(position++).catch(() => {});
-
-      // envia mensagem no ticket
-      await channel.send({
-        content: `Prioridade ajustada, consulte a sua posição na fila de espera no nome do seu ticket\nLembrando que conforme a sua interação no servidor, seja por calls ou mensagens, sua prioridade será maior.\n\nPriority adjusted, check your position in the waiting queue in your ticket name\nRemember that according to your interaction on the server, whether by calls or messages, your priority will be higher.`
-      }).catch(() => {});
-    }
-
-    await sendCleanMessage(loading, {
-      embeds: [
-        new EmbedBuilder()
-          .setColor(0x57f287)
-          .setTitle(`${EMOJIS.check} Tickets organizados`)
-          .setDescription(`${channels.length} canais atualizados.`)
-      ]
-    });
-
+    r = await recalcularOrdemDaFila(client);
   } catch (err) {
-    await sendCleanMessage(loading, {
-      embeds: [createErrorEmbed('Erro ao organizar tickets', err.message)]
-    }).catch(() => {});
+    return sendCleanMessage(loading, {
+      embeds: [createErrorEmbed('Erro ao recalcular a fila', err.message)]
+    });
   }
+
+  if (r.total === 0) {
+    return sendCleanMessage(loading, {
+      embeds: [createWarningEmbed('Fila vazia', 'Não há ticket aberto cadastrado. Rode `.importar-tickets` se os canais existem mas não estão no banco.')]
+    });
+  }
+
+  const resumo = new EmbedBuilder()
+    .setColor(0x57f287)
+    .setTitle(`${EMOJIS.check} Fila recalculada`)
+    .addFields(
+      { name: 'Tickets', value: `**${r.total}**`, inline: true },
+      { name: 'Mudaram de posição', value: `**${r.mudaram}**`, inline: true },
+      { name: 'Renomeados', value: `**${r.renomeados}**`, inline: true }
+    )
+    .setDescription(`Só os **${r.mudaram}** que mudaram de lugar receberam aviso no canal. Nenhuma DM foi enviada.`)
+    .setTimestamp();
+
+  // Ticket sem nick legível fica com o nome intacto e some do relatório se não for dito — a
+  // staff precisa saber que aquele canal continua com o nome que o Ticket Tool deu.
+  if (r.semNick > 0) {
+    resumo.addFields({
+      name: `${EMOJIS.xis} Sem nick no nome (${r.semNick})`,
+      value: 'Esses canais não foram renomeados: o nome não está no padrão `guild-<nick>-<posição>`. Renomeie à mão uma vez e o bot mantém daí em diante.',
+      inline: false,
+    });
+  }
+
+  return sendCleanMessage(loading, { embeds: [resumo] });
 });
 
 // .abrir-tickets
+//
+// Fase de teste (14/08/2026): com a lista preenchida a DM vai só para estes IDs e o post no
+// canal da fila não sai. Esvaziar a lista liga as duas coisas de uma vez — o envio passa a
+// pegar todo mundo que tem o cargo e o canal recebe o ping com o mesmo botão.
+const DM_ABRIR_TICKETS_TESTE = ['252249131202904074'];
+
+// Uma DM por segundo. `send()` para quem não tem canal de DM aberto são duas requisições
+// (cria o canal, depois manda), e é a criação que o Discord limita — daí o 40003. Com 177 na
+// fila isso dá ~3 min de envio, que é barato perto de tomar bloqueio no meio da lista.
+const INTERVALO_ENTRE_DMS_MS = 1000;
+
+const pausa = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 export const handleAbrirTickets = adminOnly(async (message) => {
   try {
     // Canal dos tickets
     const ticketsChannelId = ticketsConfig.entrarNaGuildaChannelId;
 
-    // Canal de Fila guilda
-    const logChannelId = ticketsConfig.filaGuildaChannelId;
-
     const guild = message.guild;
 
     const ticketsChannel = guild.channels.cache.get(ticketsChannelId);
-    const logChannel = guild.channels.cache.get(logChannelId);
 
     if (!ticketsChannel) {
       return message.reply({
@@ -1723,20 +1715,396 @@ export const handleAbrirTickets = adminOnly(async (message) => {
       .setTimestamp();
 
     const roleId = ticketsConfig.filaDeEsperaRoleId;
+    const modoTeste = DM_ABRIR_TICKETS_TESTE.length > 0;
 
-    if (logChannel) {
-      await logChannel.send({
-        content: `<@&${roleId}>`,
-        embeds: [embed]
+    const botaoSair = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('filaespera_sair')
+        .setLabel('Sair da fila de espera')
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    // O post no canal é o que alcança quem está com a DM fechada — uma fatia real dos 177, e
+    // que não aparece em lugar nenhum do resumo porque o erro é o mesmo de DM bloqueada.
+    let postouNoCanal = false;
+    if (!modoTeste) {
+      const logChannel = guild.channels.cache.get(ticketsConfig.filaGuildaChannelId);
+      if (logChannel) {
+        await logChannel.send({
+          content: `<@&${roleId}>`,
+          embeds: [embed],
+          components: [botaoSair],
+        });
+        postouNoCanal = true;
+      }
+    }
+
+    let alvos;
+    if (modoTeste) {
+      const buscados = await Promise.all(
+        DM_ABRIR_TICKETS_TESTE.map(id => guild.members.fetch(id).catch(() => null))
+      );
+      alvos = buscados.filter(Boolean);
+    } else {
+      const todos = await guild.members.fetch();
+      alvos = [...todos.filter(m => m.roles.cache.has(roleId)).values()];
+    }
+
+    const dmEmbed = new EmbedBuilder()
+      .setColor(0x57f287)
+      .setTitle('🟢 Tickets abertos na TGG')
+      .setDescription(
+        `Os tickets para entrar na guilda estão abertos! Vá em <#${ticketsChannelId}> ` +
+        `e abra o seu para garantir a vaga.\n\n` +
+        `Se você **não quer mais** fazer parte da fila de espera, é só clicar no botão abaixo ` +
+        `que eu tiro o cargo de você. Pode voltar depois quando quiser.`
+      )
+      .setTimestamp();
+
+    const envio = await mandarDmsDaFila(alvos, { embeds: [dmEmbed], components: [botaoSair] });
+
+    const resumo = new EmbedBuilder()
+      .setColor(envio.abortadaPor ? 0xfee75c : 0x57f287)
+      .setTitle(`${EMOJIS.check} Tickets abertos`)
+      .setDescription(
+        `O canal <#${ticketsChannelId}> está visível para todos.` +
+        (postouNoCanal ? `\nO aviso com o botão foi postado em <#${ticketsConfig.filaGuildaChannelId}>.` : '')
+      )
+      .addFields(
+        { name: 'DMs enviadas', value: `**${envio.enviadas}** de ${alvos.length}`, inline: true },
+        { name: 'DM bloqueada', value: `**${envio.bloqueadas}**`, inline: true },
+        { name: 'Outras falhas', value: `**${envio.falhas}**`, inline: true }
+      )
+      .setTimestamp();
+
+    // Envio interrompido não pode sair com cara de envio completo: sem isso o embed mostraria
+    // "12 de 177" e nada dizendo que as outras 165 nem foram tentadas.
+    if (envio.abortadaPor) {
+      resumo.addFields({
+        name: `${EMOJIS.xis} Envio interrompido`,
+        value:
+          `O Discord recusou o envio (\`${envio.abortadaPor}\`) e eu parei para não insistir.\n` +
+          `**${envio.restantes}** pessoa(s) não receberam. Espere alguns minutos e rode de novo — ` +
+          `quem já recebeu vai receber de novo, então avalie se compensa.`,
+        inline: false,
       });
     }
-    
+
+    if (modoTeste) {
+      resumo.setFooter({ text: 'Modo teste: DM só para a lista fixa e sem post no canal da fila.' });
+    }
+
+    return message.reply({ embeds: [resumo] });
+
   } catch (err) {
     return message.reply({
       embeds: [createErrorEmbed('Erro ao abrir tickets', err.message)]
     });
   }
 });
+
+/**
+ * Manda a DM de abertura de tickets uma a uma, com pausa, e para na primeira recusa do Discord.
+ *
+ * DM fechada (50007) é o caso normal e só conta — a pessoa continua alcançada pelo post no canal.
+ * Já 40003 ("opening direct messages too fast") e 429 são o Discord dizendo para diminuir o ritmo:
+ * seguir moendo o resto da lista contra a parede é o que transforma limite em bot sinalizado.
+ */
+async function mandarDmsDaFila(alvos, payload) {
+  let enviadas = 0;
+  let bloqueadas = 0;
+  let falhas = 0;
+  let abortadaPor = null;
+  let tratados = 0;
+
+  for (const alvo of alvos) {
+    try {
+      await alvo.send(payload);
+      enviadas++;
+    } catch (err) {
+      if (err?.code === 50007) {
+        bloqueadas++;
+        console.log(`[TICKETS] DM bloqueada: ${alvo.id}`);
+      } else if (err?.code === 40003 || err?.status === 429) {
+        abortadaPor = err?.code === 40003 ? '40003' : '429';
+        console.error(`[TICKETS] envio interrompido em ${tratados}/${alvos.length}: ${err.message}`);
+        break;
+      } else {
+        falhas++;
+        console.warn(`[TICKETS] falha ao mandar DM para ${alvo.id}: ${err.message}`);
+      }
+    }
+
+    tratados++;
+    if (tratados < alvos.length) await pausa(INTERVALO_ENTRE_DMS_MS);
+  }
+
+  return { enviadas, bloqueadas, falhas, abortadaPor, restantes: alvos.length - tratados };
+}
+
+// Botões da fila de espera: `filaespera_sair` e `filaespera_entrar`.
+//
+// Roteado por prefixo em interactions.js, não por collector — igual aos botões de justificativa.
+// A DM fica parada por dias esperando o clique e o collector morre no primeiro restart.
+// Na DM não existe `interaction.guild` nem `interaction.member`: os dois vêm null, então a
+// guilda sai do ID de config e o membro é buscado por fetch.
+//
+// O mesmo botão vive em dois lugares e o destino da resposta muda com isso: na DM a mensagem é
+// só daquela pessoa e pode ser reescrita, mas a do canal da fila é pública — reescrevê-la faria
+// o clique de um apagar o anúncio de todos. No canal, então, a resposta é sempre efêmera.
+export async function handleFilaEsperaButton(interaction, client) {
+  const sair = interaction.customId === 'filaespera_sair';
+  const naDm = !interaction.inGuild();
+
+  if (naDm) {
+    await interaction.deferUpdate().catch(err => {
+      console.warn(`[FILA] deferUpdate falhou: ${err.message}`);
+    });
+  } else {
+    await interaction.deferReply({ ephemeral: true }).catch(err => {
+      console.warn(`[FILA] deferReply falhou: ${err.message}`);
+    });
+  }
+
+  const responderErro = (titulo, texto) => (
+    naDm
+      ? interaction.followUp({ embeds: [createErrorEmbed(titulo, texto)], ephemeral: true })
+      : interaction.editReply({ embeds: [createErrorEmbed(titulo, texto)] })
+  ).catch(() => {});
+
+  const guild = client.guilds.cache.get(discordConfig.guildId);
+  if (!guild) {
+    return responderErro('Erro', 'Não consegui acessar o servidor da TGG agora. Tente de novo em alguns minutos.');
+  }
+
+  const member = await guild.members.fetch(interaction.user.id).catch(() => null);
+  if (!member) {
+    return responderErro('Você não está no servidor', 'Não te encontrei no servidor da TGG, então não há cargo para alterar.');
+  }
+
+  const roleId = ticketsConfig.filaDeEsperaRoleId;
+
+  try {
+    if (sair) {
+      await member.roles.remove(roleId, 'Saiu da fila de espera pelo botão');
+    } else {
+      await member.roles.add(roleId, 'Voltou para a fila de espera pelo botão');
+    }
+  } catch (err) {
+    console.error(`[FILA] falha ao ${sair ? 'remover' : 'adicionar'} o cargo de ${interaction.user.id}:`, err);
+    return responderErro('Não consegui alterar seu cargo', 'Fale com um membro da staff para resolver.');
+  }
+
+  const embed = new EmbedBuilder()
+    .setColor(sair ? 0xed4245 : 0x57f287)
+    .setTitle(sair ? '👋 Você saiu da fila de espera' : '🟢 Você voltou para a fila de espera')
+    .setDescription(
+      sair
+        ? 'Tirei o cargo de **fila de espera** de você no servidor da TGG.\n\n' +
+          'Mudou de ideia? É só clicar no botão abaixo que eu devolvo o cargo.'
+        : 'Devolvi o cargo de **fila de espera** para você.\n\n' +
+          `Abra seu ticket em <#${ticketsConfig.entrarNaGuildaChannelId}> para garantir a vaga.`
+    )
+    .setTimestamp();
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(sair ? 'filaespera_entrar' : 'filaespera_sair')
+      .setLabel(sair ? 'Voltar para a fila' : 'Sair da fila de espera')
+      .setStyle(sair ? ButtonStyle.Success : ButtonStyle.Danger)
+  );
+
+  await interaction.editReply({ embeds: [embed], components: [row] }).catch(() => {});
+}
+
+// .scan-tickets
+//
+// Diagnóstico da detecção de autor, antes de a fila por tickets ser construída em cima dela.
+// Só lê: não escreve no banco, não renomeia canal, não manda mensagem em ticket nenhum.
+export const handleScanTickets = adminOnly(async (message) => {
+  const loading = await message.reply({
+    embeds: [createLoadingEmbed(`${EMOJIS.loading} Escaneando tickets...`, 'Lendo a categoria e testando os três métodos de detecção.')]
+  });
+
+  let linhas;
+  try {
+    // O diagnóstico força os três métodos de propósito: é para comparar, não para ser rápido.
+    // O resto do sistema usa o padrão, que só lê a primeira mensagem quando precisa.
+    linhas = await escanearTickets(message.guild, { lerPrimeiraMensagem: true });
+  } catch (err) {
+    return sendCleanMessage(loading, {
+      embeds: [createErrorEmbed('Erro ao escanear tickets', err.message)]
+    });
+  }
+
+  if (linhas.length === 0) {
+    return sendCleanMessage(loading, {
+      embeds: [createWarningEmbed('Nenhum ticket', `Não há canal de texto na categoria <#${CATEGORIA_TICKETS_ID}>.`)]
+    });
+  }
+
+  // Divergência entre métodos é o achado mais importante do relatório: um método sozinho sempre
+  // "funciona", e só o desacordo mostra que ele está lendo a pessoa errada.
+  const opinioes = (l) => [
+    l.overwrites.length === 1 ? l.overwrites[0] : null,
+    l.topico,
+    l.primeiraMensagem,
+  ].filter(Boolean);
+
+  const divergentes = linhas.filter(l => new Set(opinioes(l)).size > 1);
+  const semAutor = linhas.filter(l => !l.escolhido);
+
+  const porMetodo = linhas.reduce((acc, l) => {
+    const chave = l.metodo ?? 'nenhum';
+    acc[chave] = (acc[chave] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  const POR_PAGINA = 6;
+  const totalPaginas = Math.ceil(linhas.length / POR_PAGINA);
+
+  const alvo = (id) => (id ? `<@${id}>` : '—');
+
+  const getEmbed = (pagina) => {
+    const fatia = linhas.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
+
+    const embed = new EmbedBuilder()
+      .setColor(divergentes.length > 0 || semAutor.length > 0 ? 0xfee75c : 0x57f287)
+      .setTitle(`${EMOJIS.check} Scan de tickets`)
+      .setDescription(
+        `**${linhas.length}** ticket(s) na categoria.\n` +
+        `Resolvidos por: ${Object.entries(porMetodo).map(([m, n]) => `\`${m}\` ${n}`).join(' · ')}\n` +
+        `${divergentes.length > 0 ? `${EMOJIS.xis} **${divergentes.length}** com métodos discordando\n` : ''}` +
+        `${semAutor.length > 0 ? `${EMOJIS.xis} **${semAutor.length}** sem autor identificado\n` : ''}`
+      )
+      .setFooter({ text: `Página ${pagina}/${totalPaginas} · somente leitura, nada foi alterado` });
+
+    for (const l of fatia) {
+      const conflito = new Set(opinioes(l)).size > 1 ? ' ⚠️' : '';
+
+      embed.addFields({
+        name: `${l.nome}${conflito}`,
+        value:
+          `overwrite: ${l.overwrites.length === 0 ? '—' : l.overwrites.map(alvo).join(', ')}\n` +
+          `tópico: ${alvo(l.topico)}\n` +
+          `1ª msg: ${alvo(l.primeiraMensagem)}\n` +
+          `**→ ${alvo(l.escolhido)}** ${l.metodo ? `(${l.metodo})` : '(nenhum)'}`,
+        inline: false,
+      });
+    }
+
+    return embed;
+  };
+
+  await loading.delete().catch(() => {});
+
+  // Lista longa com `time` de 60s fica inalcançável do meio para o fim (ver CLAUDE.md):
+  // `idle` reinicia a cada clique e o `time` vira só o teto absoluto.
+  return createPagination(message, {
+    getEmbed,
+    getTotalPages: () => totalPaginas,
+    idle: 120000,
+    time: 900000,
+  });
+});
+
+// .importar-tickets
+//
+// Força agora a reconciliação que o bot já faz sozinho a cada 5 min. Serve para não esperar o
+// ciclo depois de mexer nos canais, e para ver o relatório do que entrou e do que saiu.
+//
+// Sem confirmação de propósito: é a mesma rotina que roda em background, é idempotente, e pedir
+// "tem certeza?" para algo que o bot faz sozinho de cinco em cinco minutos é teatro.
+export const handleImportarTickets = adminOnly(async (message) => {
+  const loading = await message.reply({
+    embeds: [createLoadingEmbed(`${EMOJIS.loading} Sincronizando tickets...`, 'Lendo a categoria e comparando com o banco.')]
+  });
+
+  let r;
+  try {
+    r = await reconciliarTickets(message.guild);
+  } catch (err) {
+    return sendCleanMessage(loading, {
+      embeds: [createErrorEmbed('Erro ao sincronizar', err.message)]
+    });
+  }
+
+  const resumo = new EmbedBuilder()
+    .setColor(r.semAutor.length > 0 ? 0xfee75c : 0x57f287)
+    .setTitle(`${EMOJIS.check} Tickets sincronizados`)
+    .addFields(
+      { name: 'Na categoria', value: `**${r.total}**`, inline: true },
+      { name: 'Cadastrados agora', value: `**${r.novos}**`, inline: true },
+      { name: 'Marcados como fechados', value: `**${r.fechados}**`, inline: true }
+    )
+    .setTimestamp();
+
+  if (r.atividadesNovas > 0) {
+    resumo.setDescription(
+      `**${r.atividadesNovas}** linha(s) nova(s) em \`ticket_activity\`, zeradas. ` +
+      'Preencha `mensagens_iniciais`, `horas_call_iniciais` e `prioridade` pelo Supabase.'
+    );
+  }
+
+  // Ticket sem autor não entra na tabela e some do relatório se não for dito — a pessoa ficaria
+  // fora da fila sem ninguém perceber.
+  if (r.semAutor.length > 0) {
+    resumo.addFields({
+      name: `${EMOJIS.xis} Sem autor identificado (${r.semAutor.length})`,
+      value:
+        r.semAutor.slice(0, 10).map(l => `\`${l.nome}\``).join(', ') +
+        (r.semAutor.length > 10 ? ` … e mais ${r.semAutor.length - 10}` : '') +
+        '\nRode `.scan-tickets` para ver o motivo de cada um.',
+      inline: false,
+    });
+  }
+
+  return sendCleanMessage(loading, { embeds: [resumo] });
+});
+
+// Botão "Assumir ticket" (`ticket_assumir`), postado pela reconciliação em ticket novo.
+//
+// Roteado por prefixo em interactions.js, não por collector: o card fica no canal esperando por
+// horas e o collector morre no primeiro restart.
+export async function handleAssumirTicket(interaction) {
+  await interaction.deferUpdate().catch(err => {
+    console.warn(`[TICKETS] deferUpdate falhou: ${err.message}`);
+  });
+
+  const responderErro = (titulo, texto) => interaction.followUp({
+    embeds: [createErrorEmbed(titulo, texto)],
+    ephemeral: true,
+  }).catch(() => {});
+
+  // Nível 1 é helper e assistant (empatados de propósito em ROLE_HIERARCHY).
+  if (!hasPermission(interaction.member, 1)) {
+    return responderErro('Acesso negado', 'Só helper ou acima pode assumir um ticket.');
+  }
+
+  const ticket = await definirResponsavel(interaction.channelId, interaction.user.id);
+
+  if (!ticket) {
+    // Ou alguém clicou primeiro, ou o ticket já foi fechado. Diz qual dos dois em vez de um
+    // "não deu" genérico, porque a ação de quem clicou é diferente em cada caso.
+    const atual = await getTicket(interaction.channelId).catch(() => null);
+
+    if (atual?.responsavel_discord_id) {
+      return responderErro('Já tem responsável', `Este ticket é de <@${atual.responsavel_discord_id}>.`);
+    }
+    return responderErro('Ticket indisponível', 'Este ticket não está mais aberto no cadastro do bot.');
+  }
+
+  const embed = new EmbedBuilder()
+    .setColor(0x57f287)
+    .setTitle('🎫 Ticket assumido')
+    .setDescription(
+      `Ticket de <@${ticket.opener_discord_id}>, agora com <@${interaction.user.id}>.\n\n` +
+      'Se ficar sem resposta por mais de 1 hora, o responsável recebe um aviso por DM.'
+    )
+    .setTimestamp();
+
+  await interaction.editReply({ embeds: [embed], components: [] }).catch(() => {});
+}
 
 // .fechar-tickets
 export const handleFecharTickets = adminOnly(async (message) => {

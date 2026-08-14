@@ -4,7 +4,7 @@ import { runAsSlash } from '../utils/slashAdapter.js';
 import { checkInteractionChannelPermission, isAdmin } from '../utils/permissions.js';
 import { STAFF_ROLE_IDS } from '../config/index.js';
 import { createErrorEmbed } from '../utils/discordUtils.js';
-import { handleEscreverModalSubmit } from './admin.js';
+import { handleEscreverModalSubmit, handleFilaEsperaButton, handleAssumirTicket } from './admin.js';
 import { handleJustificativaButton, handleJustificativaHistorico } from './public.js';
 
 // Rate limit (mesmo do messageCreate anterior): 5s por usuário, staff isento.
@@ -107,6 +107,45 @@ export function registerInteractionHandler(client) {
         console.error('[JUSTIFICATIVA] falha ao decidir:', err);
         const payload = {
           embeds: [createErrorEmbed('Erro Interno', `Não consegui registrar a decisão: ${err.message}`)],
+          ephemeral: true,
+        };
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp(payload).catch(() => {});
+        } else {
+          await interaction.reply(payload).catch(() => {});
+        }
+      }
+      return;
+    }
+
+    // Botões da DM de abertura de tickets: mesma razão dos de justificativa — a DM espera o
+    // clique por dias e o collector não sobrevive a um restart.
+    if (interaction.isButton() && interaction.customId.startsWith('filaespera_')) {
+      try {
+        await handleFilaEsperaButton(interaction, client);
+      } catch (err) {
+        console.error('[FILA] falha ao tratar o botão:', err);
+        const payload = {
+          embeds: [createErrorEmbed('Erro Interno', `Não consegui alterar seu cargo: ${err.message}`)],
+          ephemeral: true,
+        };
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp(payload).catch(() => {});
+        } else {
+          await interaction.reply(payload).catch(() => {});
+        }
+      }
+      return;
+    }
+
+    // Card de "assumir ticket": fica no canal esperando a staff por horas, mesma razão dos acima.
+    if (interaction.isButton() && interaction.customId === 'ticket_assumir') {
+      try {
+        await handleAssumirTicket(interaction);
+      } catch (err) {
+        console.error('[TICKETS] falha ao assumir:', err);
+        const payload = {
+          embeds: [createErrorEmbed('Erro Interno', `Não consegui registrar: ${err.message}`)],
           ephemeral: true,
         };
         if (interaction.replied || interaction.deferred) {

@@ -107,6 +107,7 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 - [x] Avisar entradas, saídas, promoções e rebaixamentos da guilda no `log-guilda`.
 - [x] Mostrar as últimas justificativas do membro na solicitação de blindagem.
 - [x] Mostrar a contribuição atual do membro na solicitação de blindagem.
+- [x] Automatizar a fila de espera por tickets: pontuação (mensagens + call × 30 + prioridade) contada pelo bot em vez da planilha, responsável por botão, cobrança da staff quando o ticket fica sem resposta e recálculo diário da ordem. A base de cada um continua digitada à mão no Supabase — o bot só soma em cima.
 - [ ] Mandar mute, ban e warn para o `hall-da-vergonha` pelo bot, com a justificativa.
 - [x] Ver como publicar as missões da semana no `guild-updates` e criar a imagem das quests.
 - [ ] Adicionar Skyforged e Goldforged na loja.

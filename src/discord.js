@@ -82,6 +82,9 @@ export function createClient() {
       GatewayIntentBits.GuildMembers,
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.MessageContent,
+      // Tempo de call da fila por tickets. Não é intent privilegiada — não precisa de aprovação
+      // no portal, ao contrário de GuildMembers e MessageContent.
+      GatewayIntentBits.GuildVoiceStates,
     ],
   });
   return client;

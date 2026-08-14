@@ -144,6 +144,16 @@ export const adminCommands = [
     .setDefaultMemberPermissions(MOD_DEFAULT_PERMS),
 
   new SlashCommandBuilder()
+    .setName('scan-tickets')
+    .setDescription('Diagnóstico: mostra quem abriu cada ticket e por qual método foi identificado')
+    .setDefaultMemberPermissions(MOD_DEFAULT_PERMS),
+
+  new SlashCommandBuilder()
+    .setName('importar-tickets')
+    .setDescription('Carrega os tickets abertos para o banco e cria a linha de pontuação de cada autor')
+    .setDefaultMemberPermissions(MOD_DEFAULT_PERMS),
+
+  new SlashCommandBuilder()
     .setName('abrir-tickets')
     .setDescription('Abre visibilidade dos canais de ticket e anuncia')
     .setDefaultMemberPermissions(MOD_DEFAULT_PERMS),

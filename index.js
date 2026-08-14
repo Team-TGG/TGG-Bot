@@ -16,6 +16,7 @@ import { checkChannelPermission } from './utils/permissions.js';
 
 // Services
 import { startInactiveReminder } from './src/services/inactivePlayers.js';
+import { iniciarContadores, registrarMensagem, registrarVoz } from './src/services/ticketActivity.js';
 import { restoreMutes } from './src/services/muteManager.js';
 import { restoreTemporaryWarnings } from './src/services/warningManager.js';
 // Commands
@@ -39,6 +40,7 @@ function logRuntimeMode(registrouSlash) {
   console.log('  pulado : lembrete de inativos (ping no canal + DM)');
   console.log('  pulado : crons (cargos, ELO, apelidos, aniversarios, MOTD)');
   console.log('  pulado : restauracao de mutes e warns temporarios');
+  console.log('  ATIVO  : contadores de mensagem e call da fila por tickets - PARE A VM');
   console.log(`  ${registrouSlash ? 'ATIVO  : registro de slash commands (--register-commands)' : 'pulado : registro de slash commands'}`);
   console.log('  ativo  : comandos por prefixo e slash ja registrados na guilda');
   console.log(`${linha}\n`);
@@ -72,6 +74,16 @@ async function main() {
     // Vale nos dois modos: é assim que os slash já registrados chegam aos handlers.
     registerInteractionHandler(client);
 
+    // Contadores da fila por tickets: rodam nos dois modos, decisão do usuário (14/08/2026) —
+    // sem eles em dev não há como ver o número subir no banco sem subir em produção.
+    //
+    // Cuidado que isso pede: dois processos com o mesmo token recebem os mesmos eventos e
+    // contam cada mensagem duas vezes. É a regra que já vale para o projeto inteiro (pare o bot
+    // da VM antes de subir local), mas aqui o sintoma é pior — comando respondido em dobro
+    // aparece na hora, contagem dobrada entra calada no banco e não dá para separar depois.
+    client.on(Events.VoiceStateUpdate, registrarVoz);
+    await iniciarContadores(client);
+
     // Daqui pra baixo é tudo efeito no servidor real: cron mexe em cargo e apelido,
     // o lembrete pinga e manda DM, e restaurar mutes/warns reagenda expiracoes.
     if (runtime.isDev) return;
@@ -99,6 +111,11 @@ async function main() {
 
   client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
+
+    // Antes do filtro de prefixo de propósito: a pontuação da fila conta mensagem em qualquer
+    // canal, e a esmagadora maioria delas não é comando. Só acumula em memória, não escreve.
+    registrarMensagem(message);
+
     if (!message.content.startsWith(PREFIX)) return;
 
     const content = message.content.slice(PREFIX.length).trim();
