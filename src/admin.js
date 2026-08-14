@@ -1676,10 +1676,10 @@ export const handleOrganizeTickets = adminOnly(async (message, args, client) => 
 
 // .abrir-tickets
 //
-// Fase de teste (14/08/2026): com a lista preenchida a DM vai só para estes IDs e o post no
-// canal da fila não sai. Esvaziar a lista liga as duas coisas de uma vez — o envio passa a
-// pegar todo mundo que tem o cargo e o canal recebe o ping com o mesmo botão.
-const DM_ABRIR_TICKETS_TESTE = ['252249131202904074'];
+// Escotilha de teste: com a lista preenchida a DM vai só para estes IDs e o post no canal da fila
+// não sai. Vazia (o normal) o envio pega todo mundo que tem o cargo e o canal recebe o ping com o
+// mesmo botão. Preencher de novo é o jeito de testar mudança na DM sem escrever para os ~177.
+const DM_ABRIR_TICKETS_TESTE = [];
 
 // Uma DM por segundo. `send()` para quem não tem canal de DM aberto são duas requisições
 // (cria o canal, depois manda), e é a criação que o Discord limita — daí o 40003. Com 177 na
