@@ -1661,16 +1661,6 @@ export const handleOrganizeTickets = adminOnly(async (message, args, client) => 
     .setDescription(`Só os **${r.mudaram}** que mudaram de lugar receberam aviso no canal. Nenhuma DM foi enviada.`)
     .setTimestamp();
 
-  // Ticket sem nick legível fica com o nome intacto e some do relatório se não for dito — a
-  // staff precisa saber que aquele canal continua com o nome que o Ticket Tool deu.
-  if (r.semNick > 0) {
-    resumo.addFields({
-      name: `${EMOJIS.xis} Sem nick no nome (${r.semNick})`,
-      value: 'Esses canais não foram renomeados: o nome não está no padrão `guild-<nick>-<posição>`. Renomeie à mão uma vez e o bot mantém daí em diante.',
-      inline: false,
-    });
-  }
-
   return sendCleanMessage(loading, { embeds: [resumo] });
 });
 

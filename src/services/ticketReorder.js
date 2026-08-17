@@ -8,19 +8,17 @@ import { lerNomeDoTicket } from './ticketQueue.js';
 import { discord as discordConfig } from '../../config/index.js';
 
 /**
- * O nick sai do **nome atual do canal**, não da coluna `nick`.
+ * Troca só o número do fim, preservando o resto do nome — a mesma regra do `.organize-tickets`
+ * antigo.
  *
- * É o que faz correção manual da staff sobreviver ao cron: renomear `guild-fulano-3` para
- * `guild-fulaninho-3` no Discord passa a valer no próximo recálculo, sem ninguém editar o banco.
- * Sem nick legível (ticket novo ainda com o nome que o Ticket Tool deu) o canal não é renomeado —
- * `guild-null-7` seria pior que deixar como está.
+ * A base sai do **nome atual do canal**, não da coluna `nick`, e é o que faz correção manual da
+ * staff sobreviver ao cron: renomear `guilda-fulano-3` para `guilda-fulaninho-3` no Discord
+ * passa a valer no próximo recálculo, sem ninguém editar o banco. Prefixo não é assumido: se a
+ * staff mudar de `guild-` para `guilda-` ou qualquer outro, continua funcionando.
  */
-function nomeAlvo(canal, ticket, posicao) {
-  const { nick } = lerNomeDoTicket(canal.name);
-  const usar = nick ?? ticket.nick;
-  if (!usar) return null;
-
-  return `guild-${usar}-${posicao}`;
+function nomeAlvo(canal, posicao) {
+  const { base } = lerNomeDoTicket(canal.name);
+  return `${base}-${posicao}`;
 }
 
 function montarAvisoDeMudanca(anterior, nova) {
@@ -49,12 +47,11 @@ export async function recalcularOrdemDaFila(client) {
   if (!guild) throw new Error('Guild não encontrada');
 
   const tickets = await getTicketsAbertos();
-  if (tickets.length === 0) return { total: 0, mudaram: 0, renomeados: 0, semNick: 0, sumidos: 0 };
+  if (tickets.length === 0) return { total: 0, mudaram: 0, renomeados: 0, sumidos: 0 };
 
   const posicoes = [];
   let mudaram = 0;
   let renomeados = 0;
-  let semNick = 0;
   let sumidos = 0;
 
   for (const [indice, ticket] of tickets.entries()) {
@@ -74,10 +71,9 @@ export async function recalcularOrdemDaFila(client) {
     await atualizarTicket(ticket.channel_id, { posicao, pontos })
       .catch(err => console.error(`[TICKET ORDEM] falha ao gravar ${canal.name}: ${err.message}`));
 
-    const alvo = nomeAlvo(canal, ticket, posicao);
-    if (!alvo) semNick++;
+    const alvo = nomeAlvo(canal, posicao);
 
-    if (alvo && alvo !== canal.name) {
+    if (alvo !== canal.name) {
       const ok = await canal.setName(alvo)
         .then(() => true)
         .catch(err => {
@@ -107,5 +103,5 @@ export async function recalcularOrdemDaFila(client) {
 
   console.log(`[TICKET ORDEM] ${tickets.length} ticket(s), ${mudaram} mudaram de posição, ${renomeados} renomeado(s)`);
 
-  return { total: tickets.length, mudaram, renomeados, semNick, sumidos };
+  return { total: tickets.length, mudaram, renomeados, sumidos };
 }

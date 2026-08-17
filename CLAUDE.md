@@ -299,7 +299,12 @@ cliques não se atropelam. Trocar depois é edição manual no Supabase; não ex
 **As DMs são assimétricas de propósito** ([ticketNudge.js](src/services/ticketNudge.js)):
 
 - **staff** — cobrança por tempo, quando o autor falou por último e não foi respondido. Repete a
-  cada `LIMITE_SEM_RESPOSTA_MS`. Resposta de **qualquer** staff zera a pendência.
+  cada `LIMITE_SEM_RESPOSTA_MS`. Resposta de **qualquer** staff zera a pendência, e o botão
+  **"mensagem lida"** da própria DM também: nem todo gif ou emoji do autor pede resposta, e sem
+  essa saída o bot cobrava de hora em hora por algo já resolvido. Ele grava
+  `ultima_msg_lado = 'responsavel'` em vez de coluna nova — o campo já significa "quem deu o
+  último passo", e ler é um passo. O id da mensagem vai no `customId` para o botão valer só para
+  aquela mensagem: clique atrasado não pode silenciar uma que chegou depois.
 - **autor** — só quando é mencionado no próprio ticket, um ping = uma DM, na hora.
 
 A primeira versão cobrava os dois lados por tempo e nunca silenciava: como sempre existe um
@@ -316,10 +321,14 @@ a inativação da quarta, que manda DM às 06:10.
 **Cron `0 1 * * *`** ([ticketReorder.js](src/services/ticketReorder.js)) recalcula posição, renomeia
 `guild-<nick>-<posição>` e reordena os canais; `.organize-tickets` força o mesmo agora. Uma vez por
 dia porque **renomear canal é limitado a 2×/10min por canal** — o nome é foto do último recálculo,
-e isso é decisão do usuário (14/08/2026), não limitação escondida. O nick sai do **nome atual do
-canal**, não da coluna, para correção manual da staff sobreviver ao cron; sem nick legível o canal
-não é renomeado. Empate desempata por `aberto_em`, senão a ordem trocava sozinha entre dois dias e
-renomearia canal à toa. Só quem **mudou de posição** recebe aviso, e **só no canal, nunca DM**.
+e isso é decisão do usuário (14/08/2026), não limitação escondida.
+
+O rename **troca só o número do fim e preserva o resto do nome**, sem assumir prefixo — mesma regra
+do `.organize-tickets` de antes. A primeira versão exigia `guild-` literal e por isso não
+reconhecia `guilda-fulano-3`: o nick saía nulo e o canal nunca era renomeado. A base sai do **nome
+atual do canal**, não da coluna, para correção manual da staff sobreviver ao cron. Empate desempata
+por `aberto_em`, senão a ordem trocava sozinha entre dois dias e renomearia canal à toa. Só quem
+**mudou de posição** recebe aviso, e **só no canal, nunca DM**.
 
 ### Média histórica de contribuição
 

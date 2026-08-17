@@ -5,6 +5,7 @@ import { checkInteractionChannelPermission, isAdmin } from '../utils/permissions
 import { STAFF_ROLE_IDS } from '../config/index.js';
 import { createErrorEmbed } from '../utils/discordUtils.js';
 import { handleEscreverModalSubmit, handleFilaEsperaButton, handleAssumirTicket } from './admin.js';
+import { handleTicketLido } from './services/ticketNudge.js';
 import { handleJustificativaButton, handleJustificativaHistorico } from './public.js';
 
 // Rate limit (mesmo do messageCreate anterior): 5s por usuário, staff isento.
@@ -127,6 +128,26 @@ export function registerInteractionHandler(client) {
         console.error('[FILA] falha ao tratar o botão:', err);
         const payload = {
           embeds: [createErrorEmbed('Erro Interno', `Não consegui alterar seu cargo: ${err.message}`)],
+          ephemeral: true,
+        };
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp(payload).catch(() => {});
+        } else {
+          await interaction.reply(payload).catch(() => {});
+        }
+      }
+      return;
+    }
+
+    // "Mensagem lida" da DM de cobrança. Vem antes do `ticket_assumir` porque os dois começam
+    // com `ticket_`, e a DM fica na conversa privada por dias — collector não serviria.
+    if (interaction.isButton() && interaction.customId.startsWith('ticket_lido_')) {
+      try {
+        await handleTicketLido(interaction);
+      } catch (err) {
+        console.error('[TICKET AVISO] falha ao marcar como lido:', err);
+        const payload = {
+          embeds: [createErrorEmbed('Erro Interno', `Não consegui marcar: ${err.message}`)],
           ephemeral: true,
         };
         if (interaction.replied || interaction.deferred) {

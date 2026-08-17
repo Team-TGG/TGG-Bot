@@ -80,11 +80,24 @@ async function autorPorPrimeiraMensagem(channel) {
   return achado ? achado[1] : null;
 }
 
-/** `guild-<nick>-<posição>` — o nick pode ter hífen, então a posição é ancorada no fim. */
+/**
+ * Quebra `<base>-<posição>` — a posição é o número no fim, a base é todo o resto.
+ *
+ * **Não assume prefixo nenhum.** A versão anterior exigia `guild-` literal e por isso não
+ * reconhecia `guilda-fulano-3`: o nick saía nulo e o canal nunca era renomeado. Casar só o
+ * número no fim é a mesma regra que o `.organize-tickets` usava antes de tudo isso, e serve
+ * para qualquer prefixo que a staff resolva adotar.
+ *
+ * `base` é o que sobra para remontar o nome; `nick` é a base sem o prefixo, só para exibição.
+ */
 export function lerNomeDoTicket(nome) {
-  const achado = nome.match(/^guild-(.+)-(\d+)$/);
-  if (!achado) return { nick: null, posicao: null };
-  return { nick: achado[1], posicao: Number(achado[2]) };
+  const achado = nome.match(/^(.*)-(\d+)$/);
+
+  const base = achado ? achado[1] : nome;
+  const posicao = achado ? Number(achado[2]) : null;
+  const nick = base.replace(/^guilda?-/i, '') || null;
+
+  return { base, nick, posicao };
 }
 
 /**

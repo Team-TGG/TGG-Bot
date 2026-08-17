@@ -10,8 +10,9 @@
 // Assunto separado dos contadores de propósito: `ticketActivity` mede quanto a pessoa interage
 // para ordenar a fila, aqui é comunicação. Os dois leem mensagem, mas mudam por motivos
 // diferentes — mexer no limiar de espera não tem nada a ver com mexer na pontuação.
-import { EmbedBuilder } from 'discord.js';
-import { getTicketsPendentes, atualizarTicket } from '../tickets.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { getTicketsPendentes, atualizarTicket, getTicket } from '../tickets.js';
+import { createErrorEmbed, createWarningEmbed } from '../../utils/discordUtils.js';
 import { discord as discordConfig } from '../../config/index.js';
 
 export const LIMITE_SEM_RESPOSTA_MS = 60 * 60 * 1000;
@@ -121,7 +122,19 @@ export async function avisarPendentes(client) {
       )
       .setTimestamp();
 
-    const entregue = await user.send({ embeds: [embed] })
+    // A mensagem do autor nem sempre pede resposta — um gif, um emoji, um "obrigado". Sem uma
+    // saída, o bot cobra de hora em hora por algo que já foi resolvido. O id da mensagem vai no
+    // customId para o botão valer só para *esta* mensagem: se o autor escrever de novo depois, o
+    // clique atrasado não pode silenciar a nova.
+    const linha = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`ticket_lido_${ticket.channel_id}_${ticket.ultima_msg_id ?? '0'}`)
+        .setLabel('Mensagem lida, não precisa resposta')
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji('✅')
+    );
+
+    const entregue = await user.send({ embeds: [embed], components: [linha] })
       .then(() => true)
       .catch(() => {
         console.log(`[TICKET AVISO] DM bloqueada: ${ticket.responsavel_discord_id}`);
@@ -165,4 +178,54 @@ export async function avisarPingDoAutor(message, ticket) {
 
   await user.send({ embeds: [embed] })
     .catch(() => console.log(`[TICKET AVISO] DM de ping bloqueada: ${ticket.opener_discord_id}`));
+}
+
+/**
+ * Botão "mensagem lida" da DM de cobrança (`ticket_lido_<canal>_<mensagem>`).
+ *
+ * Marca o lado como `responsavel`, que é o mesmo estado de "a staff já agiu" — a consulta de
+ * pendentes deixa de trazer o ticket e nada mais é cobrado. Não foi coluna nova de propósito:
+ * `ultima_msg_lado` já significa "quem deu o último passo", e ler a mensagem é um passo. Quando
+ * o autor escrever de novo, o campo volta para `autor` e o relógio recomeça sozinho.
+ */
+export async function handleTicketLido(interaction) {
+  await interaction.deferUpdate().catch(err => {
+    console.warn(`[TICKET AVISO] deferUpdate falhou: ${err.message}`);
+  });
+
+  const [, , channelId, messageId] = interaction.customId.split('_');
+
+  const ticket = await getTicket(channelId);
+  if (!ticket) {
+    return interaction.editReply({
+      embeds: [createErrorEmbed('Ticket não encontrado', 'Ele já foi fechado no cadastro do bot.')],
+      components: [],
+    }).catch(() => {});
+  }
+
+  // Chegou mensagem nova depois do aviso: silenciar aqui esconderia justamente a que ainda não
+  // foi vista. O botão vale só para a mensagem que gerou esta DM.
+  if (ticket.ultima_msg_id && ticket.ultima_msg_id !== messageId) {
+    return interaction.editReply({
+      embeds: [createWarningEmbed(
+        'Chegou mensagem nova',
+        'O autor escreveu de novo depois deste aviso, então não marquei nada. ' +
+        'Veja o ticket — o próximo aviso vai apontar para a mensagem mais recente.'
+      )],
+      components: [],
+    }).catch(() => {});
+  }
+
+  await atualizarTicket(channelId, { ultima_msg_lado: 'responsavel' });
+
+  const embed = new EmbedBuilder()
+    .setColor(0x57f287)
+    .setTitle('✅ Marcado como lido')
+    .setDescription(
+      'Não vou mais cobrar resposta para essa mensagem.\n\n' +
+      'Se o autor escrever de novo, a contagem recomeça.'
+    )
+    .setTimestamp();
+
+  await interaction.editReply({ embeds: [embed], components: [] }).catch(() => {});
 }
