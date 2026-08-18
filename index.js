@@ -17,6 +17,7 @@ import { checkChannelPermission } from './utils/permissions.js';
 // Services
 import { startInactiveReminder } from './src/services/inactivePlayers.js';
 import { iniciarContadores, registrarMensagem, registrarVoz } from './src/services/ticketActivity.js';
+import { avisarModoDaSemana } from './src/services/avisoModoDaSemana.js';
 import { restoreMutes } from './src/services/muteManager.js';
 import { restoreTemporaryWarnings } from './src/services/warningManager.js';
 // Commands
@@ -41,6 +42,7 @@ function logRuntimeMode(registrouSlash) {
   console.log('  pulado : crons (cargos, ELO, apelidos, aniversarios, MOTD)');
   console.log('  pulado : restauracao de mutes e warns temporarios');
   console.log('  ATIVO  : contadores de mensagem e call da fila por tickets - PARE A VM');
+  console.log('  pulado : aviso de modo da semana no procurando-jogo (loga o que enviaria)');
   console.log(`  ${registrouSlash ? 'ATIVO  : registro de slash commands (--register-commands)' : 'pulado : registro de slash commands'}`);
   console.log('  ativo  : comandos por prefixo e slash ja registrados na guilda');
   console.log(`${linha}\n`);
@@ -115,6 +117,10 @@ async function main() {
     // Antes do filtro de prefixo de propósito: a pontuação da fila conta mensagem em qualquer
     // canal, e a esmagadora maioria delas não é comando. Só acumula em memória, não escreve.
     registrarMensagem(message);
+
+    // Também antes do prefixo: o que se avalia aqui é conversa ("bora 2v2?"), nunca comando.
+    // Nada bloqueia a mensagem - o serviço filtra o canal sozinho e engole o próprio erro.
+    avisarModoDaSemana(message);
 
     if (!message.content.startsWith(PREFIX)) return;
 

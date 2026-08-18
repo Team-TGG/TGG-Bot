@@ -92,6 +92,12 @@ export const contributionReminder = {
   channelId: '1440865671150829648', // tgg-geral
 };
 
+// Aviso no procurando-jogo quando alguém chama partida no modo que não é o da semana
+// (ver src/services/avisoModoDaSemana.js). Sem channelId o aviso inteiro fica desligado.
+export const avisoModoDaSemana = {
+  channelId: '1466501462594158684', // procurando-jogo
+};
+
 export const tickets = {
   filaDeEsperaRoleId: '1466815420630565069',
   entrarNaGuildaChannelId: '1484570233124421692',

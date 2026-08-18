@@ -339,6 +339,34 @@ atual do canal**, não da coluna, para correção manual da staff sobreviver ao 
 por `aberto_em`, senão a ordem trocava sozinha entre dois dias e renomearia canal à toa. Só quem
 **mudou de posição** recebe aviso, e **só no canal, nunca DM**.
 
+### Aviso de modo errado no procurando-jogo
+
+O bloco de ranked alterna entre `ranked-2v2` e `ranked-3v3` toda semana, então metade do tempo a
+partida que alguém chama no `procurando-jogo` (`1466501462594158684`) não avança missão nenhuma.
+[avisoModoDaSemana.js](src/services/avisoModoDaSemana.js) observa o canal e responde à mensagem
+lembrando qual é a missão e quanto falta para o mínimo.
+
+**A conferência é contra as quatro missões da semana, não contra o bloco que alterna.** A posição 1
+do ciclo passa por `ouro-2v2`, `platina-2v2` e `diamante-2v2`: nessas semanas o 2v2 conta mesmo com
+a ranked sendo 3v3, e cobrar ali seria dar informação errada. A fonte é o cadastro
+(`weekly_missions`), com a previsão do ciclo como plano B — correção da staff pelo site tem que
+valer aqui também. Os modos saem do **texto da missão** por regex, nos dois lados, então cadastro
+editado à mão continua sendo entendido.
+
+**Missão concluída (`status = 'done'`) sai da conta**, porque depois dela o modo não rende mais —
+o que sobra é guild battle, e para isso não adianta trocar de fila. Some o motivo de avisar quando
+a missão do modo certo fechou, e volta o motivo de avisar quando é a do modo citado que fechou
+(semana de `ouro-2v2` concluída com a ranked 3v3 aberta).
+
+Quem é avisado é exatamente quem o lembrete de domingo avisaria — `calcularQuemFalta()`, que já
+carrega as isenções de staff, blindado, recém-chegado e sem medição. Repetir a regra aqui faria o
+canal cobrar quem a quarta-feira não vai cobrar.
+
+Detalhes que parecem sobra e não são: mensagem que cita **os dois** modos não gera aviso (quem
+escreve "bora 3v3, ou 2v2 se faltar gente" já sabe da missão); `1v1` fica fora porque não é o bloco
+que alterna; o cooldown é de 1h por pessoa; e em modo dev
+o aviso só é logado, nunca enviado — o canal é o de produção.
+
 ### Média histórica de contribuição
 
 Guild points totais divididos pelas semanas de guilda, em
