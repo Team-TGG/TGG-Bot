@@ -128,6 +128,9 @@ export const weeklyMvp = {
   roleId: '1448466041997889769',
   channelId: '1536704688689516624', // log-guilda
   limite: 14,
+  // Prêmio em TGG Coins pelas três maiores contribuições da semana. Aqui é o topo do ranking
+  // puro: staff concorre e recebe igual, ao contrário das vagas do cargo, onde ela não ocupa lugar.
+  premios: { 1: 250, 2: 200, 3: 150 },
 };
 
 // Duelo semanal de guildas, cadastrado sozinho na quarta 07:00 (ver src/services/guildDuelService.js).

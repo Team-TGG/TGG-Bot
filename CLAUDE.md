@@ -208,6 +208,15 @@ vaga; a contagem fecha quando a 14ª vaga é preenchida, então officer que apar
 fora. Staff aqui é quem é staff em **qualquer** das duas fontes (`users.role` **ou** o `rank` do
 jogo): medido em 08/08/2026, 6 pessoas divergiam entre as duas, nas duas direções.
 
+**Prêmio do top 3** — a mesma rodada paga 250/200/150 TGG Coins (`weeklyMvp.premios`) para as três
+maiores contribuições, no formato do `.addcoins`: transação de tipo `TOP 1 SEMANA 13/08/2026` mais o
+saldo somado. Aqui é o **ranking puro, staff incluída** (decisão do usuário, 18/08/2026) — ao
+contrário das vagas do cargo, onde staff aparece sem ocupar lugar; por isso a colocação do prêmio é
+o índice na lista, não o campo `posicao`. A semana no tipo é a **trava contra pagamento duplo**: o
+cargo pode ser reaplicado à vontade, moeda não. Quem já recebeu qualquer prêmio daquela semana é
+pulado, mesmo que o ranking tenha virado entre duas rodadas. Cargo, prêmio e anúncio falham
+separado, e o 💰 do embed só sai para quem ficou mesmo com as moedas.
+
 **Inativação (quarta 06:10)** — grava em `weekly_inactive_players`, aplica o cargo de inativo,
 manda DM e avisa no canal. Substitui a página `relatorio_inativar.php` do site, que media **XP**
 (sistema antigo) e não contribuição.

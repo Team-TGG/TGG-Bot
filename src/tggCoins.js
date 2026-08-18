@@ -279,6 +279,27 @@ export async function getTransactions(discordId, page = 1, limit = 10) {
 }
 
 /**
+ * Transações já lançadas para um conjunto de tipos, de qualquer usuário.
+ *
+ * Existe para quem paga sozinho (cron) poder perguntar "isso já foi pago?" antes de pagar de novo:
+ * repetir a rodada é seguro para cargo, não para moeda.
+ */
+export async function getTransactionsByTypes(types) {
+  if (!types?.length) return [];
+
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('tgg_coins_transactions')
+    .select('discord_id, type')
+    .in('type', types);
+
+  if (error) throw error;
+
+  return data ?? [];
+}
+
+/**
  * Pega leaderboard (ordenado por TGG_coins)
  */
 export async function getLeaderboard(page = 1, limit = 10) {

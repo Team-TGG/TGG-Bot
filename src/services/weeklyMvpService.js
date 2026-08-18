@@ -1,5 +1,6 @@
 import { EmbedBuilder } from 'discord.js';
 import { calcularContribuicaoSemanal } from './contribuicaoSemanal.js';
+import { addTransaction, updateBalance, getTransactionsByTypes } from '../tggCoins.js';
 import { weeklyMvp as config, discord as discordConfig } from '../../config/index.js';
 import { LEADER_ID } from '../../utils/permissions.js';
 
@@ -141,13 +142,90 @@ function formatPontos(valor) {
   return Number(valor || 0).toLocaleString('pt-BR');
 }
 
-/** Payload do anúncio. Exportado para dar pra conferir sem enviar nada. */
-export function montarAnuncio({ weekStart, mvps }) {
+/** `2026-08-13 06:00:00` → `13/08/2026`. É a semana que vai no tipo da transação e no anúncio. */
+function formatarSemana(weekStart) {
+  const [ano, mes, dia] = String(weekStart).slice(0, 10).split('-');
+  return `${dia}/${mes}/${ano}`;
+}
+
+/**
+ * As três maiores contribuições da semana, em ordem. Diferente das vagas do cargo: aqui **staff
+ * concorre normalmente** (decisão do usuário, 18/08/2026), então a posição é a do ranking puro e
+ * não o `posicao` da contagem de vagas, que pula quem não ocupa lugar.
+ */
+export function selecionarPremiados({ weekStart, mvps }, premios = config.premios) {
+  const semana = formatarSemana(weekStart);
+
+  return mvps.slice(0, Object.keys(premios).length)
+    .map((m, i) => ({ ...m, colocacao: i + 1, valor: premios[i + 1] }))
+    .filter(p => p.valor > 0)
+    .map(p => ({ ...p, tipo: `TOP ${p.colocacao} SEMANA ${semana}` }));
+}
+
+/**
+ * Paga os três primeiros em TGG Coins, no mesmo formato do `.addcoins`: uma transação com o tipo
+ * `TOP 1 SEMANA 13/08/2026` e o saldo somado.
+ *
+ * O tipo carrega a semana justamente para servir de trava: o cargo pode ser reaplicado à vontade,
+ * moeda não. Quem já recebeu **qualquer** prêmio desta semana é pulado — se o ranking virar entre
+ * duas rodadas de quarta-feira, o 1º que virou 2º não pode receber de novo com o outro tipo.
+ * Falha em um não impede o pagamento dos outros.
+ */
+export async function premiarTopMvps({ weekStart, mvps }) {
+  const premiados = selecionarPremiados({ weekStart, mvps });
+
+  if (!premiados.length) return { pagos: [], repetidos: [], falhas: [] };
+
+  const lancados = await getTransactionsByTypes(premiados.map(p => p.tipo));
+  const jaPagos = new Set(lancados.map(t => String(t.discord_id)));
+  const tiposPagos = new Set(lancados.map(t => t.type));
+
+  const pagos = [];
+  const repetidos = [];
+  const falhas = [];
+
+  for (const premiado of premiados) {
+    if (jaPagos.has(premiado.discordId) || tiposPagos.has(premiado.tipo)) {
+      repetidos.push(premiado);
+      continue;
+    }
+
+    const descricao =
+      `${premiado.colocacao}º lugar em contribuição na semana de ${formatarSemana(weekStart)} ` +
+      `(${formatPontos(premiado.contribuicao)} guild points)`;
+
+    try {
+      await addTransaction(premiado.discordId, premiado.valor, premiado.tipo, descricao);
+      await updateBalance(premiado.discordId, premiado.valor);
+
+      jaPagos.add(premiado.discordId);
+      tiposPagos.add(premiado.tipo);
+      pagos.push(premiado);
+
+    } catch (err) {
+      falhas.push({ ...premiado, erro: err.message });
+    }
+  }
+
+  return { pagos, repetidos, falhas };
+}
+
+/**
+ * Payload do anúncio. Exportado para dar pra conferir sem enviar nada.
+ *
+ * `premiados` são os que **realmente** ficaram com as moedas (pagos agora ou em rodada anterior);
+ * anunciar o prêmio pela regra faria o embed prometer o que uma falha de banco não entregou.
+ */
+export function montarAnuncio({ weekStart, mvps, premiados = [] }) {
   const [ano, mes, dia] = weekStart.slice(0, 10).split('-');
+
+  const premioPorId = new Map(premiados.map(p => [p.discordId, p.valor]));
 
   const linhas = mvps.map(m => {
     const posicao = m.posicao ? `**${m.posicao}º**` : '⭐';
-    return `${posicao} <@${m.discordId}> - ${formatPontos(m.contribuicao)}`;
+    const premio = premioPorId.get(m.discordId);
+    const moedas = premio ? ` • 💰 **+${formatPontos(premio)}**` : '';
+    return `${posicao} <@${m.discordId}> - ${formatPontos(m.contribuicao)}${moedas}`;
   });
 
   const embed = new EmbedBuilder()
@@ -155,7 +233,8 @@ export function montarAnuncio({ weekStart, mvps }) {
     .setTitle('🏅 MVPs da semana')
     .setDescription(
       `Semana de **${dia}/${mes}/${ano}** - top ${config.limite} em contribuição.\n` +
-      `⭐ = staff, recebe o cargo sem ocupar vaga.\n\n` +
+      `⭐ = staff, recebe o cargo sem ocupar vaga.\n` +
+      `💰 = prêmio em TGG Coins pelas três maiores contribuições, staff incluída.\n\n` +
       (linhas.join('\n') || 'Ninguém pontuou nesta semana.')
     )
     .setTimestamp();
@@ -215,12 +294,32 @@ export async function trocarMvpsDaSemana(client) {
       console.warn('[MVP] falhas ao acertar o cargo:', resultado.falhas);
     }
 
-    const anunciado = await anunciar(client, montarAnuncio({ weekStart, mvps })).catch(err => {
+    // Prêmio falhar não pode cancelar o cargo nem o anúncio - são entregas independentes
+    const premiacao = await premiarTopMvps({ weekStart, mvps }).catch(err => {
+      console.error('[MVP] falha ao premiar o top 3:', err.message);
+      return { pagos: [], repetidos: [], falhas: [] };
+    });
+
+    premiacao.pagos.forEach(p => console.log(
+      `[MVP] ${p.tipo}: ${p.nome} (<@${p.discordId}>) +${p.valor} TGG Coins`
+    ));
+
+    if (premiacao.repetidos.length) {
+      console.warn(`[MVP] ${premiacao.repetidos.length} prêmio(s) já lançado(s) nesta semana - pulados`);
+    }
+
+    if (premiacao.falhas.length) {
+      console.warn('[MVP] falhas ao premiar:', premiacao.falhas);
+    }
+
+    const premiados = [...premiacao.pagos, ...premiacao.repetidos];
+
+    const anunciado = await anunciar(client, montarAnuncio({ weekStart, mvps, premiados })).catch(err => {
       console.error('[MVP] falha ao anunciar:', err.message);
       return false;
     });
 
-    return { trocado: true, weekStart, mvps, ...resultado, anunciado };
+    return { trocado: true, weekStart, mvps, ...resultado, premiacao, anunciado };
 
   } catch (err) {
     console.error('[MVP] falha ao trocar os MVPs da semana', err);
