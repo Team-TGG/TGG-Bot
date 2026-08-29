@@ -101,6 +101,8 @@ export const COMMAND_ALIASES = {
   'pneumoultramicroscópicosilicovulcanoconiótico': 'daily', // DRG
   'pneumoultramicroscopicosilicovulcanoconiotico': 'daily', // DRG
   'mirror': 'daily', // Vitor
+  'vai-com-deus': 'daily', // Lucas
+  'panela': 'daily', // Korch
   'balance': 'balance',
   'bal': 'balance',
   'baal': 'balance',
