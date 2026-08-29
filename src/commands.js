@@ -100,6 +100,7 @@ export const COMMAND_ALIASES = {
   'porra': 'daily', // GGhost_storm
   'pneumoultramicroscópicosilicovulcanoconiótico': 'daily', // DRG
   'pneumoultramicroscopicosilicovulcanoconiotico': 'daily', // DRG
+  'mirror': 'daily', // Vitor
   'balance': 'balance',
   'bal': 'balance',
   'baal': 'balance',
