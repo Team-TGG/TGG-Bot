@@ -9,6 +9,7 @@ import { inativarSemana } from '../services/weeklyInactiveService.js';
 import { lembrarContribuicao } from '../services/contributionReminderService.js';
 import { avisarRemocaoDeInativos } from '../services/avisoRemocaoInativos.js';
 import { cobrarInativosDaFila } from '../services/ticketInatividade.js';
+import { avisarTicketsOrfaos } from '../services/ticketOrfaos.js';
 import { avisarMovimentacao } from '../services/guildHistoryService.js';
 import { recalcularOrdemDaFila } from '../services/ticketReorder.js';
 
@@ -154,10 +155,18 @@ export function startCronJobs(client, services) {
   // Inatividade na fila por tickets - 07:00. Horário escolhido pelo usuário: o aviso pede
   // resposta, então cai de manhã e longe do recálculo da fila, que roda 01:00.
   cron.schedule('0 7 * * *', async () => {
+    // Duas checagens diárias da fila, cada uma com seu try/catch: são assuntos independentes
+    // (quem sumiu × quem saiu do servidor) e uma falhar não pode cancelar a outra.
     try {
       await cobrarInativosDaFila(client);
     } catch (err) {
       console.error('[CRON ERROR - Inatividade na fila]', err);
+    }
+
+    try {
+      await avisarTicketsOrfaos(client);
+    } catch (err) {
+      console.error('[CRON ERROR - Tickets orfaos]', err);
     }
   }, {
     timezone: 'America/Sao_Paulo'

@@ -213,6 +213,22 @@ export async function fecharTickets(channelIds) {
  * é exatamente o que ele faz para preencher a base da planilha.
  */
 /**
+ * Tickets abertos com os campos de aviso, sem a pontuação — a ordem não importa para quem só
+ * quer saber quem já foi avisado.
+ */
+export async function getTicketsAbertosComAvisos() {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('ticket_queue')
+    .select('channel_id, opener_discord_id, responsavel_discord_id, nick, aviso_saiu_em')
+    .is('fechado_em', null);
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
  * Tira do filtro de inatividade os tickets em que o autor voltou a escrever.
  *
  * Um update para o lote inteiro, filtrado por quem realmente tem aviso pendente: sem o

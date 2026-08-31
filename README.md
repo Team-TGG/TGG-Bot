@@ -111,6 +111,7 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 - [x] Avisar no canal dos inativos quem o bot não conseguiu alcançar por DM, para a staff chamar no privado.
 - [x] Chamar o `@Officer` no domingo 06:00 com quem continua na lista de inativos e quantos avisos ignorou, para a staff decidir a remoção.
 - [x] Filtro de inatividade na fila por tickets: quem está da posição 10 para trás e passou 4 dias sem mensagem nem call é chamado no próprio ticket, e o responsável é acionado se não houver resposta no ticket em um dia.
+- [x] Avisar o responsável, no próprio ticket, quando quem abriu já saiu do servidor.
 - [ ] Mandar mute, ban e warn para o `hall-da-vergonha` pelo bot, com a justificativa.
 - [x] Ver como publicar as missões da semana no `guild-updates` e criar a imagem das quests.
 - [ ] Adicionar Skyforged e Goldforged na loja.

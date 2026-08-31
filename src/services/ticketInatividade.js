@@ -5,6 +5,7 @@ import {
   atualizarTicket,
   limparAvisoDeInatividade,
 } from '../tickets.js';
+import { getMembrosPresentes } from './ticketQueue.js';
 import { discord as discordConfig, ticketInatividade as config } from '../../config/index.js';
 
 /**
@@ -211,10 +212,18 @@ export async function cobrarInativosDaFila(client) {
 
   const atividades = await getUltimaAtividade(tickets.map(t => t.opener_discord_id));
 
+  // Quem saiu do servidor não é cobrado: perguntar "ainda tem interesse?" para quem não está mais
+  // aqui não tem resposta possível, e o caso dele já tem aviso próprio, do
+  // [ticketOrfaos.js](./ticketOrfaos.js), na mesma rodada das 07:00. `null` = não deu para
+  // conferir, e aí ninguém é poupado nem acusado por falta de leitura — a régua roda como antes.
+  const presentes = await getMembrosPresentes(guild, tickets.map(t => t.opener_discord_id));
+
   const avisados = [];
   const escalados = [];
 
   for (const [indice, ticket] of tickets.entries()) {
+    if (presentes && !presentes.has(ticket.opener_discord_id)) continue;
+
     const posicao = indice + 1;
     const ultimaAtividade = atividades.get(ticket.opener_discord_id) ?? null;
     const { acao, parado } = decidirAcao(ticket, { posicao, ultimaAtividade });

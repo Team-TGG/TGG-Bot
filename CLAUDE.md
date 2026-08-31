@@ -390,6 +390,23 @@ colunas de `ticket_queue`. Sem elas a rotina **não começa**: o aviso sairia, o
 a mesma pessoa levaria o mesmo ping todo dia às 07h. A checagem é feita na linha já lida, sem
 consulta extra.
 
+**Ticket órfão (mesma rodada das 07:00)** — [ticketOrfaos.js](src/services/ticketOrfaos.js) avisa
+no próprio ticket, marcando o responsável, quando quem abriu **já não está no servidor**. Avisa
+uma vez só, carimbando `ticket_queue.aviso_saiu_em`: o responsável pode estar segurando o ticket
+de propósito, e um ping toda manhã treina a staff a ignorar o canal. Se a pessoa voltar, o carimbo
+é apagado e um novo sumiço volta a avisar. O bot **não fecha nem apaga o canal** — quem cria e
+apaga é o Ticket Tool.
+
+A presença sai de `getMembrosPresentes` ([ticketQueue.js](src/services/ticketQueue.js)): o fetch em
+lote pelo gateway devolve **só quem existe**, então a lista inteira custa uma requisição em vez de
+um `fetch` por pessoa estourando 10007 uma a uma. Ele devolve `null` — e não um `Set` vazio —
+quando a leitura falha, porque ler "saíram todos" anunciaria a fila inteira como órfã.
+
+A mesma leitura faz o filtro de inatividade **pular quem saiu**: perguntar "ainda tem interesse?"
+a quem não está mais aqui não tem resposta possível, e o caso dele já tem aviso próprio na mesma
+rodada. As duas rotinas dividem o cron com try/catch separados — são assuntos independentes e uma
+falhar não pode cancelar a outra.
+
 **Cron `0 1 * * *`** ([ticketReorder.js](src/services/ticketReorder.js)) recalcula posição, renomeia
 `guild-<nick>-<posição>` e reordena os canais; `.organize-tickets` força o mesmo agora. Uma vez por
 dia porque **renomear canal é limitado a 2×/10min por canal** — o nome é foto do último recálculo,
@@ -621,7 +638,8 @@ Todos registrados no `ClientReady`:
 - Cron `5,20,35,50 * * * *` — avisa entradas, saídas, promoções e rebaixamentos na guilda do jogo
   ([src/services/guildHistoryService.js](src/services/guildHistoryService.js)). Ver abaixo.
 - Cron `0 7 * * *` — cobra quem está parado na fila por tickets
-  ([src/services/ticketInatividade.js](src/services/ticketInatividade.js)). Ver acima.
+  ([src/services/ticketInatividade.js](src/services/ticketInatividade.js)) e avisa ticket cujo
+  autor saiu do servidor ([src/services/ticketOrfaos.js](src/services/ticketOrfaos.js)). Ver acima.
 - Cron `0 1 * * *` — recalcula a ordem da fila por tickets ([src/services/ticketReorder.js](src/services/ticketReorder.js)). Ver acima.
 - `setInterval` — ciclo da fila por tickets (1 min, `TICKET_CYCLE_SECONDS`): reconciliação,
   contadores de mensagem e call, cobrança de resposta pendente, saída do filtro de inatividade de

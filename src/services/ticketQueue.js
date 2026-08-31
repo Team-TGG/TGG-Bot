@@ -170,6 +170,36 @@ async function aquecerCacheDeMembros(guild, canais) {
 }
 
 /**
+ * Quais desses IDs ainda são membros da guilda → `Set`, ou `null` se não deu para saber.
+ *
+ * O fetch em lote passa pelo gateway e devolve **só quem existe**, então quem saiu simplesmente
+ * não volta na resposta — é o que permite descobrir a ausência com uma requisição para a lista
+ * inteira, em vez de um `fetch` por pessoa que estoura 10007 uma a uma.
+ *
+ * `null` no lote inteiro, e não um `Set` vazio, é o ponto todo: falha de rede leria como "saíram
+ * todos" e faria o bot anunciar a guilda inteira como órfã. Quem chama tem que parar.
+ */
+export async function getMembrosPresentes(guild, discordIds) {
+  const ids = [...new Set(discordIds)].filter(Boolean);
+  if (ids.length === 0) return new Set();
+
+  const presentes = new Set();
+
+  for (let i = 0; i < ids.length; i += 100) {
+    const lote = await guild.members.fetch({ user: ids.slice(i, i + 100) }).catch(err => {
+      console.warn(`[TICKETS] falha ao conferir quem continua no servidor: ${err.message}`);
+      return null;
+    });
+
+    if (!lote) return null;
+
+    for (const id of lote.keys()) presentes.add(id);
+  }
+
+  return presentes;
+}
+
+/**
  * Varre a categoria de tickets e devolve uma linha por canal, com o que cada método achou.
  * Só lê — não escreve no banco nem toca nos canais.
  */
