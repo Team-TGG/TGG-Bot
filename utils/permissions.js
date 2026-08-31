@@ -22,26 +22,45 @@ export const ALLOWED_CHANNELS = [
   '1437416406038872225', // Comandos
   '1468600851290521692', // Players Inativos
   '1437416481343406122', // Principal (com cooldown de 60s)
+  '1440356256627032104', // English-chat (com cooldown de 60s)
 ];
 
 export const ALLOWED_CATEGORIES = [
   '1460768037518180352', // Categoria de Cards
-  '1437504178220961815'  // Categoria da Staff
+  '1437504178220961815', // Categoria da Staff
+  '1528175655806570506'  // Categoria de Suporte
 ];
 
-// Canal Principal tem cooldown extra de 60s por usuário (staff isento, igual rate limit global)
 export const PRINCIPAL_CHANNEL_ID = '1437416481343406122';
+export const ENGLISH_CHAT_CHANNEL_ID = '1440356256627032104';
+
+/**
+ * Canais de conversa em que comando é permitido, mas com cooldown extra de 60s por usuário
+ * (staff isento, igual ao rate limit global).
+ *
+ * São canais de papo, não de comando: sem a folga, uma dupla brincando de `.daily` empurra a
+ * conversa para fora da tela. O canal de comandos e os de staff ficam de fora de propósito — lá
+ * o bot é o assunto.
+ */
+const CANAIS_COM_COOLDOWN = new Set([PRINCIPAL_CHANNEL_ID, ENGLISH_CHAT_CHANNEL_ID]);
+
 const PRINCIPAL_COOLDOWN_MS = 60_000;
 const principalCooldownMap = new Map();
 
-async function checkPrincipalCooldown(userId, isStaff) {
+/**
+ * A janela é por canal **e** por usuário: cada canal de conversa tem a sua, como se fosse a única.
+ * Uma janela compartilhada faria quem falou no principal ficar mudo no english-chat, o que não é
+ * o que a regra protege - o que se quer é que nenhum dos dois vire mural de comando.
+ */
+async function checkPrincipalCooldown(channelId, userId, isStaff) {
   if (isStaff) return true;
+  const chave = `${channelId}:${userId}`;
   const now = Date.now();
-  const last = principalCooldownMap.get(userId);
+  const last = principalCooldownMap.get(chave);
   if (last && now - last < PRINCIPAL_COOLDOWN_MS) {
     return Math.ceil((PRINCIPAL_COOLDOWN_MS - (now - last)) / 1000);
   }
-  principalCooldownMap.set(userId, now);
+  principalCooldownMap.set(chave, now);
   return true;
 }
 
@@ -60,13 +79,13 @@ export async function checkInteractionChannelPermission(interaction) {
     return false;
   }
 
-  // Cooldown de 60s no canal Principal (staff isento)
-  if (channelId === PRINCIPAL_CHANNEL_ID) {
+  // Cooldown de 60s nos canais de conversa (staff isento)
+  if (CANAIS_COM_COOLDOWN.has(channelId)) {
     const isStaff = interaction.member?.roles?.cache?.some(r => Object.values(STAFF_ROLE_IDS).includes(r.id));
-    const wait = await checkPrincipalCooldown(interaction.user.id, isStaff);
+    const wait = await checkPrincipalCooldown(channelId, interaction.user.id, isStaff);
     if (wait !== true) {
       await interaction.reply({
-        embeds: [createErrorEmbed('Calma lá!', `Comandos no <#${PRINCIPAL_CHANNEL_ID}> têm cooldown de **60s**. Aguarde **${wait}s**.`)],
+        embeds: [createErrorEmbed('Calma lá!', `Comandos no <#${channelId}> têm cooldown de **60s**. Aguarde **${wait}s**.`)],
         flags: MessageFlags.Ephemeral,
       }).catch(() => {});
       return false;
@@ -197,14 +216,14 @@ export async function checkChannelPermission(message) {
     return false;
   }
 
-  // Cooldown de 60s no canal Principal (staff isento)
-  if (channelId === PRINCIPAL_CHANNEL_ID) {
+  // Cooldown de 60s nos canais de conversa (staff isento)
+  if (CANAIS_COM_COOLDOWN.has(channelId)) {
     const isStaff = message.member?.roles?.cache?.some(r => Object.values(STAFF_ROLE_IDS).includes(r.id));
-    const wait = await checkPrincipalCooldown(message.author.id, isStaff);
+    const wait = await checkPrincipalCooldown(channelId, message.author.id, isStaff);
     if (wait !== true) {
       await message.delete().catch(() => {});
       await message.reply({
-        embeds: [createErrorEmbed('Calma lá!', `Comandos no <#${PRINCIPAL_CHANNEL_ID}> têm cooldown de **60s**. Aguarde **${wait}s**.`)]
+        embeds: [createErrorEmbed('Calma lá!', `Comandos no <#${channelId}> têm cooldown de **60s**. Aguarde **${wait}s**.`)]
       }).then(m => setTimeout(() => m.delete().catch(() => {}), 5000)).catch(() => {});
       return false;
     }
