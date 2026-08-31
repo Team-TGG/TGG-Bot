@@ -3,6 +3,7 @@ import { discord as discordConfig } from '../../config/index.js';
 import { processBirthdays, removeBirthdayRole } from '../services/birthdayService.js';
 import { publishMotd } from '../services/motdService.js';
 import { registrarMissoesDaSemana } from '../services/weeklyMissionsService.js';
+import { registrarConquistasDaSemana } from '../services/weeklyAchievementsService.js';
 import { registrarDueloDaSemana } from '../services/guildDuelService.js';
 import { trocarMvpsDaSemana } from '../services/weeklyMvpService.js';
 import { inativarSemana } from '../services/weeklyInactiveService.js';
@@ -69,12 +70,21 @@ export function startCronJobs(client, services) {
     timezone: 'America/Sao_Paulo'
   });
 
-  // Missões da semana - quinta 06:00, quando a semana vira
+  // Missões da semana e as conquistas que saem delas - quinta 06:00, quando a semana vira.
+  // Em sequência porque as conquistas leem as missões recém-cadastradas, mas com try/catch
+  // separados: a de baixo cai na previsão do ciclo se a de cima falhar, e não pode ser cancelada
+  // por ela.
   cron.schedule('0 6 * * 4', async () => {
     try {
       await registrarMissoesDaSemana(client);
     } catch (err) {
       console.error('[CRON ERROR - Missoes]', err);
+    }
+
+    try {
+      await registrarConquistasDaSemana(client);
+    } catch (err) {
+      console.error('[CRON ERROR - Conquistas]', err);
     }
   }, {
     timezone: 'America/Sao_Paulo'

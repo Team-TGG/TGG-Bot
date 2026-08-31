@@ -701,6 +701,50 @@ export async function getShopItemsByType(type) {
   return data || [];
 }
 
+/** As conquistas já cadastradas para uma semana, para não cadastrar de novo por cima. */
+export async function getAchievementsByWeekStart(weekStart) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('tgg_coins_achievements')
+    .select('id, mode, description, type, target, reward')
+    .eq('week_start', weekStart)
+    .order('created_at', { ascending: true });
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
+ * Cadastra as conquistas de uma semana.
+ *
+ * O `created_at` é escalonado de propósito: tanto o painel do site quanto a leitura do bot ordenam
+ * por ele, e uma inserção em lote gravaria o mesmo instante em todas as linhas, deixando a ordem
+ * dos tiers ao acaso. Mesma razão de `insertWeeklyMissions`.
+ */
+export async function insertWeeklyAchievements(weekStart, conquistas) {
+  const supabase = getClient();
+  const base = Date.now();
+
+  const linhas = conquistas.map((c, i) => ({
+    week_start: weekStart,
+    mode: c.mode,
+    description: c.description,
+    type: c.type,
+    target: c.target,
+    reward: c.reward,
+    created_at: formatDateTime(new Date(base + i * 1000)),
+  }));
+
+  const { data, error } = await supabase
+    .from('tgg_coins_achievements')
+    .insert(linhas)
+    .select();
+
+  if (error) throw error;
+  return data ?? [];
+}
+
 /**
  * Pegar as missões semanais para a semana atual (usado para as conquistas)
  */

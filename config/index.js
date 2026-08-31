@@ -146,6 +146,14 @@ export const weeklyMissions = {
   roleId: '1437441679572471940',        // @TGG - sem isso o post sai sem ping
 };
 
+// Cadastro automático das conquistas do .conquistas, toda quinta 06:00, logo depois das missões
+// (ver src/services/weeklyAchievementsService.js). Sem channelId as conquistas continuam sendo
+// cadastradas - só o aviso da staff é pulado.
+export const weeklyAchievements = {
+  channelId: '1536704688689516624', // log-guilda - registro para a staff
+  correcaoUrl: 'https://teamtgg.com.br/cadastro_conquistas', // onde corrigir divergência
+};
+
 // MVP da semana, trocado sozinho na quarta 06:00 (ver src/services/weeklyMvpService.js).
 // `limite` são as vagas de contagem: officers/admins e o líder recebem o cargo enquanto a
 // contagem corre, mas não ocupam vaga. Sem channelId o cargo continua sendo trocado - só o

@@ -161,8 +161,8 @@ que só insere se não existir. O bot também escreve nela via `ensurePlayerWeek
 
 ### Tipos de conquista (`tgg_coins_achievements.type`)
 
-`ELO`, `WINS`, `GAMES` e `CONTRIBUICAO`. As linhas são cadastradas fora do bot (painel do site); o bot
-só lê. Cada tipo tem uma entrada em `typeConfig` ([src/handlers/tggCoinsHandlers.js](src/handlers/tggCoinsHandlers.js))
+`ELO`, `WINS`, `GAMES` e `CONTRIBUICAO`. As linhas nascem no cron da quinta 06:00 (ver abaixo) ou à
+mão no painel do site; `WINS` só existe pelo painel. Cada tipo tem uma entrada em `typeConfig` ([src/handlers/tggCoinsHandlers.js](src/handlers/tggCoinsHandlers.js))
 e um ramo em `checkMissionCompletion` ([src/tggCoins.js](src/tggCoins.js)) — tipo novo exige os dois.
 `getTypeConfig` normaliza acento e caixa, então `CONTRIBUIÇÃO` e `contribuicao` resolvem igual.
 
@@ -574,6 +574,44 @@ existem porque o roteamento marcou 19/19 enquanto todo embed cortava lista em 15
 (11/08/2026). Lista longa **sempre** termina em `… e mais N` — corte calado faz resposta parcial
 passar por completa, e ninguém tem como saber.
 
+### Cadastro automático das conquistas
+
+[weeklyAchievementsService.js](src/services/weeklyAchievementsService.js) grava as linhas de
+`tgg_coins_achievements` na quinta 06:00, no mesmo cron das missões e logo depois delas, e avisa a
+staff em log-guilda com o link de correção. Substitui o preenchimento à mão em
+`cadastro_conquistas.php`, que continua valendo para ajuste e para `WINS`.
+
+**A conquista é a tradução da missão em recompensa individual**: a guilda pontua pela missão, o
+membro ganha TGG Coins por chegar nos tiers. Por isso o que a semana pede sai das **missões dela**,
+não de um ciclo próprio — dois calendários paralelos divergiriam na primeira semana de correção, e
+o membro veria conquista de 3v3 numa semana de 2v2.
+
+O que cada semana gera (decisão do usuário, 31/08/2026):
+
+| Tipo | Quando | Tiers (alvo → recompensa) |
+| :-- | :-- | :-- |
+| `CONTRIBUICAO` (`Guilda`) | toda semana | 1.000 → 10, 5.000 → 40, 10.000 → 50 |
+| `GAMES` (ranked da semana) | toda semana | 10 → 10, 25 → 15, 50 → 25, 100 → 50 |
+| `ELO` (modo da missão) | só quando a semana tem missão de patamar | o elo do patamar → 100 |
+
+O modo do `GAMES` acompanha a missão `ranked-2v2`/`ranked-3v3` (`Ranked NvN com membro da guilda`),
+que alterna toda semana. O `ELO` sai da missão de patamar da posição 1, que existe em 9 das 12
+semanas do ciclo — nas outras três (horda-pesadelo, horda, walker-attack) não há elo a perseguir e
+nenhuma linha é criada. **O alvo do `ELO` não é o alvo da missão**: a missão fala em guild points
+(125, 100) e a conquista, em elo — os números saem de `ELO_POR_PATAMAR` (ouro 1390, platina 1680,
+diamante 2000), os mesmos cortes de `ELO_ROLES` em [src/discord.js](src/discord.js).
+
+Os modos saem do **texto** da missão por regex, como no aviso de modo do procurando-jogo, e a fonte
+é o cadastro (`weekly_missions`) com a previsão do ciclo como plano B: correção da staff pelo site
+tem que valer aqui, e se o cadastro das missões falhar as conquistas ainda saem certas. Missão que
+não casa com padrão nenhum não vira conquista — inventar uma a partir do ciclo faria o membro
+perseguir um alvo que a semana não pede. Semana sem `GAMES` é anomalia e sai **dita no embed**, não
+no log: sem isso ninguém descobre até alguém reclamar.
+
+**Não sobrescreve semana que já tem conquista.** Ao contrário do cargo de MVP, que pode ser
+reaplicado à vontade, conquista duplicada vira pagamento duplicado — e é o que torna a rotina
+repetível depois de um restart.
+
 ### API do Brawlhalla
 
 Referência completa em [docs/brawlhalla-api.md](docs/brawlhalla-api.md): endpoints, schemas, o que ainda
@@ -614,7 +652,9 @@ Todos registrados no `ClientReady`:
 - Cron `0 * * * *` — refresh do clã + `runSync` + `runEloSync` + `syncNicknames` (só `need_update`).
 - Cron `0 3 * * *` — full sync (todos os ativos).
 - Cron `0 0 * * *` — cargos de aniversário; `0 6 * * *` — publica MOTD (buscado de `teamtgg.com.br/api/motd.php`).
-- Cron `0 6 * * 4` — cadastra as 4 missões da semana e faz **duas** saídas independentes
+- Cron `0 6 * * 4` — cadastra as 4 missões da semana e, em seguida, as conquistas que saem delas
+  ([src/services/weeklyAchievementsService.js](src/services/weeklyAchievementsService.js), ver acima);
+  try/catch separados, porque a segunda cai na previsão do ciclo se a primeira falhar. As missões fazem **duas** saídas independentes
   ([src/services/weeklyMissionsService.js](src/services/weeklyMissionsService.js)): o aviso da staff em
   log-guilda (embed, com o link de correção) e o post da guilda em guild-updates (markdown, arte e ping
   do `@TGG`). Uma falhar não cancela a outra — é o aviso que permite corrigir cadastro divergente antes
