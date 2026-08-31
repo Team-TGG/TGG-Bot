@@ -1269,6 +1269,13 @@ export async function handleConquistas(message) {
     // Garante que os aliases estão carregados
     await loadAliases();
 
+    // Guild point só existe na conta que está na guilda, e ela não é a que as stats usam: o
+    // `.corrigir-id` grava em `alt_ids` a conta da guilda como alt de uma principal que, por
+    // definição, está fora dela (os 12 casos ativos, medido em 31/08/2026). Resolver o id antes de
+    // medir contribuição levava a consulta para uma conta sem guilda, e as missões de CONTRIBUICAO
+    // saíam como "indisponível" para todo mundo que passou pelo `.corrigir-id`.
+    const contaDaGuildaId = user.brawlhalla_id ? String(user.brawlhalla_id) : null;
+
     // Resolve o brawlhalla_id para pegar as quests da conta correta
     if (user.brawlhalla_id) {
       user.brawlhalla_id = resolveBrawlhallaId(String(user.brawlhalla_id));
@@ -1276,6 +1283,11 @@ export async function handleConquistas(message) {
 
     // Pega todas as contas do usuário (caso ele tenha mais de uma conta vinculada) para mostrar as missões de todas as contas
     const accountIds = await tggCoins.getAllAccounts(user.brawlhalla_id);
+
+    // Contas que valem para contribuição: as de stats mais a conta da guilda, que pode não estar
+    // entre elas. Lista à parte de propósito — a base de elo/vitórias/partidas dessas contas não
+    // pode entrar na soma das outras, são jogadores diferentes.
+    const contribuicaoIds = [...new Set([...(contaDaGuildaId ? [contaDaGuildaId] : []), ...accountIds])];
 
     const weekStart = getMissionWeekStart();
     const weekEnd = getMissionWeekEnd();
@@ -1330,7 +1342,7 @@ export async function handleConquistas(message) {
         (guildMembers.guild_members ?? []).map(m => [String(m.brawlhalla_id), m])
       );
 
-      for (const id of accountIds) {
+      for (const id of contribuicaoIds) {
         const membro = membroPorId.get(String(id));
 
         if (membro) {
@@ -1343,6 +1355,18 @@ export async function handleConquistas(message) {
       }
     } catch (err) {
       console.warn(`[Conquistas] Não foi possível buscar os membros da guilda: ${err.message}`);
+    }
+
+    // Base da semana das contas que contam contribuição. Separada de `weeklyInfo`, que é das contas
+    // de stats: as duas listas podem não se cruzar.
+    const contribuicaoBaseByAccount = new Map();
+
+    if (guildPointsByAccount.size > 0) {
+      const baseRows = await tggCoins.getPlayerMissionProgress([...guildPointsByAccount.keys()], weekStart);
+
+      for (const row of baseRows ?? []) {
+        contribuicaoBaseByAccount.set(String(row.brawlhalla_id), row.guild_points);
+      }
     }
 
     for (const id of accountIds) {
@@ -1373,7 +1397,7 @@ export async function handleConquistas(message) {
       const tierMissions = grouped[key].sort((a, b) => a.target - b.target);
       const { mode, type } = tierMissions[0];
 
-      activeText += await buildMissionText({tierMissions, mode, type, allStats, user, discordId, guildPointsByAccount, groupIndex: index++ });
+      activeText += await buildMissionText({tierMissions, mode, type, allStats, user, discordId, guildPointsByAccount, contribuicaoBaseByAccount, groupIndex: index++ });
     }
 
     // Mostrar as conquistas concluídas do usuário (histórico)

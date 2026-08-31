@@ -103,6 +103,7 @@ export const COMMAND_ALIASES = {
   'mirror': 'daily', // Vitor
   'vai-com-deus': 'daily', // Lucas
   'panela': 'daily', // Korch
+  'bill': 'daily', // Wamaala
   'balance': 'balance',
   'bal': 'balance',
   'baal': 'balance',

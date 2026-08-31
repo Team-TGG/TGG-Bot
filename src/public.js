@@ -9,7 +9,7 @@ import { criarPedidoDeBlindagem, decidirBlindagem, getBlindagem, getPedidoPenden
 import { calculateGames, calculateGamesFromClosedWeek, ORDENS_LB_GUILDA, POR_PAGINA_LB_GUILDA, ordenarLbGuilda, embedLbGuilda } from './handlers/publicHandlers.js';
 import { calcularContribuicaoSemanal, MOTIVOS } from './services/contribuicaoSemanal.js';
 import { CONTRIBUICAO_MINIMA } from './services/weeklyInactiveService.js';
-import { selecionarMvpsDasLinhas } from './services/weeklyMvpService.js';
+import { selecionarMvpsDasLinhas, faltaParaMvp } from './services/weeklyMvpService.js';
 import { QUIZ_REWARD } from './handlers/tggCoinsHandlers.js';
 import { addTransaction, updateBalance } from './tggCoins.js';
 
@@ -728,14 +728,16 @@ export async function handleGuild(message, args, client) {
 
 // .lb-guilda [total|semanal]
 export async function handleLbGuilda(message, args) {
-  let ordem = ORDENS_LB_GUILDA.TOTAL;
+  // Abre na semana: é o número que decide MVP e inativação, e o que o membro vem conferir. O total
+  // é acumulado de meses e quase não muda de um dia para o outro.
+  let ordem = ORDENS_LB_GUILDA.SEMANAL;
 
   const pedida = message.interaction
     ? message.interaction.options.getString('ordem')
     : String(args?.[0] || '').toLowerCase();
 
-  if (['semanal', 'semana', 'week'].includes(String(pedida || '').toLowerCase())) {
-    ordem = ORDENS_LB_GUILDA.SEMANAL;
+  if (['total', 'totais', 'geral', 'tudo'].includes(String(pedida || '').toLowerCase())) {
+    ordem = ORDENS_LB_GUILDA.TOTAL;
   }
 
   
@@ -754,8 +756,18 @@ export async function handleLbGuilda(message, args) {
   // Mesma regra do cron de quarta 06:00, aplicada às linhas que já estão na mão: staff entra sem
   // ocupar vaga e a lista fecha na 14ª vaga preenchida. É prévia — quem está marcado leva o cargo
   // se a semana fechar agora.
-  const { mvps } = selecionarMvpsDasLinhas(linhas);
+  const { ranking, mvps } = selecionarMvpsDasLinhas(linhas);
   const mvpPorId = new Map(mvps.map(m => [m.discordId, { posicao: m.posicao }]));
+
+  // Quem chamou o comando, para o bloco do topo. A distância até o corte sai da mesma regra que
+  // seleciona os MVPs — calcular aqui faria o "faltam X" discordar do 🏅 logo abaixo.
+  const eu = linhas.find(l => l.discordId === String(message.author.id)) || null;
+  const falta = eu ? faltaParaMvp(ranking, mvps, message.author.id) : null;
+
+  const posicaoNaLista = (lista) => {
+    const i = eu ? lista.findIndex(l => l.discordId === eu.discordId) : -1;
+    return i >= 0 ? i + 1 : null;
+  };
 
   const totalPaginas = () => Math.ceil(linhas.length / POR_PAGINA_LB_GUILDA) || 1;
 
@@ -774,6 +786,12 @@ export async function handleLbGuilda(message, args) {
       weekStart,
       totalPaginas: totalPaginas(),
       mvpPorId,
+      destaque: {
+        linha: eu,
+        posicao: posicaoNaLista(ordenadas()),
+        mvp: eu ? mvpPorId.get(eu.discordId) : null,
+        falta,
+      },
     }),
     getTotalPages: totalPaginas,
     // 14 páginas não se percorrem nos 60s do padrão; `idle` reinicia a cada clique

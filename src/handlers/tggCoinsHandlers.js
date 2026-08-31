@@ -896,7 +896,7 @@ export function buildHeader(index, mode, reward, hasEvent = false) {
 }
 
 // Gera o texto completo da missão, verificando progresso e conclusão
-export async function buildMissionText({tierMissions, mode, type, allStats, user, discordId, groupIndex, guildPointsByAccount = new Map() }) {
+export async function buildMissionText({tierMissions, mode, type, allStats, user, discordId, groupIndex, guildPointsByAccount = new Map(), contribuicaoBaseByAccount = new Map() }) {
   const config = getTypeConfig(type);
 
   if (!config) {
@@ -943,22 +943,23 @@ export async function buildMissionText({tierMissions, mode, type, allStats, user
 
     initial_games += games;
     initial_wins += wins;
+  }
 
-    // Só entra na base a conta cujo valor atual foi confirmado na guilda da TGG. Somar a base de uma conta que não está aqui (ou cuja consulta falhou) deixaria o progresso negativo.
-    const conta = guildPointsByAccount.get(String(row?.brawlhalla_id));
+  // A base de contribuição vem em mapa próprio, e não de `progressRows`: quem passou pelo
+  // `.corrigir-id` tem a conta da guilda fora da lista de contas de stats, e ler a base daqui
+  // deixava a conta que realmente pontua sem base nenhuma.
+  // Só entra a conta cujo valor atual foi confirmado na guilda da TGG. Somar a base de uma conta que não está aqui (ou cuja consulta falhou) deixaria o progresso negativo.
+  for (const [id, conta] of guildPointsByAccount) {
+    const base = contribuicaoBaseByAccount.get(String(id));
+    // Base 0 é legítima para quem entrou na guilda durante a semana — começou do zero mesmo.
+    // Para quem já estava aqui, 0 significa base não registrada: usar esse 0 faria o acumulado inteiro virar "progresso da semana" e pagar a conquista na hora.
+    const entrouNestaSemana = conta.joinDate > 0 && conta.joinDate >= inicioSemanaEmSegundos;
+    const baseZeradaIndevida = Number(base) === 0 && conta.points > 0 && !entrouNestaSemana;
 
-    if (conta) {
-      const base = row?.guild_points;
-      // Base 0 é legítima para quem entrou na guilda durante a semana — começou do zero mesmo.
-      // Para quem já estava aqui, 0 significa base não registrada: usar esse 0 faria o acumulado inteiro virar "progresso da semana" e pagar a conquista na hora.
-      const entrouNestaSemana = conta.joinDate > 0 && conta.joinDate >= inicioSemanaEmSegundos;
-      const baseZeradaIndevida = Number(base) === 0 && conta.points > 0 && !entrouNestaSemana;
-
-      if (base === null || base === undefined || baseZeradaIndevida) {
-        baseContribuicaoAusente = true;
-      } else {
-        initial_guild_points += Number(base);
-      }
+    if (base === null || base === undefined || baseZeradaIndevida) {
+      baseContribuicaoAusente = true;
+    } else {
+      initial_guild_points += Number(base);
     }
   }
 

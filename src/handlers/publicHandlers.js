@@ -138,13 +138,54 @@ function campoDoMembroLbGuilda(linha, posicao, ordem, mvp) {
 }
 
 /**
+ * Bloco do próprio usuário, no topo de toda página.
+ *
+ * Sem ele, responder "estou dentro do MVP?" é caçar o próprio nome em 15 páginas. A posição
+ * acompanha a ordenação em uso, mas a elegibilidade é sempre da semana: quem decide é a regra da
+ * quarta 06:00, não a coluna que está sendo olhada.
+ */
+function destaqueLbGuilda({ linha, posicao, totalLinhas, ordem, mvp, falta }) {
+  if (!linha) {
+    return '📍 Você não aparece neste ranking — é preciso ter cadastro no bot **e** estar na guilda do jogo.';
+  }
+
+  const semana = linha.motivo ? '—' : numeroBR(linha.contribuicao);
+  const total = linha.pontosTotais == null ? '—' : numeroBR(linha.pontosTotais);
+
+  // A coluna da ordenação em uso vem em negrito, para bater com o que a lista abaixo está mostrando
+  const valores = ordem === ORDENS_LB_GUILDA.SEMANAL
+    ? `📈 **${semana}** na semana • 🏛️ ${total} no total`
+    : `🏛️ **${total}** no total • 📈 ${semana} na semana`;
+
+  const texto = [`📍 **Você** — ${posicao}º de ${totalLinhas} • ${valores}`];
+
+  if (mvp) {
+    texto.push(mvp.posicao
+      ? `🏅 Elegível ao MVP da semana, na **${mvp.posicao}ª vaga**.`
+      : '🏅 Elegível ao MVP da semana — staff, leva o cargo sem ocupar vaga.');
+
+  } else if (linha.motivo) {
+    // Sem contribuição medida não existe distância até o corte, e um número aqui viraria promessa
+    texto.push('⚠️ Fora do MVP: sua contribuição da semana não pôde ser medida.');
+
+  } else if (falta?.alvo === 'VAGA') {
+    texto.push(`⬆️ Fora do MVP: faltam **${numeroBR(falta.faltam)}** de contribuição para passar a última vaga.`);
+
+  } else if (falta) {
+    texto.push(`⬆️ Fora do MVP: faltam **${numeroBR(falta.faltam)}** de contribuição para entrar na contagem.`);
+  }
+
+  return texto.join('\n');
+}
+
+/**
  * Uma página do leaderboard da guilda, em duas colunas de sete.
  *
  * `mvpPorId` é o mapa discordId → `{ posicao }` de quem está elegível ao MVP da semana, montado com
  * a regra do cron (`selecionarMvpsDasLinhas`). A marca aparece nas duas ordenações: elegibilidade é
  * da semana, não da coluna que está sendo olhada.
  */
-export function embedLbGuilda({ linhas, pagina, ordem, weekStart, totalPaginas, mvpPorId }) {
+export function embedLbGuilda({ linhas, pagina, ordem, weekStart, totalPaginas, mvpPorId, destaque }) {
   const inicio = (pagina - 1) * POR_PAGINA_LB_GUILDA;
   const daPagina = linhas.slice(inicio, inicio + POR_PAGINA_LB_GUILDA);
 
@@ -173,7 +214,10 @@ export function embedLbGuilda({ linhas, pagina, ordem, weekStart, totalPaginas, 
       '⭐ = staff, leva o cargo sem ocupar vaga.'
     : null;
 
+  const bloco = destaque ? destaqueLbGuilda({ ...destaque, ordem, totalLinhas: linhas.length }) : null;
+
   const descricao = [
+    bloco ? `${bloco}\n` : null,
     ordem === ORDENS_LB_GUILDA.SEMANAL
       ? '📈 Ordenado pelos **guild points desta semana**.'
       : '🏛️ Ordenado pelos **guild points totais**.',

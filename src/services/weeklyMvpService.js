@@ -75,6 +75,44 @@ export function selecionarMvpsDasLinhas(linhas, limite = config.limite) {
   return { ranking, mvps: selecionarMvps(ranking, limite) };
 }
 
+/**
+ * O que separa alguém da vaga de MVP, pela mesma regra de `selecionarMvps`.
+ *
+ * São dois portões: pontuar na semana e passar a última vaga. Enquanto sobra vaga, o único corte é
+ * o mínimo; com a lista fechada, o alvo é a contribuição de **quem ocupa a última vaga**, e não a
+ * última posição da lista — staff aparece nela sem ocupar lugar, e mirar nela daria um número que
+ * não abre vaga nenhuma. Empate também não entra: a ordenação desempata por nome.
+ *
+ * Devolve `null` para quem está fora do ranking (contribuição não medida) — ali não há corte que
+ * valha, e um número inventado viraria promessa falsa.
+ */
+export function faltaParaMvp(ranking, mvps, discordId, limite = config.limite) {
+  const id = String(discordId);
+
+  if (!ranking.some(l => String(l.discordId) === id)) return null;
+
+  const escolhido = mvps.find(m => String(m.discordId) === id);
+
+  if (escolhido) {
+    return { elegivel: true, posicao: escolhido.posicao, faltam: 0, alvo: null };
+  }
+
+  const eu = ranking.find(l => String(l.discordId) === id);
+  const ocupantes = mvps.filter(m => m.posicao != null);
+  const fechada = ocupantes.length >= limite;
+
+  const corte = fechada
+    ? Number(ocupantes[ocupantes.length - 1].contribuicao || 0) + 1
+    : CONTRIBUICAO_MINIMA;
+
+  return {
+    elegivel: false,
+    posicao: null,
+    faltam: Math.max(0, corte - Number(eu.contribuicao || 0)),
+    alvo: fechada ? 'VAGA' : 'MINIMO',
+  };
+}
+
 /** Lê banco + API e monta o ranking da semana corrente. Não mexe em cargo nenhum. */
 export async function calcularMvpsDaSemana() {
   const { weekStart, linhas } = await calcularContribuicaoSemanal();

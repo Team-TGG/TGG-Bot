@@ -28,10 +28,10 @@ export const publicCommands = [
   new SlashCommandBuilder()
     .setName('lb-guilda')
     .setDescription('Leaderboard da guilda por guild points, 14 por página')
-    .addStringOption(o => o.setName('ordem').setDescription('Ordenar por total ou pela semana (padrão: total)')
+    .addStringOption(o => o.setName('ordem').setDescription('Ordenar pela semana ou pelo total (padrão: semanal)')
       .addChoices(
-        { name: 'Total', value: 'total' },
         { name: 'Semanal', value: 'semanal' },
+        { name: 'Total', value: 'total' },
       )),
 
   new SlashCommandBuilder()
