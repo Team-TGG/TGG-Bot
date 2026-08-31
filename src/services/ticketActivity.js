@@ -10,7 +10,8 @@
 import { getTicketsAbertosBasico, incrementarAtividade } from '../tickets.js';
 import { reconciliarTickets } from './ticketQueue.js';
 import { registrarMensagemDeTicket, gravarConversas, avisarPendentes, avisarPingDoAutor } from './ticketNudge.js';
-import { discord as discordConfig, STAFF_ROLE_IDS } from '../../config/index.js';
+import { recalcularOrdemDaFila } from './ticketReorder.js';
+import { discord as discordConfig, runtime, STAFF_ROLE_IDS } from '../../config/index.js';
 
 // 1 min: o ciclo em regime é uma consulta só ao Supabase (a reconciliação calcula o diff contra
 // a memória e só escreve quando algo mudou), então a frequência custa pouco e ticket novo aparece
@@ -24,6 +25,18 @@ const emCall = new Map();              // discordId -> instante da última ânco
 let autoresComTicket = new Set();
 let ticketsPorCanal = new Map();       // channelId -> { opener_discord_id, responsavel_discord_id }
 let timer = null;
+
+// Recálculo da ordem disparado por fechamento, além do cron diário. Quando alguém entra na guilda
+// e o ticket é encerrado, todo mundo abaixo dele sobe uma posição — esperar as 01:00 deixa a fila
+// mostrando um número errado pelo resto do dia.
+//
+// O intervalo mínimo existe por causa do teto do Discord de **2 renomeações por 10 min por canal**:
+// a staff processando a fila fecha vários tickets seguidos, e um recálculo por ciclo de 1 min
+// trancaria os nomes já na terceira passada. Uma sequência de fechamentos vira um recálculo só.
+const INTERVALO_MIN_REORDENACAO_MS = 11 * 60 * 1000;
+
+let reordenacaoPendente = false;
+let ultimaReordenacao = 0;
 
 const IDS_DE_STAFF = new Set(Object.values(STAFF_ROLE_IDS));
 
@@ -147,6 +160,10 @@ async function sincronizarFila(client) {
       console.log(`[TICKET ATIVIDADE] reconciliação: ${r.novos} novo(s), ${r.reabertos} reaberto(s), ${r.fechados} fechado(s), ${r.semAutor.length} sem autor`);
     }
 
+    // Só fechamento marca: ticket novo entra no fim da fila e não mexe na posição de ninguém,
+    // e reaberto volta com a pontuação que já tinha — o cron diário dá conta dos dois.
+    if (r.fechados > 0) reordenacaoPendente = true;
+
     // A reconciliação já devolve o estado final — reconsultar aqui seria a segunda leitura
     // idêntica do mesmo ciclo, e é justamente o que precisa sumir para rodar de 1 em 1 min.
     await recarregarAutores(r.abertos);
@@ -209,6 +226,36 @@ async function flush(client) {
   // pendentes antes de ela ser consultada, senão leva DM por uma resposta que já deu.
   await gravarConversas();
   await avisarPendentes(client);
+
+  // Por último: renomear e reordenar canal é a parte lenta do ciclo, e nada acima depende dela.
+  await reordenarSeAlguemSaiu(client);
+}
+
+/** Recalcula a fila quando algum ticket foi encerrado, respeitando o intervalo mínimo. */
+async function reordenarSeAlguemSaiu(client) {
+  if (!reordenacaoPendente) return;
+  if (Date.now() - ultimaReordenacao < INTERVALO_MIN_REORDENACAO_MS) return;
+
+  // O ciclo roda em dev (contar mensagem é barato e some no ruído), mas renomear e reordenar
+  // canal não: o cron diário já é pulado em dev, e disparar por fechamento faria o processo local
+  // mexer em ~60 canais de verdade.
+  if (runtime.isDev) {
+    reordenacaoPendente = false;
+    console.log('[TICKET ATIVIDADE] dev: reordenaria a fila por fechamento de ticket');
+    return;
+  }
+
+  // Baixa a bandeira antes de rodar: se o recálculo falhar no meio, o cron diário conserta, e
+  // deixá-la de pé faria a mesma tentativa se repetir a cada ciclo.
+  reordenacaoPendente = false;
+  ultimaReordenacao = Date.now();
+
+  try {
+    const r = await recalcularOrdemDaFila(client);
+    console.log(`[TICKET ATIVIDADE] fila reordenada por fechamento: ${r.mudaram} mudaram de posição`);
+  } catch (err) {
+    console.error(`[TICKET ATIVIDADE] reordenação por fechamento falhou: ${err.message}`);
+  }
 }
 
 export async function iniciarContadores(client) {

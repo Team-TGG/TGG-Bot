@@ -321,7 +321,8 @@ recuperado do passado** — só existe do dia em que ligou.
 
 **O ciclo de 1 min** ([ticketActivity.js](src/services/ticketActivity.js)) faz, nessa ordem:
 reconcilia a tabela com a categoria, credita quem está em call agora, grava os contadores, grava o
-estado das conversas e cobra os pendentes. Nada vai ao banco no momento do evento; tudo acumula em
+estado das conversas, cobra os pendentes e, por último, recalcula a ordem se algum ticket foi
+encerrado. Nada vai ao banco no momento do evento; tudo acumula em
 memória. O preço é perder até um ciclo se o processo cair, e é aceito porque a pontuação é
 comparativa. `TICKET_CYCLE_SECONDS` calibra sem editar código.
 
@@ -348,7 +349,11 @@ cliques não se atropelam. Trocar depois é edição manual no Supabase; não ex
   `ultima_msg_lado = 'responsavel'` em vez de coluna nova — o campo já significa "quem deu o
   último passo", e ler é um passo. O id da mensagem vai no `customId` para o botão valer só para
   aquela mensagem: clique atrasado não pode silenciar uma que chegou depois.
-- **autor** — só quando é mencionado no próprio ticket, um ping = uma DM, na hora.
+- **autor** — só quando é mencionado no próprio ticket, um ping = uma DM, na hora. Se a DM não
+  entrar, o bot **responde no ticket** dizendo que o autor não foi avisado. Sem isso a menção
+  falha em silêncio: quem chamou acha que avisou, o autor nunca soube, e o ticket fica parado
+  esperando um lado que não foi cutucado. O retorno vai no canal, e não na DM de quem pingou,
+  porque assim serve para a staff toda — e porque essa DM pode estar fechada do mesmo jeito.
 
 A primeira versão cobrava os dois lados por tempo e nunca silenciava: como sempre existe um
 "último lado", todo ticket parado gerava DM para alguém, para sempre. O filtro
@@ -365,6 +370,16 @@ a inativação da quarta, que manda DM às 06:10.
 `guild-<nick>-<posição>` e reordena os canais; `.organize-tickets` força o mesmo agora. Uma vez por
 dia porque **renomear canal é limitado a 2×/10min por canal** — o nome é foto do último recálculo,
 e isso é decisão do usuário (14/08/2026), não limitação escondida.
+
+**Ticket encerrado também dispara o recálculo**, no ciclo que a reconciliação percebe o
+fechamento: quem entra na guilda sai da fila e todo mundo abaixo sobe uma posição, e esperar
+as 01:00 deixaria a fila mostrando um número errado pelo resto do dia. Fechamentos em sequência
+viram **um** recálculo, com um intervalo mínimo de 11 min entre dois: é o mesmo teto de
+2×/10min por canal que faz o cron ser diário, e a staff processando a fila fecha vários tickets
+seguidos — um recálculo por ciclo de 1 min trancaria os nomes na terceira passada. Ticket novo
+não dispara nada: ele entra no fim da fila e não mexe na posição de ninguém. Em modo dev o recálculo por
+fechamento só é logado — o ciclo roda em dev, mas o cron diário não, e renomear ~60 canais reais a
+partir do processo local seria efeito novo.
 
 O rename **troca só o número do fim e preserva o resto do nome**, sem assumir prefixo — mesma regra
 do `.organize-tickets` de antes. A primeira versão exigia `guild-` literal e por isso não
@@ -583,7 +598,8 @@ Todos registrados no `ClientReady`:
   ([src/services/guildHistoryService.js](src/services/guildHistoryService.js)). Ver abaixo.
 - Cron `0 1 * * *` — recalcula a ordem da fila por tickets ([src/services/ticketReorder.js](src/services/ticketReorder.js)). Ver acima.
 - `setInterval` — ciclo da fila por tickets (1 min, `TICKET_CYCLE_SECONDS`): reconciliação,
-  contadores de mensagem e call, cobrança de resposta pendente. Roda **também em modo dev**
+  contadores de mensagem e call, cobrança de resposta pendente e recálculo da ordem quando algum
+  ticket foi encerrado. Roda **também em modo dev**
   (decisão do usuário, 14/08/2026) — dois processos com o mesmo token contam cada mensagem duas
   vezes, então pare a VM antes de subir local.
 - `setInterval` — lembrete de inativos (3h por padrão, `INACTIVE_MESSAGE_INTERVAL`).

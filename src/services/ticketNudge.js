@@ -164,9 +164,6 @@ export async function avisarPingDoAutor(message, ticket) {
   if (!message.mentions.users.has(ticket.opener_discord_id)) return;
   if (emHorarioDeSilencio()) return;
 
-  const user = await message.client.users.fetch(ticket.opener_discord_id).catch(() => null);
-  if (!user) return;
-
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle('🔔 Te chamaram no seu ticket')
@@ -176,8 +173,38 @@ export async function avisarPingDoAutor(message, ticket) {
     )
     .setTimestamp();
 
-  await user.send({ embeds: [embed] })
-    .catch(() => console.log(`[TICKET AVISO] DM de ping bloqueada: ${ticket.opener_discord_id}`));
+  const user = await message.client.users.fetch(ticket.opener_discord_id).catch(() => null);
+
+  const entregue = user
+    ? await user.send({ embeds: [embed] }).then(() => true).catch(() => false)
+    : false;
+
+  if (entregue) return;
+
+  console.log(`[TICKET AVISO] DM de ping bloqueada: ${ticket.opener_discord_id}`);
+  await avisarDmFechada(message, ticket);
+}
+
+/**
+ * Responde no próprio ticket quando o ping não virou DM.
+ *
+ * Sem isso a menção falha em silêncio: quem chamou acha que avisou, o autor nunca soube, e o
+ * ticket fica parado esperando um lado que não foi cutucado. O retorno vai no canal, e não na
+ * DM de quem pingou, porque aí serve para a staff toda — e porque a DM de quem pingou pode
+ * estar fechada do mesmo jeito.
+ *
+ * Um ping falho, um retorno: é o espelho da regra de "um ping, uma DM". A mensagem só aparece
+ * quando a DM realmente não entrou, então repetir é sinal de que ninguém leu o primeiro.
+ */
+async function avisarDmFechada(message, ticket) {
+  const embed = createWarningEmbed(
+    'Não consegui avisar por DM',
+    `<@${ticket.opener_discord_id}> está com a DM fechada para o bot, então **não foi avisado** ` +
+    'da menção. Se precisar dele aqui, vale chamar por outro caminho.'
+  );
+
+  await message.reply({ embeds: [embed], allowedMentions: { parse: [] } })
+    .catch(err => console.warn(`[TICKET AVISO] falha ao avisar DM fechada em ${message.channelId}: ${err.message}`));
 }
 
 /**
