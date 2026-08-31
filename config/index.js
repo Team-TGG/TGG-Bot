@@ -111,6 +111,19 @@ export const tickets = {
   filaGuildaChannelId: '1473760891676786801',
 };
 
+// Filtro de inatividade dentro da fila, todo dia 07:00
+// (ver src/services/ticketInatividade.js). Só vale do `posicaoMinima` para trás: quem está perto
+// de entrar já está sendo conversado pela staff, e cobrar interação de quem é o próximo da fila
+// não faz sentido.
+export const ticketInatividade = {
+  posicaoMinima: 10,
+  diasParado: 4,
+  // Prazo do membro para dar sinal antes de o responsável ser chamado. A verificação é diária,
+  // então na prática a escalada cai na rodada do dia seguinte.
+  horasParaEscalar: 24,
+  channelId: '1536704688689516624', // log-guilda - resumo para a staff
+};
+
 export const birthdays = {
   roleId: '1478478167961370845',
   channelId: '1437416350183325727',

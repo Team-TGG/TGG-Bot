@@ -8,6 +8,7 @@ import { trocarMvpsDaSemana } from '../services/weeklyMvpService.js';
 import { inativarSemana } from '../services/weeklyInactiveService.js';
 import { lembrarContribuicao } from '../services/contributionReminderService.js';
 import { avisarRemocaoDeInativos } from '../services/avisoRemocaoInativos.js';
+import { cobrarInativosDaFila } from '../services/ticketInatividade.js';
 import { avisarMovimentacao } from '../services/guildHistoryService.js';
 import { recalcularOrdemDaFila } from '../services/ticketReorder.js';
 
@@ -145,6 +146,18 @@ export function startCronJobs(client, services) {
       await avisarMovimentacao(client);
     } catch (err) {
       console.error('[CRON ERROR - Historico]', err);
+    }
+  }, {
+    timezone: 'America/Sao_Paulo'
+  });
+
+  // Inatividade na fila por tickets - 07:00. Horário escolhido pelo usuário: o aviso pede
+  // resposta, então cai de manhã e longe do recálculo da fila, que roda 01:00.
+  cron.schedule('0 7 * * *', async () => {
+    try {
+      await cobrarInativosDaFila(client);
+    } catch (err) {
+      console.error('[CRON ERROR - Inatividade na fila]', err);
     }
   }, {
     timezone: 'America/Sao_Paulo'

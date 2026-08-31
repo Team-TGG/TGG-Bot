@@ -134,12 +134,11 @@ export async function avisarMovimentacao(client) {
     pendentes = await getEventosNaoAvisados();
   } catch (err) {
     // 42703 = coluna inexistente. Sem ela a rotina não tem como saber o que já avisou, e insistir
-    // a cada 15 min só enche o log — o recado precisa dizer o que fazer.
+    // a cada 15 min só enche o log — o recado precisa dizer o que falta.
     if (err?.code === '42703') {
       console.error(
-        '[HISTORICO] a coluna `avisado` não existe em guild_membership_history. Rode:\n' +
-        '  alter table guild_membership_history add column avisado boolean not null default false;\n' +
-        '  update guild_membership_history set avisado = true;'
+        '[HISTORICO] guild_membership_history não tem a coluna `avisado` (boolean, default false, ' +
+        'com o histórico antigo já marcado como avisado) — passada cancelada.'
       );
       return { novos: 0, anunciado: false, motivo: 'SEM_COLUNA' };
     }

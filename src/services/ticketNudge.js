@@ -32,6 +32,12 @@ export function emHorarioDeSilencio(agora = new Date()) {
 // mensagem seria uma ida ao banco por linha digitada, para um campo lido de hora em hora.
 const ultimaMensagem = new Map(); // channelId -> { em, lado, id }
 
+// Canais em que o **autor** escreveu desde o último flush. Conjunto separado porque
+// `ultimaMensagem` guarda só a última mensagem do canal: se o autor responde e a staff responde
+// em seguida, o lado vira `responsavel` e a fala do autor sumiria — e é justamente ela que tira
+// a pessoa do filtro de inatividade (ver ticketInatividade.js).
+const autorFalou = new Set();
+
 /**
  * Registra de que lado veio a mensagem. `ehStaff` decide o lado, não o responsável cadastrado:
  * decisão do usuário (14/08/2026) — resposta de qualquer staff zera a pendência, porque o que
@@ -39,6 +45,8 @@ const ultimaMensagem = new Map(); // channelId -> { em, lado, id }
  */
 export function registrarMensagemDeTicket(message, { ehStaff, ehAutor }) {
   if (!ehStaff && !ehAutor) return;
+
+  if (ehAutor) autorFalou.add(message.channelId);
 
   ultimaMensagem.set(message.channelId, {
     em: new Date(message.createdTimestamp).toISOString(),
@@ -53,12 +61,16 @@ export function registrarMensagemDeTicket(message, { ehStaff, ehAutor }) {
  * `ultimo_aviso_em: null` é o que faz a cobrança recomeçar: sem isso, quem respondeu depois de já
  * ter sido cutucado continuaria dentro da janela de silêncio do próprio aviso, e o outro lado só
  * seria avisado uma hora depois do que devia.
+ *
+ * Devolve os canais em que o autor escreveu, que é o que o filtro de inatividade precisa saber.
  */
 export async function gravarConversas() {
-  if (ultimaMensagem.size === 0) return;
+  if (ultimaMensagem.size === 0) return [];
 
   const pendentes = new Map(ultimaMensagem);
+  const falaram = [...autorFalou];
   ultimaMensagem.clear();
+  autorFalou.clear();
 
   for (const [channelId, dados] of pendentes) {
     try {
@@ -72,6 +84,8 @@ export async function gravarConversas() {
       console.error(`[TICKET AVISO] falha ao gravar a conversa de ${channelId}: ${err.message}`);
     }
   }
+
+  return falaram;
 }
 
 function linkDaMensagem(channelId, messageId) {

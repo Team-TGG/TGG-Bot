@@ -11,6 +11,7 @@ import { getTicketsAbertosBasico, incrementarAtividade } from '../tickets.js';
 import { reconciliarTickets } from './ticketQueue.js';
 import { registrarMensagemDeTicket, gravarConversas, avisarPendentes, avisarPingDoAutor } from './ticketNudge.js';
 import { recalcularOrdemDaFila } from './ticketReorder.js';
+import { limparAvisoSeAutorFalou } from './ticketInatividade.js';
 import { discord as discordConfig, runtime, STAFF_ROLE_IDS } from '../../config/index.js';
 
 // 1 min: o ciclo em regime é uma consulta só ao Supabase (a reconciliação calcula o diff contra
@@ -224,8 +225,13 @@ async function flush(client) {
 
   // A conversa é gravada antes da cobrança: quem respondeu neste ciclo tem que sair da lista de
   // pendentes antes de ela ser consultada, senão leva DM por uma resposta que já deu.
-  await gravarConversas();
+  const autoresQueFalaram = await gravarConversas();
   await avisarPendentes(client);
+
+  // Escrever no próprio ticket é o que tira o autor do filtro de inatividade, e é aqui que isso
+  // se sabe: `ultima_msg_lado` guarda só o último lado, então a fala dele sumiria se a staff
+  // respondesse em seguida.
+  await limparAvisoSeAutorFalou(autoresQueFalaram);
 
   // Por último: renomear e reordenar canal é a parte lenta do ciclo, e nada acima depende dela.
   await reordenarSeAlguemSaiu(client);

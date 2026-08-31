@@ -263,14 +263,8 @@ cada 3h e a mensagem é sobre eles, não para eles. Domingo e não quarta porque
 fechou — três dias de conversa ainda salvam a vaga. E no canal dos inativos, não na log-guilda,
 porque é onde a conversa com essas pessoas acontece.
 
-A contagem sai de duas colunas de `weekly_inactive_players` que **o bot escreve**, incrementadas
-pelo lembrete a cada ciclo:
-
-```sql
-alter table weekly_inactive_players
-  add column avisos_enviados int not null default 0,
-  add column dms_falhadas int not null default 0;
-```
+A contagem sai de `avisos_enviados` e `dms_falhadas`, duas colunas de `weekly_inactive_players`
+que **o bot escreve**, incrementadas pelo lembrete a cada ciclo.
 
 São contadores de verdade, e não `(agora - created_at) / intervalo`, porque o número é a
 justificativa para tirar alguém da guilda: derivar do tempo contaria como tentativa todo ciclo em
@@ -321,8 +315,8 @@ recuperado do passado** — só existe do dia em que ligou.
 
 **O ciclo de 1 min** ([ticketActivity.js](src/services/ticketActivity.js)) faz, nessa ordem:
 reconcilia a tabela com a categoria, credita quem está em call agora, grava os contadores, grava o
-estado das conversas, cobra os pendentes e, por último, recalcula a ordem se algum ticket foi
-encerrado. Nada vai ao banco no momento do evento; tudo acumula em
+estado das conversas, cobra os pendentes, tira do filtro de inatividade quem respondeu no
+próprio ticket e, por último, recalcula a ordem se algum ticket foi encerrado. Nada vai ao banco no momento do evento; tudo acumula em
 memória. O preço é perder até um ciclo se o processo cair, e é aceito porque a pontuação é
 comparativa. `TICKET_CYCLE_SECONDS` calibra sem editar código.
 
@@ -365,6 +359,36 @@ zera `ultimo_aviso_em`, senão o outro lado herdaria a janela de silêncio do av
 Ping na janela é **descartado**, não guardado; a cobrança por tempo se resolve sozinha, porque é
 recalculada a cada ciclo e sai às 08h. Vale só para as DMs de ticket — aplicar global silenciaria
 a inativação da quarta, que manda DM às 06:10.
+
+**Filtro de inatividade (07:00 todo dia)** —
+[ticketInatividade.js](src/services/ticketInatividade.js). Quem está na posição
+**`ticketInatividade.posicaoMinima` ou pior** (hoje **10**) e
+passou **4 dias** sem mensagem nem call é chamado **no próprio ticket**, com ping, e tem um dia
+para dar sinal; se não der, a rodada seguinte chama o **responsável** no lugar dele. As duas
+etapas viram um resumo em log-guilda, sem ping. Corte, horário e prazo são decisão do usuário
+(31/08/2026).
+
+**Entrar e sair da régua medem coisas diferentes, de propósito.** Entra quem sumiu do servidor:
+`ticket_activity.atualizado_em`, a mesma leitura que alimenta a pontuação da fila (mensagem em
+qualquer canal mais tempo de call) — **a data da última interação já existia**, sem coluna nova
+para medir. Sai só quem **escreve dentro do próprio ticket**: o aviso faz uma pergunta ("ainda tem
+interesse?") e voltar a conversar em outro canal não a responde. A consequência é deliberada — quem
+volta a aparecer no servidor mas ignora o ticket **é escalado do mesmo jeito**, e a escalada nem
+reconfere a posição, porque a pergunta foi feita em público no ticket dele e continua sem resposta.
+
+Linha criada por `garantirAtividade` nasce com a data do cadastro, então quem nunca falou conta a
+partir de quando entrou na fila e não como se estivesse parado desde sempre. O corte de posição sai
+do cálculo vivo (`getTicketsAbertos`), não da coluna `posicao`, que é foto do último recálculo.
+
+A saída é gravada **no ciclo de 1 min**, não na rodada das 07:00: `gravarConversas` devolve os
+canais em que o autor falou e o ciclo chama `limparAvisoSeAutorFalou`. Tem que ser ali porque
+`ultima_msg_lado` guarda só o **último** lado — se o autor responde e a staff responde em seguida,
+a fala do autor sumiria do registro. Daí o `Set` separado em [ticketNudge.js](src/services/ticketNudge.js).
+
+O estado das duas etapas mora em `aviso_inatividade_em` e `aviso_inatividade_staff_em`, duas
+colunas de `ticket_queue`. Sem elas a rotina **não começa**: o aviso sairia, o carimbo falharia e
+a mesma pessoa levaria o mesmo ping todo dia às 07h. A checagem é feita na linha já lida, sem
+consulta extra.
 
 **Cron `0 1 * * *`** ([ticketReorder.js](src/services/ticketReorder.js)) recalcula posição, renomeia
 `guild-<nick>-<posição>` e reordena os canais; `.organize-tickets` força o mesmo agora. Uma vez por
@@ -596,10 +620,12 @@ Todos registrados no `ClientReady`:
   ([src/services/guildDuelService.js](src/services/guildDuelService.js)). Ver abaixo.
 - Cron `5,20,35,50 * * * *` — avisa entradas, saídas, promoções e rebaixamentos na guilda do jogo
   ([src/services/guildHistoryService.js](src/services/guildHistoryService.js)). Ver abaixo.
+- Cron `0 7 * * *` — cobra quem está parado na fila por tickets
+  ([src/services/ticketInatividade.js](src/services/ticketInatividade.js)). Ver acima.
 - Cron `0 1 * * *` — recalcula a ordem da fila por tickets ([src/services/ticketReorder.js](src/services/ticketReorder.js)). Ver acima.
 - `setInterval` — ciclo da fila por tickets (1 min, `TICKET_CYCLE_SECONDS`): reconciliação,
-  contadores de mensagem e call, cobrança de resposta pendente e recálculo da ordem quando algum
-  ticket foi encerrado. Roda **também em modo dev**
+  contadores de mensagem e call, cobrança de resposta pendente, saída do filtro de inatividade de
+  quem escreveu no próprio ticket, e recálculo da ordem quando algum ticket foi encerrado. Roda **também em modo dev**
   (decisão do usuário, 14/08/2026) — dois processos com o mesmo token contam cada mensagem duas
   vezes, então pare a VM antes de subir local.
 - `setInterval` — lembrete de inativos (3h por padrão, `INACTIVE_MESSAGE_INTERVAL`).

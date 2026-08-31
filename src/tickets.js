@@ -212,6 +212,55 @@ export async function fecharTickets(channelIds) {
  * sobrescreveria o valor que o usuário digitasse no Supabase entre a leitura e a gravação, que
  * é exatamente o que ele faz para preencher a base da planilha.
  */
+/**
+ * Tira do filtro de inatividade os tickets em que o autor voltou a escrever.
+ *
+ * Um update para o lote inteiro, filtrado por quem realmente tem aviso pendente: sem o
+ * `not is null` seria uma escrita por mensagem do autor, para zerar o que já está zerado.
+ */
+export async function limparAvisoDeInatividade(channelIds) {
+  if (channelIds.length === 0) return 0;
+
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('ticket_queue')
+    .update({
+      aviso_inatividade_em: null,
+      aviso_inatividade_staff_em: null,
+      atualizado_em: new Date().toISOString(),
+    })
+    .in('channel_id', [...new Set(channelIds)])
+    .not('aviso_inatividade_em', 'is', null)
+    .select('channel_id');
+
+  if (error) throw error;
+  return data?.length ?? 0;
+}
+
+/**
+ * Quando cada pessoa interagiu pela última vez → Map discord_id → `atualizado_em`.
+ *
+ * `ticket_activity.atualizado_em` é carimbado pela RPC `incrementar_atividade_ticket`, que só
+ * roda quando houve mensagem ou tempo de call no ciclo — ou seja, ele **já é** a data da última
+ * interação, sem precisar de coluna nova. Linha criada por `garantirAtividade` nasce com a data
+ * do cadastro do ticket, então quem nunca falou conta a partir de quando entrou na fila, e não
+ * como se estivesse parado desde sempre.
+ */
+export async function getUltimaAtividade(discordIds) {
+  if (discordIds.length === 0) return new Map();
+
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('ticket_activity')
+    .select('discord_id, atualizado_em')
+    .in('discord_id', [...new Set(discordIds)]);
+
+  if (error) throw error;
+  return new Map((data ?? []).map(a => [a.discord_id, a.atualizado_em]));
+}
+
 export async function incrementarAtividade(discordId, { mensagens = 0, segundos = 0 }) {
   if (mensagens === 0 && segundos === 0) return;
 

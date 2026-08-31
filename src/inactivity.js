@@ -246,10 +246,8 @@ export async function getTentativasDeAviso(weekReference) {
 
   if (error?.code === '42703') {
     console.error(
-      '[Inatividade] as colunas de tentativa não existem em weekly_inactive_players. Rode:\n' +
-      'alter table weekly_inactive_players\n' +
-      '  add column avisos_enviados int not null default 0,\n' +
-      '  add column dms_falhadas int not null default 0;'
+      '[Inatividade] weekly_inactive_players não tem as colunas avisos_enviados e dms_falhadas ' +
+      '(int, default 0) — seguindo sem contar as tentativas.'
     );
     return null;
   }
