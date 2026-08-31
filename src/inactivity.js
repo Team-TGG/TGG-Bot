@@ -220,3 +220,92 @@ export async function inserirInativos(brawlhallaIds, weekReference) {
   if (error) throw error;
   return data ?? [];
 }
+
+/**
+ * Tentativas de contato de quem está na lista da semana — colunas `avisos_enviados` e
+ * `dms_falhadas` de `weekly_inactive_players`.
+ *
+ * O lembrete de 3h ([services/inactivePlayers.js](./services/inactivePlayers.js)) escreve, o aviso
+ * de domingo ([services/avisoRemocaoInativos.js](./services/avisoRemocaoInativos.js)) lê. São
+ * contadores de verdade, e não um cálculo em cima de `created_at`, porque o número é a
+ * justificativa que a staff usa para tirar alguém da guilda: derivar do tempo contaria como
+ * "tentativa" todo ciclo em que o bot estava fora do ar, e mentiria a favor da remoção.
+ *
+ * Devolve `null`, e não um Map vazio, quando as colunas não existem (`42703`): "ninguém foi
+ * avisado" e "não dá para saber" levariam as duas rotinas a resultados diferentes, e nenhuma
+ * delas deve parar por causa de um contador. O tratamento mora aqui para o SQL ficar num lugar só.
+ */
+export async function getTentativasDeAviso(weekReference) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('weekly_inactive_players')
+    .select('id, brawlhalla_id, created_at, avisos_enviados, dms_falhadas')
+    .eq('week_reference', weekReference)
+    .is('note', null);
+
+  if (error?.code === '42703') {
+    console.error(
+      '[Inatividade] as colunas de tentativa não existem em weekly_inactive_players. Rode:\n' +
+      'alter table weekly_inactive_players\n' +
+      '  add column avisos_enviados int not null default 0,\n' +
+      '  add column dms_falhadas int not null default 0;'
+    );
+    return null;
+  }
+
+  if (error) throw error;
+
+  return new Map((data ?? []).map(linha => [String(linha.brawlhalla_id), {
+    ...linha,
+    avisos_enviados: linha.avisos_enviados ?? 0,
+    dms_falhadas: linha.dms_falhadas ?? 0,
+  }]));
+}
+
+/**
+ * Soma mais uma tentativa para cada um, e mais uma falha para quem não recebeu a DM.
+ *
+ * `resultados` é `[{ brawlhallaId, dmEntregue }]`, e `atuais` é o Map devolvido por
+ * `getTentativasDeAviso()` — pedir os valores de quem chama evita reler o que o lembrete acabou
+ * de ler.
+ *
+ * Ler-somar-gravar aqui é seguro, ao contrário da pontuação dos tickets: ninguém digita esses
+ * dois números no Supabase, só o lembrete escreve, e ele roda de 3 em 3h num processo só.
+ *
+ * O agrupamento pelo valor final é o que segura o custo: como a lista inteira é incrementada
+ * junta, quase todo mundo cai em uma de duas combinações (DM entregue / DM falhou), então ~50
+ * pessoas viram ~2 updates em vez de ~50.
+ */
+export async function registrarTentativasDeAviso(atuais, resultados) {
+  if (!resultados.length) return 0;
+
+  const supabase = getClient();
+  const grupos = new Map();
+
+  for (const { brawlhallaId, dmEntregue } of resultados) {
+    const atual = atuais.get(String(brawlhallaId));
+    if (!atual) continue;
+
+    const avisos = atual.avisos_enviados + 1;
+    const falhas = atual.dms_falhadas + (dmEntregue ? 0 : 1);
+    const chave = `${avisos}|${falhas}`;
+
+    if (!grupos.has(chave)) grupos.set(chave, { avisos, falhas, ids: [] });
+    grupos.get(chave).ids.push(atual.id);
+  }
+
+  let atualizados = 0;
+
+  for (const { avisos, falhas, ids } of grupos.values()) {
+    const { error } = await supabase
+      .from('weekly_inactive_players')
+      .update({ avisos_enviados: avisos, dms_falhadas: falhas })
+      .in('id', ids);
+
+    if (error) throw error;
+    atualizados += ids.length;
+  }
+
+  return atualizados;
+}

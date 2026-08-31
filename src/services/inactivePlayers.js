@@ -1,5 +1,6 @@
 import { EmbedBuilder } from 'discord.js';
-import { getInactivePlayers, removeInactivePlayer } from '../db.js';
+import { getInactivePlayers, removeInactivePlayer, getLastWednesdayReference } from '../db.js';
+import { getTentativasDeAviso, registrarTentativasDeAviso } from '../inactivity.js';
 import { calcularContribuicaoSemanal } from './contribuicaoSemanal.js';
 import { CONTRIBUICAO_MINIMA } from './weeklyInactiveService.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../../config/index.js';
@@ -106,6 +107,57 @@ async function anunciarLiberados(client, liberados) {
   });
 }
 
+/** A DM chegou? Conta apagada e DM fechada dão no mesmo: não falamos com a pessoa. */
+async function enviarDm(client, discordId, embed) {
+  const user = await client.users.fetch(discordId).catch(() => null);
+  if (!user) return false;
+
+  return user.send({ embeds: [embed] }).then(() => true).catch(() => false);
+}
+
+/**
+ * Diz, no próprio canal dos inativos, com quem o bot não conseguiu falar por DM.
+ *
+ * É o caso em que o lembrete automático não serve para nada: a pessoa é pingada num canal que
+ * talvez nem abra e o aviso de verdade nunca chega. Falar isso em voz alta passa o trabalho para
+ * a staff, que puxa conversa do jeito que um bot não consegue — e evita que alguém seja
+ * removido da guilda por um silêncio que nunca foi escolha dele.
+ *
+ * Sem ping: quem está aqui já foi mencionado na mensagem de cima, e a informação é para quem
+ * lê o canal, não para quem está listado.
+ */
+async function avisarDmsNaoEntregues(channel, semDm, tentativas) {
+  if (!semDm.length) return;
+
+  const linhas = semDm.slice(0, MAX_LINHAS_ANUNCIO).map(player => {
+    // +1 porque os contadores só são gravados depois do envio: a tentativa de agora ainda não
+    // entrou na conta.
+    const falhas = (tentativas.get(String(player.brawlhalla_id))?.dms_falhadas ?? 0) + 1;
+    const vezes = falhas === 1 ? 'tentativa' : 'tentativas';
+
+    return `<@${player.discord_id}> — **${falhas}** ${vezes} sem entrega`;
+  });
+
+  const sobraram = semDm.length - linhas.length;
+  if (sobraram > 0) linhas.push(`… e mais ${sobraram}`);
+
+  const embed = new EmbedBuilder()
+    .setColor(0xed4245)
+    .setTitle('📪 Não consegui mandar DM para estes membros')
+    .setDescription(
+      'A DM destas pessoas está fechada para o bot, então elas provavelmente não sabem que ' +
+      'estão na lista de inativos.\n\n' +
+      `${linhas.join('\n')}\n\n` +
+      'Se alguém da staff puder chamar no privado ou marcar em outro canal, o aviso chega onde ' +
+      'o bot não alcança.'
+    )
+    .setTimestamp();
+
+  await channel.send({ embeds: [embed], allowedMentions: { parse: [] } }).catch(err => {
+    console.warn(`[Inactive Reminder] Falha ao avisar DMs não entregues: ${err.message}`);
+  });
+}
+
 export async function sendInactivePlayersReminder(client) {
     try {
       // Antes de cobrar: quem já bateu o mínimo sai da lista. Falha aqui não cancela o lembrete -
@@ -167,21 +219,37 @@ export async function sendInactivePlayersReminder(client) {
         .setDescription(`Você fez menos de 1.000 de contribuição e ficou inativo. Por favor, vá para o canal <#1468600851290521692> e leia o lembrete do TGG-Bot para mais informações, evite ser removido da guilda.`)
         .setTimestamp();
 
+      // `null` = sem as colunas de contador. O lembrete sai do mesmo jeito: deixar de avisar
+      // a lista inteira por causa de um contador seria trocar o problema pelo pior.
+      const contadores = await getTentativasDeAviso(getLastWednesdayReference());
+      const tentativas = contadores ?? new Map();
+
+      const resultados = [];
+      const semDm = [];
+
       for (const player of inactivePlayers) {
         if (!player.discord_id) continue;
-        try {
-          const user = await client.users.fetch(player.discord_id).catch(() => null);
-          if (user) {
-            await user.send({ embeds: [dmEmbed] }).catch(() => {
-              console.log(`[Inactive Reminder] Could not send DM to ${player.discord_id}`);
-            });
-          }
-        } catch (err) {
-          console.log(`[Inactive Reminder] Failed to DM ${player.discord_id}: ${err.message}`);
-        }
+
+        const entregue = await enviarDm(client, player.discord_id, dmEmbed);
+
+        resultados.push({ brawlhallaId: player.brawlhalla_id, dmEntregue: entregue });
+        if (!entregue) semDm.push(player);
       }
 
-      console.log(`[Inactive Reminder] Sent message and DMs with ${inactivePlayers.length} inactive players`);
+      await avisarDmsNaoEntregues(channel, semDm, tentativas);
+
+      // Depois do envio, e engolindo o erro: a tentativa aconteceu de qualquer jeito, e o
+      // contador atrasado é melhor do que a exceção que derruba o resto do ciclo.
+      if (contadores) {
+        await registrarTentativasDeAviso(tentativas, resultados).catch(err => {
+          console.warn(`[Inactive Reminder] Tentativas não contadas: ${err.message}`);
+        });
+      }
+
+      console.log(
+        `[Inactive Reminder] Sent message and DMs with ${inactivePlayers.length} inactive players` +
+        (semDm.length ? ` (${semDm.length} sem DM)` : '')
+      );
     } catch (err) {
       console.error('[Inactive Reminder Error]', err);
     }

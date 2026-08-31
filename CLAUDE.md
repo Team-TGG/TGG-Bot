@@ -247,6 +247,40 @@ de inatividade. Fonte que falha vira "indisponível" no campo, nunca erro no ped
 vive por horas, a página vai no `customId` (`justificativa_histpg_<pedido>_<página>`) e cada clique
 é consulta nova — **não use collector aqui**, ele morre no primeiro restart.
 
+**Depois de marcado, quem cobra é o lembrete de 3h**
+([inactivePlayers.js](src/services/inactivePlayers.js)): ping no canal dos inativos mais DM para
+cada um. **DM que não chegou é dita em voz alta**, no mesmo canal, num embed à parte e sem ping.
+DM fechada é o caso em que o lembrete automático não serve para nada — a pessoa é pingada num
+canal que talvez nem abra e o aviso de verdade nunca chega; dizer isso passa o trabalho para a
+staff, que chama no privado do jeito que um bot não consegue, e evita remover alguém por um
+silêncio que nunca foi escolha dele.
+
+**Chamada da staff (domingo 06:00)** — `avisarRemocaoDeInativos`
+([avisoRemocaoInativos.js](src/services/avisoRemocaoInativos.js)) posta no **canal dos inativos**
+quem continua marcado, com quantos avisos cada um já ignorou, pingando **só** `@Officer`
+(`inactivePlayers.removalNotice.officerRoleId`). Os listados não são pingados: já levam ping a
+cada 3h e a mensagem é sobre eles, não para eles. Domingo e não quarta porque a semana ainda não
+fechou — três dias de conversa ainda salvam a vaga. E no canal dos inativos, não na log-guilda,
+porque é onde a conversa com essas pessoas acontece.
+
+A contagem sai de duas colunas de `weekly_inactive_players` que **o bot escreve**, incrementadas
+pelo lembrete a cada ciclo:
+
+```sql
+alter table weekly_inactive_players
+  add column avisos_enviados int not null default 0,
+  add column dms_falhadas int not null default 0;
+```
+
+São contadores de verdade, e não `(agora - created_at) / intervalo`, porque o número é a
+justificativa para tirar alguém da guilda: derivar do tempo contaria como tentativa todo ciclo em
+que o bot esteve fora do ar, e mentiria a favor da remoção. Sem as colunas (`42703`) a leitura
+loga o SQL que falta e devolve `null` — as duas rotinas seguem sem contar, porque deixar de
+avisar a lista inteira por causa de um contador seria pior. Ler-somar-gravar aqui é seguro, ao contrário da pontuação dos tickets:
+ninguém digita esses dois números no Supabase, e o update é agrupado pelo valor final, então a
+lista inteira vira ~2 requisições. `dms_falhadas >= avisos_enviados` é o que marca 📪 na
+lista de domingo: aí o silêncio não é resposta, é canal fechado.
+
 Os avisos automáticos de missões, MVP, inativação, duelo e pedido de blindagem vão todos para
 **log-guilda** (`1536704688689516624`), para não misturar log com chat. A única saída que também
 vai para fora dali é o **post das missões em guild-updates** (`1451542963854508227`) — o aviso em
@@ -537,6 +571,8 @@ Todos registrados no `ClientReady`:
   Mesmo público e mesmas isenções da inativação, exceto que quem já está na lista da semana passada
   continua sendo avisado. As menções vão em lotes de 80: 100 usuários é o teto de `allowedMentions`
   e ~90 menções já estouram os 2.000 caracteres da mensagem.
+- Cron `0 6 * * 0` — chama a staff no canal dos inativos sobre quem não respondeu aos avisos
+  ([src/services/avisoRemocaoInativos.js](src/services/avisoRemocaoInativos.js)). Ver acima.
 - Cron `0 6 * * 3` — troca os MVPs da semana
   ([src/services/weeklyMvpService.js](src/services/weeklyMvpService.js)). Ver abaixo.
 - Cron `10 6 * * 3` — inativa quem ficou abaixo do limiar (1.000 menos a tolerância) de contribuição

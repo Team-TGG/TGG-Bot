@@ -77,6 +77,13 @@ export const inactivePlayers = {
   avisoChannelId: '1536704688689516624', // log-guilda
   messageEnabled: true,
   messageInterval: process.env.INACTIVE_MESSAGE_INTERVAL,
+  // Chamada da staff, domingo 06:00, no próprio `channelId`
+  // (ver src/services/avisoRemocaoInativos.js). Vai no canal dos inativos e não na log-guilda
+  // de propósito: é onde a conversa com essas pessoas acontece, e o membro ler que a staff está
+  // decidindo ainda é uma chance de ele aparecer.
+  removalNotice: {
+    officerRoleId: '1437427655950467242', // @Officer — único ping da mensagem
+  },
 };
 
 // Pedidos de blindagem do `.justificativa`: onde a staff aprova ou recusa

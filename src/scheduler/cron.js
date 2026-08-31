@@ -7,6 +7,7 @@ import { registrarDueloDaSemana } from '../services/guildDuelService.js';
 import { trocarMvpsDaSemana } from '../services/weeklyMvpService.js';
 import { inativarSemana } from '../services/weeklyInactiveService.js';
 import { lembrarContribuicao } from '../services/contributionReminderService.js';
+import { avisarRemocaoDeInativos } from '../services/avisoRemocaoInativos.js';
 import { avisarMovimentacao } from '../services/guildHistoryService.js';
 import { recalcularOrdemDaFila } from '../services/ticketReorder.js';
 
@@ -95,6 +96,19 @@ export function startCronJobs(client, services) {
       await lembrarContribuicao(client);
     } catch (err) {
       console.error('[CRON ERROR - Lembrete]', err);
+    }
+  }, {
+    timezone: 'America/Sao_Paulo'
+  });
+
+  // Chamada da staff sobre quem não respondeu - domingo 06:00, no canal dos inativos.
+  // Antes do lembrete das 12:00 de propósito: a staff decide de manhã quem vale a pena chamar,
+  // e o lembrete do meio-dia ainda pega quem for poupado.
+  cron.schedule('0 6 * * 0', async () => {
+    try {
+      await avisarRemocaoDeInativos(client);
+    } catch (err) {
+      console.error('[CRON ERROR - Remocao Inativos]', err);
     }
   }, {
     timezone: 'America/Sao_Paulo'
