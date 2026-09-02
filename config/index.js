@@ -167,7 +167,7 @@ export const weeklyMvp = {
   premios: { 1: 250, 2: 200, 3: 150 },
 };
 
-// Duelo semanal de guildas, cadastrado sozinho na quarta 07:00 (ver src/services/guildDuelService.js).
+// Duelo semanal de guildas, cadastrado sozinho na quinta 06:00 (ver src/services/guildDuelService.js).
 export const guildDuel = {
   ourGuildId: '396943',
   channelId: '1536704688689516624', // log-guilda

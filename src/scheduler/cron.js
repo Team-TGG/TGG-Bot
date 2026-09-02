@@ -5,7 +5,6 @@ import { publishMotd } from '../services/motdService.js';
 import { registrarMissoesDaSemana } from '../services/weeklyMissionsService.js';
 import { registrarConquistasDaSemana } from '../services/weeklyAchievementsService.js';
 import { registrarDueloDaSemana } from '../services/guildDuelService.js';
-import { registrarXpDaSemana } from '../services/guildWeeklyXpService.js';
 import { trocarMvpsDaSemana } from '../services/weeklyMvpService.js';
 import { inativarSemana } from '../services/weeklyInactiveService.js';
 import { lembrarContribuicao } from '../services/contributionReminderService.js';
@@ -91,17 +90,18 @@ export function startCronJobs(client, services) {
     timezone: 'America/Sao_Paulo'
   });
 
-  // Base de XP das duas guildas do duelo - quinta 06:00, junto da virada da semana.
+  // Duelo da semana - quinta 06:00, junto da virada. Guild points já estão parados desde a quarta
+  // 06:00, quando as missões fecharam, e o XP das duas guildas sobe até este minuto - ler os dois
+  // aqui é o que permite uma rotina só.
   //
   // Agendamento próprio e não um terceiro passo do bloco acima: assunto diferente (duelo, não
   // missões) e, principalmente, não pode ficar atrás delas na fila. O cadastro das missões é o
-  // trecho mais demorado da quinta e o XP das duas guildas continua subindo enquanto ele roda -
-  // a base tem que ser lida o mais perto possível das 06:00.
+  // trecho mais demorado da quinta e o XP continua subindo enquanto ele roda.
   cron.schedule('0 6 * * 4', async () => {
     try {
-      await registrarXpDaSemana(client);
+      await registrarDueloDaSemana(client);
     } catch (err) {
-      console.error('[CRON ERROR - XP Semanal]', err);
+      console.error('[CRON ERROR - Duelo]', err);
     }
   }, {
     timezone: 'America/Sao_Paulo'
@@ -150,17 +150,6 @@ export function startCronJobs(client, services) {
       await inativarSemana(client);
     } catch (err) {
       console.error('[CRON ERROR - Inativos]', err);
-    }
-  }, {
-    timezone: 'America/Sao_Paulo'
-  });
-
-  // Duelo da semana - quarta 09:00. As missões fecham 06:00 e na quarta não dá mais para farmar, então o valor lido aqui é o fechamento da semana e a linha de base da seguinte.
-  cron.schedule('0 9 * * 3', async () => {
-    try {
-      await registrarDueloDaSemana(client);
-    } catch (err) {
-      console.error('[CRON ERROR - Duelo]', err);
     }
   }, {
     timezone: 'America/Sao_Paulo'

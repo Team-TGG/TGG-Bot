@@ -1,37 +1,33 @@
 import { EmbedBuilder } from 'discord.js';
 import { fetchGuildStatsNewAPI } from '../brawlhalla.js';
-import { formatDateTime } from '../db.js';
-import {getGuildRegistry, getGuildDuelByWeek, getGuildWeeklyPointsByWeek, saveGuildDuel, saveGuildWeeklyPoints,} from '../guild.js';
+import { getMissionWeekStart } from '../db.js';
+import { getGuildRegistry, getGuildDuelByWeek, getGuildWeeklyPointsByWeek, saveGuildDuel, saveGuildWeeklyPoints } from '../guild.js';
 import { guildDuel as config } from '../../config/index.js';
 import { LEADER_ID } from '../../utils/permissions.js';
 
 /**
- * Cadastro automático do duelo semanal.
+ * Cadastro automático do duelo semanal — quinta 06:00, no minuto em que a semana vira.
  *
  * O pareamento do jogo é 1º contra 2º, 3º contra 4º, 5º contra 6º — sempre pela classificação
- * corrente. O campo `rank` de /v1/guild/stats é essa posição (não o acumulado de guild points
+ * corrente. O campo `rank` de /v1/guild/stats é essa posição, não o acumulado de guild points.
  *
- * **Só guild points são capturados aqui.** O XP das duas guildas ainda sobe entre esta rodada e a
- * virada da semana, então a base dele é lida na quinta 06:00, por
- * [guildWeeklyXpService.js](./guildWeeklyXpService.js), que preenche as mesmas duas linhas.
+ * **Guild points e XP saem da mesma leitura.** Eram duas rotinas em dois horários — duelo na
+ * quarta 09:00, XP na quinta 06:00 — porque os dois números têm calendários diferentes: guild
+ * points param quando as missões fecham, na quarta 06:00, e XP sobe em qualquer partida, até a
+ * virada. A quinta 06:00 respeita os dois de uma vez: o guild point já está parado há 24h e o XP
+ * é lido no instante em que a semana começa. Decisão do usuário (02/09/2026), e é o que permite
+ * uma chamada por guilda e um `insert` por lado, em vez de um `insert` na quarta e um `update` na
+ * quinta.
  */
 
-/** A quinta 06:00 que abre a próxima semana. Rodando na quarta 07:00, é a de amanhã. */
-export function proximaQuinta(agora = new Date()) {
-  const alvo = new Date(agora);
+/** XP que a API não devolveu fica nulo, nunca 0 — ver a nota no `insert` de `guild.js`. */
+function numeroOuNulo(valor) {
+  const n = Number(valor);
+  return valor == null || !Number.isFinite(n) ? null : n;
+}
 
-  // quinta = 4
-  const faltam = (4 - agora.getDay() + 7) % 7;
-
-  alvo.setDate(agora.getDate() + faltam);
-  alvo.setHours(6, 0, 0, 0);
-
-  // Rodando numa quinta depois das 06:00, a semana que abre é a seguinte
-  if (alvo <= agora) {
-    alvo.setDate(alvo.getDate() + 7);
-  }
-
-  return formatDateTime(alvo);
+function formatarXp(xp) {
+  return xp == null ? '_não lido na API_' : xp.toLocaleString('pt-BR');
 }
 
 /** Quem enfrenta quem: 1×2, 3×4, 5×6... */
@@ -54,6 +50,8 @@ async function carregarMonitoradas(guildIds) {
         name: g?.name || `Guilda ${guildId}`,
         rank: Number(g?.rank),
         points: Number(g?.guild_points || 0),
+        // Vem da mesma resposta que o rank: descobrir o oponente já traz o XP dele de graça.
+        xp: numeroOuNulo(g?.xp),
       });
 
     } catch (err) {
@@ -74,16 +72,23 @@ function embedCadastrado({ weekStart, nossa, oponente, nossoRank }) {
     .addFields(
       {
         name: `${nossa.name} (nós)`,
-        value: `🏅 **Posição:** ${nossoRank}º\n📈 **Pontos na virada:** ${nossa.points.toLocaleString('pt-BR')}`,
+        value:
+          `🏅 **Posição:** ${nossoRank}º\n` +
+          `📈 **Pontos na virada:** ${nossa.points.toLocaleString('pt-BR')}\n` +
+          `✨ **XP na virada:** ${formatarXp(nossa.xp)}`,
         inline: true,
       },
       {
         name: oponente.name,
-        value: `🏅 **Posição:** ${oponente.rank}º\n📈 **Pontos na virada:** ${oponente.points.toLocaleString('pt-BR')}\n🆔 ${oponente.guildId}`,
+        value:
+          `🏅 **Posição:** ${oponente.rank}º\n` +
+          `📈 **Pontos na virada:** ${oponente.points.toLocaleString('pt-BR')}\n` +
+          `✨ **XP na virada:** ${formatarXp(oponente.xp)}\n` +
+          `🆔 ${oponente.guildId}`,
         inline: true,
       },
     )
-    .setFooter({ text: 'Acompanhe com .duel' })
+    .setFooter({ text: 'É contra estas leituras que o .duel mede o ganho da semana' })
     .setTimestamp();
 }
 
@@ -103,7 +108,9 @@ export function montarAvisoDeFalha(weekStart, motivo) {
     .setColor(0xED4245)
     .setTitle('⚠️ Duelo da semana não foi cadastrado')
     .setDescription(motivo)
-    .setFooter({ text: `Semana ${weekStart.slice(0, 10)} - cadastro manual necessário` })
+    // O lembrete do XP está aqui porque a linha manual é a única que nasce sem ele: a rotina lê
+    // guild points e XP juntos, e quem cadastra à mão precisa preencher os dois.
+    .setFooter({ text: `Semana ${weekStart.slice(0, 10)} - cadastro manual necessário (guild points e XP)` })
     .setTimestamp();
 
   return {
@@ -137,13 +144,17 @@ async function avisarFalha(client, weekStart, motivo) {
 }
 
 /**
- * Cadastra o duelo da próxima semana e avisa no canal da staff.
+ * Cadastra o duelo da semana que está começando e avisa no canal da staff.
+ *
+ * A semana sai de `getMissionWeekStart()`, a mesma âncora do cadastro das missões que roda neste
+ * mesmo minuto — se as duas discordarem, é a âncora que está errada, e o sintoma aparece nos dois
+ * lugares de uma vez em vez de só aqui.
  *
  * Não sobrescreve: semana que já tem duelo cadastrado (na mão, por exemplo) é deixada como está,
  * então rodar de novo é seguro.
  */
 export async function registrarDueloDaSemana(client) {
-  const weekStart = proximaQuinta();
+  const weekStart = getMissionWeekStart();
 
   try {
     const [dueloExistente, baseExistente] = await Promise.all([
@@ -167,6 +178,7 @@ export async function registrarDueloDaSemana(client) {
     const nossa = {
       name: nossaApi?.name || 'Team TGG',
       points: Number(nossaApi?.guild_points || 0),
+      xp: numeroOuNulo(nossaApi?.xp),
     };
 
     const rankAlvo = rankDoOponente(nossoRank);
@@ -191,12 +203,12 @@ export async function registrarDueloDaSemana(client) {
       return { cadastrado: false, weekStart, motivo: 'OPONENTE_DESCONHECIDO', nossoRank, rankAlvo };
     }
 
-    if (!baseExistente) await saveGuildWeeklyPoints(weekStart, nossa.points);
-    if (!dueloExistente) await saveGuildDuel(weekStart, oponente.guildId, oponente.points);
+    if (!baseExistente) await saveGuildWeeklyPoints(weekStart, nossa.points, nossa.xp);
+    if (!dueloExistente) await saveGuildDuel(weekStart, oponente.guildId, oponente.points, oponente.xp);
 
     console.log(
-      `[DUELO] semana ${weekStart}: ${nossoRank}º (${nossa.points}) x ` +
-      `${oponente.rank}º ${oponente.name} (${oponente.guildId}, ${oponente.points})`
+      `[DUELO] semana ${weekStart}: ${nossoRank}º (${nossa.points} pts, ${nossa.xp ?? 'xp não lido'}) x ` +
+      `${oponente.rank}º ${oponente.name} (${oponente.guildId}, ${oponente.points} pts, ${oponente.xp ?? 'xp não lido'})`
     );
 
     const avisado = await enviar(client, montarAnuncio({ weekStart, nossa, oponente, nossoRank })).catch(err => {
@@ -207,6 +219,15 @@ export async function registrarDueloDaSemana(client) {
     return { cadastrado: true, weekStart, oponente, nossoRank, avisado };
 
   } catch (err) {
+    // 42703 = coluna não existe. Dizer qual SQL falta poupa caçar o erro na quinta de manhã.
+    if (err?.code === '42703') {
+      console.error(
+        '[DUELO] colunas de XP não existem. Rode:\n' +
+        '  alter table guild_weekly_guild_points add column total_xp bigint;\n' +
+        '  alter table guild_duels add column xp bigint;'
+      );
+    }
+
     console.error('[DUELO] falha ao cadastrar a semana', weekStart, err);
     await avisarFalha(client, weekStart, `Erro inesperado: \`${err.message}\``);
     return { cadastrado: false, weekStart, motivo: 'ERRO', erro: err.message };

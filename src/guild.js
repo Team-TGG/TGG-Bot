@@ -99,62 +99,41 @@ export async function getGuildDuelByWeek(weekStart) {
   return data?.[0] || null;
 }
 
-export async function saveGuildWeeklyPoints(weekStart, totalGuildPoints) {
-  const supabase = getClient();
-
-  const { error } = await supabase
-    .from('guild_weekly_guild_points')
-    .insert({ created_at: weekStart, total_guild_points: Number(totalGuildPoints) });
-
-  if (error) throw error;
-}
-
-export async function saveGuildDuel(weekStart, guildId, guildPoints) {
-  const supabase = getClient();
-
-  const { error } = await supabase
-    .from('guild_duels')
-    .insert({ week_start: weekStart, guild_id: String(guildId), guild_points: Number(guildPoints) });
-
-  if (error) throw error;
-}
-
 /**
- * Base de XP da semana, gravada na quinta 06:00 e só então — os guild points são capturados na
- * quarta, mas o XP ainda sobe entre uma coisa e outra (ver guildWeeklyXpService.js).
+ * Guild points e XP entram juntos porque saem da mesma leitura, na quinta 06:00 (ver
+ * guildDuelService.js). XP ausente na API fica **nulo, nunca 0**: o ganho da semana é diferença
+ * contra esta linha, e 0 faria a leitura seguinte contar o acumulado inteiro como ganho.
  *
- * O `.is(coluna, null)` é o que torna a rotina repetível: preenche o que está vazio e nunca
- * reescreve uma base já lida, do mesmo jeito que `ensurePlayerWeeklyInfo` faz com a linha do
- * jogador. Sobrescrever mataria o ganho da semana inteira, que é diferença contra essa leitura.
- *
- * Devolve quantas linhas foram preenchidas: 0 significa "já tinha base", não erro.
+ * Quem protege a linha é o `insert` — só é chamado quando a semana ainda não existe, nunca
+ * `upsert`, do mesmo jeito que `ensurePlayerWeeklyInfo` faz com a linha do jogador.
  */
-export async function updateGuildWeeklyXp(weekStart, totalXp) {
+export async function saveGuildWeeklyPoints(weekStart, totalGuildPoints, totalXp = null) {
   const supabase = getClient();
 
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('guild_weekly_guild_points')
-    .update({ total_xp: Number(totalXp) })
-    .eq('created_at', weekStart)
-    .is('total_xp', null)
-    .select('id');
+    .insert({
+      created_at: weekStart,
+      total_guild_points: Number(totalGuildPoints),
+      total_xp: totalXp == null ? null : Number(totalXp),
+    });
 
   if (error) throw error;
-  return data?.length ?? 0;
 }
 
-export async function updateGuildDuelXp(weekStart, xp) {
+export async function saveGuildDuel(weekStart, guildId, guildPoints, xp = null) {
   const supabase = getClient();
 
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('guild_duels')
-    .update({ xp: Number(xp) })
-    .eq('week_start', weekStart)
-    .is('xp', null)
-    .select('id');
+    .insert({
+      week_start: weekStart,
+      guild_id: String(guildId),
+      guild_points: Number(guildPoints),
+      xp: xp == null ? null : Number(xp),
+    });
 
   if (error) throw error;
-  return data?.length ?? 0;
 }
 
 /**
