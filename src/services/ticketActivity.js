@@ -31,13 +31,16 @@ let timer = null;
 // e o ticket é encerrado, todo mundo abaixo dele sobe uma posição — esperar as 01:00 deixa a fila
 // mostrando um número errado pelo resto do dia.
 //
-// O intervalo mínimo existe por causa do teto do Discord de **2 renomeações por 10 min por canal**:
-// a staff processando a fila fecha vários tickets seguidos, e um recálculo por ciclo de 1 min
-// trancaria os nomes já na terceira passada. Uma sequência de fechamentos vira um recálculo só.
-const INTERVALO_MIN_REORDENACAO_MS = 11 * 60 * 1000;
+// A espera é contada a partir do **primeiro** fechamento pendente, e não do último recálculo, e
+// isso é o que faz uma sequência de fechamentos virar um recálculo só: cada recálculo escreve no
+// canal de todo mundo que mudou de lugar, e a staff processando a fila fecha vários tickets
+// seguidos. Cinco fechamentos dentro da mesma janela geram um aviso, duas horas depois do
+// primeiro; um fechamento isolado três horas depois abre janela nova e gera o segundo. Decisão do
+// usuário (02/09/2026): antes o recálculo saía na hora e só o repique era segurado, e o canal
+// virava mural de mudança de posição.
+const JANELA_REORDENACAO_MS = 2 * 60 * 60 * 1000;
 
-let reordenacaoPendente = false;
-let ultimaReordenacao = 0;
+let reordenacaoPendenteDesde = null;
 
 const IDS_DE_STAFF = new Set(Object.values(STAFF_ROLE_IDS));
 
@@ -163,7 +166,9 @@ async function sincronizarFila(client) {
 
     // Só fechamento marca: ticket novo entra no fim da fila e não mexe na posição de ninguém,
     // e reaberto volta com a pontuação que já tinha — o cron diário dá conta dos dois.
-    if (r.fechados > 0) reordenacaoPendente = true;
+    // Só o primeiro da janela carimba a hora; os seguintes entram no mesmo recálculo em vez de
+    // empurrarem a espera para frente, senão fila movimentada nunca chegaria ao fim da janela.
+    if (r.fechados > 0 && reordenacaoPendenteDesde === null) reordenacaoPendenteDesde = Date.now();
 
     // A reconciliação já devolve o estado final — reconsultar aqui seria a segunda leitura
     // idêntica do mesmo ciclo, e é justamente o que precisa sumir para rodar de 1 em 1 min.
@@ -237,24 +242,24 @@ async function flush(client) {
   await reordenarSeAlguemSaiu(client);
 }
 
-/** Recalcula a fila quando algum ticket foi encerrado, respeitando o intervalo mínimo. */
+/** Recalcula a fila quando a janela aberta pelo primeiro fechamento pendente se fecha. */
 async function reordenarSeAlguemSaiu(client) {
-  if (!reordenacaoPendente) return;
-  if (Date.now() - ultimaReordenacao < INTERVALO_MIN_REORDENACAO_MS) return;
+  if (reordenacaoPendenteDesde === null) return;
+  if (Date.now() - reordenacaoPendenteDesde < JANELA_REORDENACAO_MS) return;
 
   // O ciclo roda em dev (contar mensagem é barato e some no ruído), mas renomear e reordenar
   // canal não: o cron diário já é pulado em dev, e disparar por fechamento faria o processo local
   // mexer em ~60 canais de verdade.
   if (runtime.isDev) {
-    reordenacaoPendente = false;
+    reordenacaoPendenteDesde = null;
     console.log('[TICKET ATIVIDADE] dev: reordenaria a fila por fechamento de ticket');
     return;
   }
 
   // Baixa a bandeira antes de rodar: se o recálculo falhar no meio, o cron diário conserta, e
-  // deixá-la de pé faria a mesma tentativa se repetir a cada ciclo.
-  reordenacaoPendente = false;
-  ultimaReordenacao = Date.now();
+  // deixá-la de pé faria a mesma tentativa se repetir a cada ciclo. A janela seguinte só começa
+  // no próximo fechamento, então dois recálculos nunca ficam a menos de 2h um do outro.
+  reordenacaoPendenteDesde = null;
 
   try {
     const r = await recalcularOrdemDaFila(client);

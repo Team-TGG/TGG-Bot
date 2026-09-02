@@ -412,13 +412,14 @@ falhar não pode cancelar a outra.
 dia porque **renomear canal é limitado a 2×/10min por canal** — o nome é foto do último recálculo,
 e isso é decisão do usuário (14/08/2026), não limitação escondida.
 
-**Ticket encerrado também dispara o recálculo**, no ciclo que a reconciliação percebe o
-fechamento: quem entra na guilda sai da fila e todo mundo abaixo sobe uma posição, e esperar
-as 01:00 deixaria a fila mostrando um número errado pelo resto do dia. Fechamentos em sequência
-viram **um** recálculo, com um intervalo mínimo de 11 min entre dois: é o mesmo teto de
-2×/10min por canal que faz o cron ser diário, e a staff processando a fila fecha vários tickets
-seguidos — um recálculo por ciclo de 1 min trancaria os nomes na terceira passada. Ticket novo
-não dispara nada: ele entra no fim da fila e não mexe na posição de ninguém. Em modo dev o recálculo por
+**Ticket encerrado também dispara o recálculo**, mas com **2h de espera**: quem entra na
+guilda sai da fila e todo mundo abaixo sobe uma posição, e esperar as 01:00 deixaria a fila
+mostrando um número errado pelo resto do dia — só que cada recálculo escreve no canal de todo
+mundo que mudou de lugar, e disparar na hora enchia os tickets de aviso (decisão do usuário,
+02/09/2026). A janela é contada do **primeiro** fechamento pendente, não do último recálculo:
+cinco fechamentos em menos de 2h viram **um** recálculo, 2h depois do primeiro; um fechamento
+isolado 3h depois abre janela nova e gera o segundo. Ticket novo não dispara nada: ele entra no
+fim da fila e não mexe na posição de ninguém. Em modo dev o recálculo por
 fechamento só é logado — o ciclo roda em dev, mas o cron diário não, e renomear ~60 canais reais a
 partir do processo local seria efeito novo.
 
