@@ -510,11 +510,31 @@ Não existe endpoint de ranking de guildas (13 caminhos sondados, todos 404) e o
 396943 respondem). Por isso o topo é mantido à mão em **`guild_registry`** (só `guild_id`)
 e o oponente sai de uma leitura do `rank` de cada monitorada.
 
-O cron roda **quarta 07:00**: as missões fecham 06:00 e na quarta não dá mais para farmar ponto,
+O cron roda **quarta 09:00**: as missões fecham 06:00 e na quarta não dá mais para farmar ponto,
 então o valor lido é o fechamento da semana **e** a linha de base da seguinte. Grava com
 `week_start` da **quinta seguinte** — é assim que as linhas manuais sempre foram feitas.
 Não sobrescreve semana já cadastrada. Sem oponente no rank alvo (guilda nova no topo), avisa a
 staff chamando o líder em vez de gravar palpite.
+
+**O XP é medido também, mas por outra rotina e em outro horário.** O `.duel` mostra, dos dois
+lados, o total (`xp` de `/v1/guild/stats`) e o ganho da semana — que é diferença entre duas
+capturas, como tudo o mais: o `xp` acumula desde a atualização de guildas. O `legacy_xp` (o
+acumulado da era anterior) **não é gravado**: é fixo e imutável, então diferença entre duas
+leituras dele é sempre 0.
+
+A base do XP sai na **quinta 06:00**
+([guildWeeklyXpService.js](src/services/guildWeeklyXpService.js)), não junto do duelo na quarta.
+O motivo é que os dois números têm calendários diferentes: guild points param na quarta 06:00,
+quando as missões fecham, mas **XP se ganha em qualquer partida** e continua subindo da quarta
+para a quinta — decisão do usuário (02/09/2026). Capturar junto do duelo daria uma base já
+vencida, e o ganho da semana apareceria menor do que foi.
+
+A rotina só faz `update` das duas linhas que a quarta criou (`guild_weekly_guild_points.total_xp`
+e `guild_duels.xp`), e o `update` filtra por `is null` — preenche o que está vazio e nunca
+reescreve base já lida, mesma regra do `player_weekly_info`. Rodar de novo é seguro e silencioso:
+sem nada preenchido não sai embed, porque ele diria "registrado" sem ter registrado. XP que a API
+não devolveu fica `null` em vez de 0, e o `.duel` mostra `—`; 0 faria a semana seguinte ler o
+acumulado inteiro como ganho.
 
 ### `.ia` — pergunta em linguagem natural
 
@@ -673,8 +693,12 @@ Todos registrados no `ClientReady`:
   ([src/services/weeklyMvpService.js](src/services/weeklyMvpService.js)). Ver abaixo.
 - Cron `10 6 * * 3` — inativa quem ficou abaixo do limiar (1.000 menos a tolerância) de contribuição
   ([src/services/weeklyInactiveService.js](src/services/weeklyInactiveService.js)). Ver abaixo.
-- Cron `0 7 * * 3` — cadastra o duelo da semana seguinte
+- Cron `0 9 * * 3` — cadastra o duelo da semana seguinte
   ([src/services/guildDuelService.js](src/services/guildDuelService.js)). Ver abaixo.
+- Cron `0 6 * * 4` — grava a base de XP das duas guildas do duelo
+  ([src/services/guildWeeklyXpService.js](src/services/guildWeeklyXpService.js)). Agendamento
+  próprio, e não um terceiro passo do bloco das missões: o cadastro das missões é o trecho mais
+  demorado da quinta, e o XP das duas guildas continua subindo enquanto ele roda. Ver acima.
 - Cron `5,20,35,50 * * * *` — avisa entradas, saídas, promoções e rebaixamentos na guilda do jogo
   ([src/services/guildHistoryService.js](src/services/guildHistoryService.js)). Ver abaixo.
 - Cron `0 7 * * *` — cobra quem está parado na fila por tickets
@@ -709,7 +733,8 @@ Sem migrations no repo — o schema vive no Supabase. Domínios principais:
 - **Membros**: `users` (`discord_id`, `brawlhalla_id`, `role`, `active`, `need_update`), `alt_ids`,
   `player_elo_history`, view `vw_player_elo_max`.
 - **Semana/atividade**: `player_weekly_info`, `weekly_missions`, `weekly_inactive_players`,
-  `inactivity_shields`, `guild_weekly_guild_points`, `guild_duels`, `season`.
+  `inactivity_shields`, `guild_weekly_guild_points` (`total_guild_points` na quarta,
+  `total_xp` na quinta), `guild_duels` (idem, `guild_points` e `xp`), `season`.
 - **Economia (TGG Coins)**: `tgg_coins_wallet`, `_transactions`, `_shop`, `_shop_roles`, `_shop_exitlag`,
   `_purchases`, `_inventory`, `_service_providers`, `_coach_prices`, `_daily_streak`, `_achievements`,
   `_achievements_alts`, `_achievements_finished`, view `vw_tgg_coins_wallet_total`.

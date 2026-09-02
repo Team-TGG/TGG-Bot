@@ -9,9 +9,11 @@ export async function getGuildWeeklyGuildPoints() {
   const supabase = getClient();
   const weekStartDate = getMissionWeekStart();
 
+  // `*` e não a lista de colunas: `total_xp` é coluna nova, e nomear uma coluna que ainda não
+  // existe é erro 42703 — o .duel inteiro cairia num banco não migrado, em vez de só ficar sem o XP.
   const { data, error } = await supabase
     .from('guild_weekly_guild_points')
-    .select('total_guild_points')
+    .select('*')
     .eq('created_at', weekStartDate)
     .limit(1);
 
@@ -74,7 +76,7 @@ export async function getGuildWeeklyPointsByWeek(weekStart) {
 
   const { data, error } = await supabase
     .from('guild_weekly_guild_points')
-    .select('id, total_guild_points')
+    .select('*')
     .eq('created_at', weekStart)
     .limit(1);
 
@@ -88,7 +90,7 @@ export async function getGuildDuelByWeek(weekStart) {
 
   const { data, error } = await supabase
     .from('guild_duels')
-    .select('id, guild_id, guild_points')
+    .select('*')
     .eq('week_start', weekStart)
     .limit(1);
 
@@ -118,6 +120,44 @@ export async function saveGuildDuel(weekStart, guildId, guildPoints) {
 }
 
 /**
+ * Base de XP da semana, gravada na quinta 06:00 e só então — os guild points são capturados na
+ * quarta, mas o XP ainda sobe entre uma coisa e outra (ver guildWeeklyXpService.js).
+ *
+ * O `.is(coluna, null)` é o que torna a rotina repetível: preenche o que está vazio e nunca
+ * reescreve uma base já lida, do mesmo jeito que `ensurePlayerWeeklyInfo` faz com a linha do
+ * jogador. Sobrescrever mataria o ganho da semana inteira, que é diferença contra essa leitura.
+ *
+ * Devolve quantas linhas foram preenchidas: 0 significa "já tinha base", não erro.
+ */
+export async function updateGuildWeeklyXp(weekStart, totalXp) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('guild_weekly_guild_points')
+    .update({ total_xp: Number(totalXp) })
+    .eq('created_at', weekStart)
+    .is('total_xp', null)
+    .select('id');
+
+  if (error) throw error;
+  return data?.length ?? 0;
+}
+
+export async function updateGuildDuelXp(weekStart, xp) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('guild_duels')
+    .update({ xp: Number(xp) })
+    .eq('week_start', weekStart)
+    .is('xp', null)
+    .select('id');
+
+  if (error) throw error;
+  return data?.length ?? 0;
+}
+
+/**
  * Puxa os guild points semanal da guilda oponente no duelo semanal
  */
 export async function getDuelGuildWeeklyGuildPoints() {
@@ -126,7 +166,7 @@ export async function getDuelGuildWeeklyGuildPoints() {
 
   const { data, error } = await supabase
     .from('guild_duels')
-    .select('guild_id, guild_points')
+    .select('*')
     .eq('week_start', weekStartDate)
     .limit(1);
 

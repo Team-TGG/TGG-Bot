@@ -5,6 +5,7 @@ import { publishMotd } from '../services/motdService.js';
 import { registrarMissoesDaSemana } from '../services/weeklyMissionsService.js';
 import { registrarConquistasDaSemana } from '../services/weeklyAchievementsService.js';
 import { registrarDueloDaSemana } from '../services/guildDuelService.js';
+import { registrarXpDaSemana } from '../services/guildWeeklyXpService.js';
 import { trocarMvpsDaSemana } from '../services/weeklyMvpService.js';
 import { inativarSemana } from '../services/weeklyInactiveService.js';
 import { lembrarContribuicao } from '../services/contributionReminderService.js';
@@ -85,6 +86,22 @@ export function startCronJobs(client, services) {
       await registrarConquistasDaSemana(client);
     } catch (err) {
       console.error('[CRON ERROR - Conquistas]', err);
+    }
+  }, {
+    timezone: 'America/Sao_Paulo'
+  });
+
+  // Base de XP das duas guildas do duelo - quinta 06:00, junto da virada da semana.
+  //
+  // Agendamento próprio e não um terceiro passo do bloco acima: assunto diferente (duelo, não
+  // missões) e, principalmente, não pode ficar atrás delas na fila. O cadastro das missões é o
+  // trecho mais demorado da quinta e o XP das duas guildas continua subindo enquanto ele roda -
+  // a base tem que ser lida o mais perto possível das 06:00.
+  cron.schedule('0 6 * * 4', async () => {
+    try {
+      await registrarXpDaSemana(client);
+    } catch (err) {
+      console.error('[CRON ERROR - XP Semanal]', err);
     }
   }, {
     timezone: 'America/Sao_Paulo'

@@ -63,17 +63,27 @@ export async function calcularDueloDaSemana() {
 
   const oponenteApi = await fetchGuildStatsNewAPI(duelo.guild_id);
 
-  const lado = (api, base) => ({
+  // XP tem o mesmo desenho dos guild points: o `xp` de /v1/guild/stats acumula desde a
+  // atualização de guildas, então o da semana é diferença entre duas capturas. `legacy_xp` fica
+  // de fora — é o acumulado da era anterior, congelado, e diferença dele é sempre 0.
+  //
+  // Base ausente vira `null` e não 0, ao contrário dos pontos acima: semana gravada antes de a
+  // coluna existir devolveria o acumulado inteiro (dezenas de milhões) como ganho da semana. Quem
+  // monta o embed traduz `null` para "—".
+  const lado = (api, base, baseXp) => ({
     nome: api?.name ?? 'Desconhecida',
     membros: api?.member_count ?? null,
     convite: api?.discord_invite_code ?? null,
     pontosAtuais: Number(api?.guild_points || 0),
     pontosNaVirada: Number(base || 0),
     ganhoNaSemana: Number(api?.guild_points || 0) - Number(base || 0),
+    xpAtual: api?.xp == null ? null : Number(api.xp),
+    xpNaVirada: baseXp == null ? null : Number(baseXp),
+    ganhoDeXpNaSemana: api?.xp == null || baseXp == null ? null : Number(api.xp) - Number(baseXp),
   });
 
-  const nos = lado(nossaApi, nossaBase?.total_guild_points);
-  const eles = lado(oponenteApi, duelo.guild_points);
+  const nos = lado(nossaApi, nossaBase?.total_guild_points, nossaBase?.total_xp);
+  const eles = lado(oponenteApi, duelo.guild_points, duelo.xp);
 
   return {
     motivo: null,

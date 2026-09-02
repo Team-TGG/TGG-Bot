@@ -1774,6 +1774,10 @@ export async function handleDuel(message, args, client) {
       ? `💬 **Discord:** discord.gg/${lado.convite}`
       : '💬 **Discord:** não informado';
 
+    // Semana sem linha de base de XP (gravada antes de a coluna existir) mostra "—" em vez de um
+    // número inventado: é a base que transforma o acumulado em ganho da semana.
+    const numero = (v) => v == null ? '—' : v.toLocaleString();
+
     // Top 5 nossos na semana. Falha no cálculo não derruba o duelo.
     const topContribuintes = await topContribuintesDaSemana(5);
 
@@ -1800,6 +1804,8 @@ export async function handleDuel(message, args, client) {
             `👥 **Membros:** ${nos.membros}\n` +
             `📈 **Guild Points:** ${nos.pontosAtuais.toLocaleString()}\n` +
             `🔥 **Pontos na semana:** ${ourDiff.toLocaleString()}\n` +
+            `✨ **XP:** ${numero(nos.xpAtual)}\n` +
+            `⚡ **XP na semana:** ${numero(nos.ganhoDeXpNaSemana)}\n` +
             discordDaGuilda(nos),
           inline: true
         },
@@ -1809,6 +1815,8 @@ export async function handleDuel(message, args, client) {
             `👥 **Membros:** ${eles.membros}\n` +
             `📈 **Guild Points:** ${eles.pontosAtuais.toLocaleString()}\n` +
             `🔥 **Pontos na semana:** ${enemyDiff.toLocaleString()}\n` +
+            `✨ **XP:** ${numero(eles.xpAtual)}\n` +
+            `⚡ **XP na semana:** ${numero(eles.ganhoDeXpNaSemana)}\n` +
             discordDaGuilda(eles),
           inline: true
         },

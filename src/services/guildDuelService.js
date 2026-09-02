@@ -10,6 +10,10 @@ import { LEADER_ID } from '../../utils/permissions.js';
  *
  * O pareamento do jogo é 1º contra 2º, 3º contra 4º, 5º contra 6º — sempre pela classificação
  * corrente. O campo `rank` de /v1/guild/stats é essa posição (não o acumulado de guild points
+ *
+ * **Só guild points são capturados aqui.** O XP das duas guildas ainda sobe entre esta rodada e a
+ * virada da semana, então a base dele é lida na quinta 06:00, por
+ * [guildWeeklyXpService.js](./guildWeeklyXpService.js), que preenche as mesmas duas linhas.
  */
 
 /** A quinta 06:00 que abre a próxima semana. Rodando na quarta 07:00, é a de amanhã. */
