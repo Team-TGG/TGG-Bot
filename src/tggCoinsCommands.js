@@ -1042,6 +1042,84 @@ export async function handleBuy(message, args) {
 }
 
 // ---- .inventory ----
+
+// O dropdown do Discord aceita no máximo 25 opções, e há gente com mais cores que isso. A página
+// menor que o teto é escolha de leitura, não limitação: 10 cores cabem no embed sem ele virar uma
+// parede, e o menu passa a mostrar exatamente o que a página lista.
+const CORES_POR_PAGINA = 10;
+
+/**
+ * Monta embed e componentes de uma página do inventário.
+ *
+ * Existe porque a tela é redesenhada em quatro momentos (abertura, troca de página, equipar,
+ * remover todas) e antes cada um montava o embed do seu jeito — a lista aparecia com formato
+ * diferente dependendo do botão clicado.
+ */
+function telaDoInventario({ cores, pagina, autorId, equipadaId, cor = 0x5865f2 }) {
+  const totalPaginas = Math.max(1, Math.ceil(cores.length / CORES_POR_PAGINA));
+  const inicio = pagina * CORES_POR_PAGINA;
+  const daPagina = cores.slice(inicio, inicio + CORES_POR_PAGINA);
+
+  const equipada = cores.find(c => c.id === equipadaId) || null;
+
+  const embed = new EmbedBuilder()
+    .setColor(cor)
+    .setTitle('🎒 Seu Inventário')
+    .setDescription([
+      `**Cores disponíveis** (${inicio + 1}-${inicio + daPagina.length} de ${cores.length}):`,
+      '',
+      daPagina.map(c => `${c.id === equipadaId ? '👉' : '•'} ${c.role}`).join('\n'),
+      '',
+      // A cor equipada pode estar em outra página, então o status vem dito em vez de depender
+      // de o 👉 estar à vista.
+      equipada ? `Cor equipada: ${equipada.role}` : 'Nenhuma cor equipada.',
+    ].join('\n'))
+    .setFooter({ text: `Página ${pagina + 1} de ${totalPaginas} • Selecione uma cor no menu para equipar` })
+    .setTimestamp();
+
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(`inventory_${autorId}`)
+    .setPlaceholder('Escolha uma cor')
+    .addOptions(daPagina.map(c => ({
+      label: c.role.name.slice(0, 100),
+      value: c.id,
+      description: (c.id === equipadaId ? 'Atualmente equipada' : `Equipar ${c.role.name}`).slice(0, 100),
+    })));
+
+  const botoes = [];
+
+  // Quem tem 10 cores ou menos não ganha seta nenhuma: navegação para uma página só é ruído.
+  if (totalPaginas > 1) {
+    botoes.push(
+      new ButtonBuilder()
+        .setCustomId(`inventory_pagina_${autorId}_${pagina - 1}`)
+        .setEmoji('◀️')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(pagina === 0),
+      new ButtonBuilder()
+        .setCustomId(`inventory_pagina_${autorId}_${pagina + 1}`)
+        .setEmoji('▶️')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(pagina >= totalPaginas - 1),
+    );
+  }
+
+  botoes.push(
+    new ButtonBuilder()
+      .setCustomId(`inventory_remove_${autorId}`)
+      .setLabel('Remover todas as cores')
+      .setStyle(ButtonStyle.Danger),
+  );
+
+  return {
+    embeds: [embed],
+    components: [
+      new ActionRowBuilder().addComponents(select),
+      new ActionRowBuilder().addComponents(botoes),
+    ],
+  };
+}
+
 export async function handleInventory(message) {
   try {
     const inventory = await tggCoins.getInventory(message.author.id);
@@ -1053,63 +1131,48 @@ export async function handleInventory(message) {
       });
     }
 
-    const options = [];
-    const ownedRoles = [];
-
-    for (const item of inventory) {
-      const role = message.guild.roles.cache.get(item.role_id);
-
-      if (!role) continue;
-
-      const equipped = message.member.roles.cache.has(item.role_id);
-
-      ownedRoles.push(`${equipped ? '👉' : '•'} ${role}`);
-      options.push({label: role.name, value: String(item.role_id), description: equipped ? 'Atualmente equipada' : `Equipar ${role.name}`});
-    }
+    // Ordem alfabética: o banco devolve na ordem de compra, que não ajuda ninguém a achar uma cor
+    // entre dezenas. Ordenar aqui também fixa a paginação — a página 2 é sempre a mesma página 2.
+    const cores = inventory
+      .map(item => ({ id: String(item.role_id), role: message.guild.roles.cache.get(item.role_id) }))
+      .filter(c => c.role)
+      .sort((a, b) => a.role.name.localeCompare(b.role.name, 'pt-BR'));
 
     // Se for algum cargo inválido (Deletado ou inexistente)
-    if (!options.length) {
+    if (!cores.length) {
       return message.reply({
         embeds: [createErrorEmbed('Erro', 'Nenhum cargo válido foi encontrado no seu inventário.')]
       });
     }
 
-    const embed = new EmbedBuilder()
-      .setColor(0x5865f2)
-      .setTitle('🎒 Seu Inventário')
-      .setDescription(['**Cores disponíveis:**', '', ownedRoles.join('\n'), '', 'Selecione uma cor no menu abaixo para equipar.'].join('\n'))
-      .setTimestamp();
+    let pagina = 0;
+    let equipadaId = cores.find(c => message.member.roles.cache.has(c.id))?.id || null;
 
-    const select = new StringSelectMenuBuilder()
-      .setCustomId(`inventory_${message.author.id}`)
-      .setPlaceholder('Escolha uma cor')
-      .addOptions(options.slice(0, 25));
+    const autorId = message.author.id;
+    const tela = () => telaDoInventario({ cores, pagina, autorId, equipadaId });
 
-    // Botão para remover todas as cores
-    const removeButton = new ButtonBuilder()
-      .setCustomId(`inventory_remove_${message.author.id}`)
-      .setLabel('Remover todas as cores')
-      .setStyle(ButtonStyle.Danger);
+    const msg = await message.reply(tela());
 
-    const row = new ActionRowBuilder().addComponents(select);
-    const buttonRow = new ActionRowBuilder().addComponents(removeButton);
-
-    const msg = await message.reply({
-      embeds: [embed],
-      components: [row, buttonRow]
-    });
-
+    // `idle` em vez de só `time`: com várias páginas, um teto absoluto curto deixa o menu morto
+    // no meio da navegação. Cada clique renova os 2 min, com 10 min de teto.
     const collector = msg.createMessageComponentCollector({
-      time: 120000
+      idle: 120000,
+      time: 600000
     });
 
     collector.on('collect', async interaction => {
       try {
-        if (interaction.user.id !== message.author.id) {
+        if (interaction.user.id !== autorId) {
           return interaction.reply({
             content: 'Você não pode utilizar este menu.',
             ephemeral: true
           });
+        }
+
+        // Troca de página não mexe em cargo nenhum, então nem consulta o banco.
+        if (interaction.isButton() && interaction.customId.startsWith('inventory_pagina_')) {
+          pagina = Number(interaction.customId.split('_').pop());
+          return interaction.update(tela());
         }
 
         const member = await message.guild.members.fetch(
@@ -1128,28 +1191,9 @@ export async function handleInventory(message) {
             await member.roles.remove(rolesToRemove);
           }
 
-          const updatedRoles = [];
+          equipadaId = null;
 
-          for (const item of userInventory) {
-            const role = message.guild.roles.cache.get(
-              item.role_id
-            );
-
-            if (!role) continue;
-
-            updatedRoles.push(`• ${role}`);
-          }
-
-          const updatedEmbed = new EmbedBuilder()
-            .setColor(0xed4245)
-            .setTitle('🎒 Seu Inventário')
-            .setDescription(['**Cores disponíveis:**', '', updatedRoles.join('\n'), '', 'Nenhuma cor equipada.'].join('\n'))
-            .setTimestamp();
-
-          return interaction.update({
-            embeds: [updatedEmbed],
-            components: [row, buttonRow]
-          });
+          return interaction.update(telaDoInventario({ cores, pagina, autorId, equipadaId, cor: 0xed4245 }));
         }
 
         // Menu de seleção de cor
@@ -1179,25 +1223,9 @@ export async function handleInventory(message) {
         // Adiciona somente a selecionada
         await member.roles.add(selectedRoleId);
 
-        const selectedRole = message.guild.roles.cache.get(selectedRoleId);
-        const updatedRoles = [];
+        equipadaId = String(selectedRoleId);
 
-        for (const item of userInventory) {
-          const role = message.guild.roles.cache.get(item.role_id);
-          if (!role) continue;
-          updatedRoles.push(String(item.role_id) === String(selectedRoleId) ? `👉 ${role}` : `• ${role}`);
-        }
-
-        const updatedEmbed = new EmbedBuilder()
-          .setColor(0x57f287)
-          .setTitle('🎒 Seu Inventário')
-          .setDescription(['**Cores disponíveis:**', '', updatedRoles.join('\n'), '', `Cor equipada: ${selectedRole}`].join('\n'))
-          .setTimestamp();
-
-        await interaction.update({
-          embeds: [updatedEmbed],
-          components: [row, buttonRow]
-        });
+        await interaction.update(telaDoInventario({ cores, pagina, autorId, equipadaId, cor: 0x57f287 }));
 
       } catch (err) {
         console.error(err);
@@ -1213,14 +1241,13 @@ export async function handleInventory(message) {
 
     collector.on('end', async () => {
       try {
-        const disabledSelect = StringSelectMenuBuilder.from(select).setDisabled(true);
-        const disabledButton = ButtonBuilder.from(removeButton).setDisabled(true);
-        const disabledRow = new ActionRowBuilder().addComponents(disabledSelect);
-        const disabledButtonRow = new ActionRowBuilder().addComponents(disabledButton);
+        const { components } = tela();
 
-        await msg.edit({
-          components: [disabledRow, disabledButtonRow]
-        });
+        for (const linha of components) {
+          for (const componente of linha.components) componente.setDisabled(true);
+        }
+
+        await msg.edit({ components });
       } catch (err) {}
     });
 
