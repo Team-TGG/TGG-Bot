@@ -1124,15 +1124,15 @@ export function createLegendsStatsEmbed(playerData) {
     return embed;
   }
 
+  // Uma linha por lenda. A versão anterior gastava três (nome, dados, linha em branco), e as 10
+  // lendas tomavam a tela inteira no celular.
   const legendList = topLegends.map((l, i) => {
     const key = cleanLegendName(l.legend_name_key);
     const name = LEGEND_NAMES[key] || l.legend_name_key || 'Unknown';
     const icon = LEGEND_EMOJIS[key] || '❓';
-    const level = l.level;
-    const xpFormatted = formatNumber(l.xp || 0);
-    
-    return `**${i + 1}.** ${icon} **${name}**\n╰ \`Lv. ${level}\` — \`${xpFormatted} XP\``;
-  }).join('\n\n');
+
+    return `**${i + 1}.** ${icon} **${name}** · \`Lv ${l.level}\` · \`${formatNumber(l.xp || 0)} XP\``;
+  }).join('\n');
 
   embed.setDescription(legendList);
   return embed;
@@ -1171,13 +1171,14 @@ export function createWeaponsStatsEmbed(playerData) {
     return embed;
   }
 
+  // Mesma compactação da aba de lendas, e aqui pesa mais: são ~17 armas, que a três linhas cada
+  // davam um embed de cinquenta linhas.
   const weaponList = topWeapons.map((w, i) => {
     const weaponName = normalizeWeapon(w.weapon);
     const icon = WEAPON_ICONS[weaponName.toLowerCase().replace(/\s+/g, '')] || '❓';
-    const timeFormatted = formatTime(w.time);
-    
-    return `**${i + 1}.** ${icon} **${weaponName}**\n╰ \`${timeFormatted}\``;
-  }).join('\n\n');
+
+    return `**${i + 1}.** ${icon} **${weaponName}** · \`${formatTime(w.time)}\``;
+  }).join('\n');
 
   embed.setDescription(weaponList);
   return embed;
