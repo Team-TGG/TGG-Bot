@@ -27,13 +27,16 @@ export const CONTRIBUICAO_MINIMA = 1000;
  * Folga sobre o mínimo, só para a inativação. Existe por erro de leitura da API de guild points:
  * o desvio normal é de 1 a 10 pontos e nunca tinha atrapalhado, mas em 08/2026 um membro com
  * 1.020 pontos foi lido como 902 (a hipótese é que os pontos tinham acabado de ser ganhos).
- * 10% não cobre um caso desse tamanho — é um começo, para ir calibrando com o que aparecer.
+ * Começou em 10%, larga de propósito enquanto ninguém sabia o tamanho do desvio. Depois de três
+ * semanas conferindo a leitura, o usuário fechou em **3%** (02/09/2026): 30 pontos cobrem com
+ * sobra as diferenças de até 10 que aparecem na prática, e a folga larga estava poupando quem
+ * simplesmente não jogou.
  *
  * A folga não muda a regra: os avisos continuam cobrando os 1.000, e o lembrete de domingo
  * também (ver contributionReminderService.js). Ela só evita marcar como inativo quem está na
  * fronteira, onde o erro da API decide o resultado.
  */
-export const TOLERANCIA_INATIVACAO = 0.10;
+export const TOLERANCIA_INATIVACAO = 0.03;
 
 /** Abaixo disso, inativo. */
 export const LIMIAR_INATIVACAO = Math.round(CONTRIBUICAO_MINIMA * (1 - TOLERANCIA_INATIVACAO));

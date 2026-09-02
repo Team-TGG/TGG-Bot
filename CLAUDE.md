@@ -222,9 +222,11 @@ manda DM e avisa no canal. Substitui a página `relatorio_inativar.php` do site,
 (sistema antigo) e não contribuição.
 
 **Tolerância na inativação**: o corte é `LIMIAR_INATIVACAO` (mínimo menos `TOLERANCIA_INATIVACAO`,
-hoje 10% → 900), não os 1.000 cheios. É folga para erro de leitura da API de guild points: o desvio
-normal é de 1 a 10 pontos, mas em 08/2026 um membro com 1.020 foi lido como 902. O número é para ir
-sendo calibrado. A **regra continua sendo 1.000** — é o que a DM, o anúncio e o lembrete de domingo
+hoje 3% → 970), não os 1.000 cheios. É folga para erro de leitura da API de guild points: o desvio
+normal é de 1 a 10 pontos, mas em 08/2026 um membro com 1.020 foi lido como 902. Começou em 10% e
+o usuário fechou em 3% depois de três semanas conferindo a leitura (02/09/2026): 30 pontos cobrem o
+desvio que aparece na prática, e a folga larga poupava quem simplesmente não jogou.
+A **regra continua sendo 1.000** — é o que a DM, o anúncio e o lembrete de domingo
 cobram; a folga só decide quem é marcado. Quem cai nela vira `poupados` com motivo `TOLERANCIA`, e a
 prévia do `.inativar` mostra a contagem. O lembrete de domingo passa `limiar: CONTRIBUICAO_MINIMA`
 de propósito: lá o objetivo é empurrar para fora da fronteira, não poupar.
