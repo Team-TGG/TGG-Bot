@@ -37,6 +37,18 @@ import { discord as discordConfig, ticketInatividade as config } from '../../con
 
 const DIA_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Folga no prazo da escalada.
+ *
+ * O carimbo de ontem é gravado **depois** do envio (setup da rodada, o send e o update), e a
+ * decisão de hoje é tomada **antes** dele. Com as duas rodadas saindo do mesmo cron das 07:00, o
+ * intervalo medido é sempre alguns segundos **menor** que as 24h cheias — então a comparação
+ * exata nunca fechava no dia seguinte e a escalada só saía no terceiro dia, com 48h. A folga é
+ * grande o bastante para absorver atraso de cron e restart, e pequena o bastante para não
+ * escalar na mesma rodada em que o membro foi avisado.
+ */
+const MARGEM_ESCALADA_MS = 60 * 60 * 1000;
+
 /** Teto de linhas por bloco do resumo. Lista cortada tem que dizer que foi cortada. */
 const MAX_LINHAS = 20;
 
@@ -62,7 +74,8 @@ export function decidirAcao(ticket, { posicao, ultimaAtividade, agora = Date.now
 
   if (avisoEm) {
     const desdeOAviso = agora - new Date(avisoEm).getTime();
-    if (desdeOAviso < config.horasParaEscalar * 60 * 60 * 1000) return { acao: null };
+    const prazo = config.horasParaEscalar * 60 * 60 * 1000 - MARGEM_ESCALADA_MS;
+    if (desdeOAviso < prazo) return { acao: null };
 
     // Sem checar posição de novo: a pergunta foi feita em público no ticket dele e continua sem
     // resposta. Deixar pendurada porque ele subiu na fila enquanto isso seria pior do que o ping.
@@ -121,7 +134,7 @@ function textoParaOMembro(discordId, posicao, parado) {
   );
 }
 
-function textoParaOResponsavel(ticket, parado) {
+export function textoParaOResponsavel(ticket, parado) {
   const quem = ticket.responsavel_discord_id ? `<@${ticket.responsavel_discord_id}>` : '';
 
   // "Última interação" e não "está parado há": ele pode ter voltado a falar em outros canais sem
@@ -170,7 +183,7 @@ async function resumirParaStaff(client, avisados, escalados) {
     embed.addFields({
       name: `🔔 Avisados no ticket (${avisados.length})`,
       value: linhas(avisados, a =>
-        `<@${a.openerId}> — ${Math.floor(a.parado)} dias · posição ${a.posicao}`
+        `<#${a.canalId}> · <@${a.openerId}> — ${Math.floor(a.parado)} dias · posição ${a.posicao}`
       ),
     });
   }
@@ -179,7 +192,8 @@ async function resumirParaStaff(client, avisados, escalados) {
     embed.addFields({
       name: `⚠️ Sem resposta, responsável chamado (${escalados.length})`,
       value: linhas(escalados, e =>
-        `<@${e.openerId}> — ${e.parado === null ? 'sem leitura' : `${Math.floor(e.parado)} dias`} · ` +
+        `<#${e.canalId}> · <@${e.openerId}> — ` +
+        `${e.parado === null ? 'sem leitura' : `${Math.floor(e.parado)} dias`} · ` +
         `posição ${e.posicao} · ` +
         (e.responsavelId ? `responsável <@${e.responsavelId}>` : '**sem responsável**')
       ),
@@ -257,6 +271,7 @@ export async function cobrarInativosDaFila(client) {
       .catch(err => console.error(`[TICKET INATIVIDADE] falha ao carimbar ${ticket.channel_id}: ${err.message}`));
 
     const registro = {
+      canalId: ticket.channel_id,
       openerId: ticket.opener_discord_id,
       responsavelId: ticket.responsavel_discord_id,
       posicao,
