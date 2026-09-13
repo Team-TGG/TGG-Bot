@@ -184,6 +184,11 @@ normalmente quando consultados sozinhos. É a explicação mais provável para o
 já que o cron do site percorre centenas de contas por essa rota a cada 15 min. `ensurePlayerWeeklyInfo`
 também usa o lote primeiro, caindo na rota individual só para conta fora da guilda (alt).
 
+O mesmo vale para `/v1/player/stats` e as demais rotas por conta, e piora com concorrência: 32
+chamadas simultâneas deram 18× `502` (02/09/2026). Varredura conta a conta precisa repetir o `404` antes
+de aceitar, refazer em série quem sobrou e manter poucas chamadas em voo — o padrão está em `lerApi`
+([src/services/insigniasLeitura.js](src/services/insigniasLeitura.js)).
+
 ### Contribuição da semana: MVP e inativação
 
 As duas rotinas leem o **mesmo** número, de [src/services/contribuicaoSemanal.js](src/services/contribuicaoSemanal.js):
@@ -196,7 +201,10 @@ O `.lb-guilda` lê o mesmo número (ordenação e embed em
 [src/handlers/publicHandlers.js](src/handlers/publicHandlers.js)), filtrando `FORA_DA_GUILDA`: mostra quem tem cadastro **e** está na guilda do jogo. A rota devolve 643
 contas (11/08/2026) mas a base semanal só existe para as cadastradas — sem o filtro, dois terços da
 lista seria `—`. Registro incompleto da API (sem `rank`/`join_date`/`guild_points`, 38 das 643) vira
-`points: null`, que o cálculo continua lendo como 0 e o leaderboard mostra como `—`.
+`points: null`, que o cálculo continua lendo como 0 e o leaderboard mostra como `—`. Desde 02/09/2026
+a rota devolve o plantel atual, com cerca de um dia de atraso para quem sai (204 contas em 13/09, 9
+delas com saída registrada no mesmo dia): o filtro continua certo, mas os números acima são de quando
+ela misturava ex-membros.
 
 O `.lb-guilda` também marca com 🏅 quem está elegível ao MVP, chamando `selecionarMvpsDasLinhas`
 (a parte pura de `calcularMvpsDaSemana`, extraída para os dois lados usarem a mesma regra em vez de
@@ -629,6 +637,49 @@ no log: sem isso ninguém descobre até alguém reclamar.
 reaplicado à vontade, conquista duplicada vira pagamento duplicado — e é o que torna a rotina
 repetível depois de um restart.
 
+### Insígnias do `.profile`
+
+Cortadas por assunto: [insigniasCatalogo.js](src/services/insigniasCatalogo.js) diz **o que** cada
+insígnia mede e os cortes; [insigniasLeitura.js](src/services/insigniasLeitura.js) lê banco e API e
+monta um contexto por membro; [insigniasMotor.js](src/services/insigniasMotor.js) transforma contexto em
+tier e grava em `profile_badges`. Banco em [src/insignias.js](src/insignias.js), SQL das tabelas em
+[docs/sql/insignias.sql](docs/sql/insignias.sql). Insígnia nova quase sempre é só uma entrada no catálogo.
+
+`chave` é o que fica gravado e **nunca muda**; `nome` é o que o membro vê e pode mudar à vontade.
+
+**`null` é "não sei", nunca zero.** Leitura que falhou não gera linha e o tier gravado fica como estava:
+insígnia não pode sumir do perfil porque a API tossiu às 4 da manhã. O tier só cai por motivo real
+(warn, streak quebrada, inativação), e cada insígnia declara `acumulacao` — `atual` segue o valor medido,
+`recorde` nunca desce e é obrigatória no que vem das rotas por conta da v1, que falham calado.
+
+**Vitórias ranked são da temporada, não da vida inteira** (medido em 13/09/2026: veterano com 63 mil
+vitórias e 24 de ranked 1v1). Com `recorde` a insígnia guarda a melhor temporada medida; somar
+temporadas exigiria gravar o fechamento de cada uma.
+
+**Mensagens e call** somam a exportação do Apolo de 13/09/2026 (`player_activity.*_iniciais`) com o que
+[insigniasAtividade.js](src/services/insigniasAtividade.js) conta depois dela (`*_contadas`): só membro
+ativo, sem o canal de AFK, gravado a cada 5 min. Ler-somar-gravar é seguro aqui porque ninguém digita as
+`*_contadas` e o contador não roda em dev. Importar uma exportação nova exige zerar as `*_contadas` na
+mesma hora — senão o período entre a exportação antiga e a nova é contado duas vezes.
+
+Armadilhas que o cálculo já trata e não devem ser "simplificadas":
+
+- Leitura de tabela inteira pagina: o PostgREST corta todo select em 10.000 linhas sem erro.
+- Recorde semanal ignora semana com base 0 e par de semanas não adjacente — sem isso o recorde de 1v1
+  saía 385 vitórias em 7 dias, que eram 157.
+- A streak do `.daily` é decidida pela data: a coluna guarda o número antigo de quem já perdeu (63
+  linhas em 13/09/2026, uma com 133 dias parada havia 21).
+- Semanas sem inativar não passam do tempo de guilda, e na quarta antes das 06:10 a âncora recua uma
+  semana, porque a inativação daquele dia ainda não rodou.
+- `birthdays.user_id` é int8 e precisa de `::text`, senão o snowflake perde os últimos dígitos.
+- As rotas de modo (`ranked_1v1`, `ranked_3v3`, `teams`) perdem leituras numa varredura da guilda
+  inteira mesmo com ritmo de 300 ms (13/09/2026: 145 membros com vitória de 1v1 contra ~180 reais). É 404
+  vindo da origem — o Cloudflare responde `DYNAMIC` e furar cache com parâmetro não muda nada — e
+  intermitente: a mesma rajada de 60 chamadas deu 13 falhas numa hora e zero na seguinte. Nada na
+  resposta diz quem devia ter registro (`region_ranks` vem vazio). Quem resolve é o `recorde`: o que falta
+  numa noite entra numa das seguintes, e o log de cada rodada mostra quantas leituras de modo ficaram sem
+  registro, antes e depois da repescagem. Não troque o `recorde` dessas insígnias por `atual`.
+
 ### API do Brawlhalla
 
 Referência completa em [docs/brawlhalla-api.md](docs/brawlhalla-api.md): endpoints, schemas, o que ainda
@@ -657,8 +708,8 @@ corrigida pouco antes de 04/08/2026). Não monte análise de membro em cima dele
 Dois caches em disco, ambos no `.gitignore`:
 
 - `cache/` — por jogador (`player_<id>.json`) e compartilhado (`shared.json`), TTL de 5 min,
-  gerenciado em [src/brawlhalla.js](src/brawlhalla.js). Há um rate limiter próprio (180 req / 15 min)
-  que *espera* em vez de falhar.
+  gerenciado em [src/brawlhalla.js](src/brawlhalla.js). Há dois rate limiters próprios (v1: 2000 req / 5 min;
+  v0: 180 req / 15 min) que *esperam* em vez de falhar.
 - `.brawlhalla-clan-cache.json` — snapshot do clã, atualizado por `fetchBrawlhallaClanData()`.
   `syncNicknames` prefere o cache e só chama a API se o arquivo não existir; `.refresh-cache` força atualização.
 
@@ -701,11 +752,16 @@ Todos registrados no `ClientReady`:
   ([src/services/ticketInatividade.js](src/services/ticketInatividade.js)) e avisa ticket cujo
   autor saiu do servidor ([src/services/ticketOrfaos.js](src/services/ticketOrfaos.js)). Ver acima.
 - Cron `0 1 * * *` — recalcula a ordem da fila por tickets ([src/services/ticketReorder.js](src/services/ticketReorder.js)). Ver acima.
+- Cron `0 4 * * *` — recalcula as insígnias do `.profile` de todo membro ativo
+  ([src/services/insigniasMotor.js](src/services/insigniasMotor.js)). Ver acima.
 - `setInterval` — ciclo da fila por tickets (1 min, `TICKET_CYCLE_SECONDS`): reconciliação,
   contadores de mensagem e call, cobrança de resposta pendente, saída do filtro de inatividade de
   quem escreveu no próprio ticket, e recálculo da ordem quando algum ticket foi encerrado. Roda **também em modo dev**
   (decisão do usuário, 14/08/2026) — dois processos com o mesmo token contam cada mensagem duas
   vezes, então pare a VM antes de subir local.
+- `setInterval` — contador de mensagens e call das insígnias (5 min,
+  [src/services/insigniasAtividade.js](src/services/insigniasAtividade.js)). **Só em produção**, ao
+  contrário do ciclo dos tickets: a contagem é permanente e dois processos contariam em dobro.
 - `setInterval` — lembrete de inativos (3h por padrão, `INACTIVE_MESSAGE_INTERVAL`).
 - `restoreMutes` / `restoreTemporaryWarnings` — reagendam expirações persistidas em `mutes` / `warnings`
   depois de um restart.
@@ -738,6 +794,8 @@ Sem migrations no repo — o schema vive no Supabase. Domínios principais:
 - **Fila por tickets**: `ticket_queue`, `ticket_activity`, view `vw_ticket_pontos`, função
   `incrementar_atividade_ticket`.
 - **Moderação/diversos**: `warnings`, `mutes`, `motd`, `birthdays`, `tgg_quiz_completed`, `contador_crz`.
+- **Insígnias do `.profile`**: `profile_badges`, `profile_badge_tiers`, `profiles`, `weekly_mvp_history`,
+  `player_activity` — SQL em [docs/sql/insignias.sql](docs/sql/insignias.sql).
 
 ## Convenções
 

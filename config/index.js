@@ -167,6 +167,13 @@ export const weeklyMvp = {
   premios: { 1: 250, 2: 200, 3: 150 },
 };
 
+// Insígnias do .profile, recalculadas às 04:00 (ver src/services/insigniasMotor.js).
+export const insignias = {
+  // O cargo VIP da loja (ROLE, 5.000). Existe também "Cargos de cor (VIP)" (ROLE_VIP, 1.000), que
+  // é o que o VIP destrava — a insígnia é de comprar o VIP, não o que ele compra.
+  vipShopId: '5dc0490c-1cc9-4df2-af7f-ddb0365af618',
+};
+
 // Duelo semanal de guildas, cadastrado sozinho na quinta 06:00 (ver src/services/guildDuelService.js).
 export const guildDuel = {
   ourGuildId: '396943',

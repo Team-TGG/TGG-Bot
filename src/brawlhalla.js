@@ -39,7 +39,7 @@ function rateLimitWait(limit) {
   return limit.window - (now - limit.log[0]) + 50;
 }
 
-async function apiFetch(url) {
+export async function apiFetch(url) {
   const limit = limitFor(url);
   const wait = rateLimitWait(limit);
 
@@ -61,7 +61,11 @@ async function apiFetch(url) {
       details = (await res.text().catch(() => '')).trim().slice(0, 500);
     }
 
-    throw new Error(`API Error ${res.status} ${res.statusText}${details ? `: ${details}` : ''}`);
+    const erro = new Error(`API Error ${res.status} ${res.statusText}${details ? `: ${details}` : ''}`);
+    // Status à parte da mensagem: quem varre a guilda precisa separar 404 de 5xx para decidir se
+    // insiste — sob carga a v1 devolve 404 para conta que existe (medido em 02/09/2026).
+    erro.status = res.status;
+    throw erro;
   }
   return res.json();
 }

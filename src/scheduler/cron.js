@@ -13,6 +13,7 @@ import { cobrarInativosDaFila } from '../services/ticketInatividade.js';
 import { avisarTicketsOrfaos } from '../services/ticketOrfaos.js';
 import { avisarMovimentacao } from '../services/guildHistoryService.js';
 import { recalcularOrdemDaFila } from '../services/ticketReorder.js';
+import { recalcularInsignias } from '../services/insigniasMotor.js';
 
 export function startCronJobs(client, services) {
   const {
@@ -195,6 +196,19 @@ export function startCronJobs(client, services) {
       await recalcularOrdemDaFila(client);
     } catch (err) {
       console.error('[CRON ERROR - Fila de tickets]', err);
+    }
+  }, {
+    timezone: 'America/Sao_Paulo'
+  });
+
+  // Insígnias do .profile - 04:00. Depois do full sync das 03:00 para os dois não disputarem a API,
+  // e de madrugada porque a varredura é lenta de propósito: com mais de 4 chamadas em voo a v1
+  // devolve 502 e 404 falso. Leitura que falha mantém o tier de ontem, então rodar mal não rebaixa.
+  cron.schedule('0 4 * * *', async () => {
+    try {
+      await recalcularInsignias();
+    } catch (err) {
+      console.error('[CRON ERROR - Insignias]', err);
     }
   }, {
     timezone: 'America/Sao_Paulo'

@@ -19,6 +19,7 @@ npm run dev
 | Lembrete de inativos (ping no canal + DM) | roda 5 s após o boot | **pulado** |
 | Crons (cargos, ELO, apelidos, aniversários, MOTD) | roda | **pulado** |
 | Restaurar mutes e warns temporários | roda | **pulado** |
+| Contador de mensagens e call das insígnias | roda | **pulado** |
 | Responder comandos `.` e `/` | roda | roda |
 
 O lembrete de inativos é o motivo principal de isso existir: ele não tem controle de "já mandei hoje",
