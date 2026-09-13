@@ -52,9 +52,13 @@ motivo de a migração estar sendo feita agora. Consequências:
 | API key | obrigatória (`?api_key=`) | **não exige** |
 | Rate limit | 180 req / 15 min | **2000 req / 5 min** |
 
-**O bot usa um limitador só** (`apiFetch` em [src/brawlhalla.js](../src/brawlhalla.js)), configurado em
-180/15min — o limite da API velha. Ou seja, as chamadas `/v1/` estão estranguladas no ritmo da v0.
-Separar os dois contadores é pré-requisito para qualquer comando que varra a guilda inteira.
+O bot tem **dois limitadores independentes** em `apiFetch` ([src/brawlhalla.js](../src/brawlhalla.js)),
+escolhidos pelo `/v1/` na URL.
+
+**Na v1 o gargalo não é a cota, é a concorrência.** Medido em 02/09/2026: 20 chamadas em série passam
+todas; 32 disparadas juntas dão 13 respostas boas, 18× `502` e 1× `404`. Em milhares de chamadas não saiu
+nenhum `429` nem cabeçalho de cota. Varrer a guilda inteira exige teto de chamadas em voo — as insígnias
+usam 4, em `lerApi` de [src/services/insigniasLeitura.js](../src/services/insigniasLeitura.js).
 
 ## O que o bot chama hoje
 
@@ -66,6 +70,7 @@ Separar os dois contadores é pré-requisito para qualquer comando que varra a g
 | `fetchPlayerGuildStatsNewAPI` | `/v1/player/guild` |
 | `fetchGuildStatsNewAPI` | `/v1/guild/stats` |
 | `fetchGuildMembersNewAPI` | `/v1/guild/members` |
+| `insigniasLeitura.js` (cron 04:00) | `/v1/player/stats` (`all`, `ranked_1v1`, `ranked_3v3`), `/v1/player/teams`, `/v1/guild/members`, `/v1/static/legends` |
 
 ### Ainda na v0 — a migrar
 
@@ -79,6 +84,11 @@ Separar os dois contadores é pré-requisito para qualquer comando que varra a g
 | `fetchLegends` (132) | `/legend/all` | `/v1/static/legends` |
 
 ### As duas rotas de membro não devolvem a mesma coisa — cuidado ao trocar
+
+> **Mudou em 02/09/2026:** `/v1/guild/members` passou a devolver o plantel atual, e não mais todo mundo que
+> já passou pela guilda — 200 contas, um `Leader`, nenhuma sem `rank`. Mas **com atraso para quem sai**: em
+> 13/09/2026 vieram 204, e 9 delas o cron do site tinha registrado como saída naquele mesmo dia, enquanto
+> quem saiu dois dias antes já não aparecia. O texto abaixo é de quando a rota misturava ex-membros.
 
 Medido em 04/08/2026:
 
@@ -133,6 +143,9 @@ Mudanças de formato para quando for a hora: `region` virou string (`"BRZ"` em v
 
 ### Lendas — a v1 está sem o Aurus
 
+> **Mudou em 02/09/2026:** a rota passou a trazer 71 registros numa página, com o Aurus (`legend_id 71`,
+> Chakram + Spear). O `RANDOM` (`legend_id 2`) continua lá, então são 70 lendas de verdade.
+
 `/v1/static/legends?max_results=100` traz as 69 numa página só (`total_pages: 1`), então a paginação
 não chega a ser problema. Os atributos e as armas batem com a v0. Mas comparando por `legend_id`:
 
@@ -151,7 +164,7 @@ estatísticas do jogador é indexado por `legend_name_key`, **se um dia migrar, 
 | Item | Trava |
 | :-- | :-- |
 | 2v2 (`brawlhalla.js:608`) | cron do site precisa migrar junto; senão jogos negativos |
-| `fetchLegends` | v1 sem o Aurus |
+| `fetchLegends` | ~~v1 sem o Aurus~~ (resolvido em 02/09/2026); falta ignorar o `RANDOM` |
 | `fetchPlayerStats` / `NoResolve` | mesmo acoplamento de baseline do 2v2 |
 | `/clan/{id}` | v1 não separa plantel atual de ex-membro |
 
@@ -159,8 +172,20 @@ estatísticas do jogador é indexado por `legend_name_key`, **se um dia migrar, 
 
 ### `/v1/player/stats?brawlhalla_id=&mode=`
 `mode` aceita `all` (padrão), `ranked_1v1`, `ranked_3v3`. **Não existe `ranked_2v2`** — 2v2 vem de
-`/v1/player/teams`. Retorna agregados do jogador + array `legends` com `legend_id`, `games`, `wins`,
-`rating`, `peak_rating`. Nos modos ranked traz `rating`, `peak_rating`, `tier`, `region`, `global_rank`.
+`/v1/player/teams`.
+
+Com `mode=all` (medido em 02/09/2026) a raiz traz `name`, `games`, `wins`, `xp`, `level`, `xp_percentage`,
+os `damage_*`/`ko_*` de itens e `region_ranks`. Cada item de `legends` traz `legend_id`, `games`, `wins`,
+`damage_dealt`, `damage_taken`, `kos`, `falls`, `suicides`, `team_kos`, `match_time`, `damage_unarmed`,
+`damage_thrown_item`, `damage_weapon_one`/`_two`, `damage_gadgets`, `ko_unarmed`, `ko_weapon_one`/`_two`,
+`ko_gadgets`, `time_held_weapon_one`/`_two`, `xp`, `level` e `xp_percentage`. Ou seja, **tudo que a v0
+dá, menos `legend_name_key` e `ko_thrown_item`** — junte lenda por `legend_id`. `level` e `xp` **somem da
+resposta** em conta com pouquíssimas partidas (vista com 4 jogos): ausente não é 0.
+
+Nos modos ranked traz `rating`, `peak_rating`, `tier`, `region`, `global_rank`, `games` e `wins` — **da
+temporada atual, não da vida inteira**. Medido em 13/09/2026: o veterano com 63 mil vitórias tinha 24 de
+ranked 1v1, e na semana seguinte à virada de 24/06 a base de vitórias de 166 contas caiu pela metade.
+Conta sem partida no modo devolve `404`.
 
 ### `/v1/player/teams?brawlhalla_id=`
 ```json
@@ -213,3 +238,10 @@ Parâmetros: `page`, `max_results` (máx 100, **padrão 50**), `filter_by_id`, `
 
 5. **A doc mente sobre o reset semanal** — ver a seção acima. Não é a única vez que a descrição
    textual descreve o jogo em vez da resposta da API; na dúvida, meça contra os dados reais.
+
+6. **`404` sob carga não quer dizer "não existe".** Varrendo `/v1/player/stats` conta a conta, a v1
+   devolve `404` para jogador que responde normalmente sozinho — e como `404` também é a resposta legítima
+   de conta sem partida no modo, o erro passa como dado. Na primeira varredura das insígnias (02/09/2026),
+   183 de 200 membros saíram com zero vitória **sem um único erro registrado**. Repita o `404` antes de
+   aceitá-lo e refaça em série quem sobrou. É o mesmo comportamento que o `CLAUDE.md` registra na
+   `/v1/player/guild`, então vale para as rotas por conta em geral, não para uma só.
