@@ -16,14 +16,18 @@ import { registrarUsoDoHelp } from './insignias.js';
 import { lerAlvoDoArgumento, montarRespostaDoCartao } from './handlers/perfilHandlers.js';
 
 import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage, createPagination } from '../utils/discordUtils.js';
-import { isAdmin, adminOnly, channelOnly, leaderOnly } from '../utils/permissions.js';
+import { isAdmin, adminOnly, channelOnly, hasPermission } from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
 import { SOCIALS } from '../config/socials.js';
 
 // .profile [@membro]
-// Em teste, só o líder e só em comandos-staff (ver `perfil` na config). O canal é checado aqui e não com
-// channelOnly, que isenta admin: o líder é admin, e a trava não valeria justamente para ele.
-export const handleProfile = leaderOnly(async (message, args, client) => {
+// Em teste, assistant para cima e só em comandos-staff (ver `perfil` na config). O canal é checado aqui e
+// não com channelOnly, que isenta admin: a trava não valeria para metade de quem está testando.
+export async function handleProfile(message, args, client) {
+  if (!hasPermission(message.member, 1)) {
+    return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'O `.profile` está em teste, só para assistants ou superiores.')] });
+  }
+
   if ((message.channelId ?? message.channel?.id) !== perfilConfig.channelId) {
     return message.reply({
       embeds: [createErrorEmbed('Canal Errado', `Esse comando só funciona no canal <#${perfilConfig.channelId}>.`)],
@@ -53,7 +57,7 @@ export const handleProfile = leaderOnly(async (message, args, client) => {
 
   const aviso = await message.reply({ embeds: [createLoadingEmbed('Gerando o perfil...')] });
   await aviso.edit(await montarRespostaDoCartao(client, usuario, message.guild));
-});
+}
 
 // .help
 export async function handleHelp(message, args, client) {

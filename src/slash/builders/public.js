@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, AttachmentBuilder, PermissionFlagsBits } from 'discord.js';
+import { SlashCommandBuilder, AttachmentBuilder } from 'discord.js';
 
 // Comandos públicos
 export const publicCommands = [
@@ -23,9 +23,7 @@ export const publicCommands = [
   new SlashCommandBuilder()
     .setName('profile')
     .setDescription('Mostra o cartão de perfil com a vitrine de insígnias')
-    .addUserOption(o => o.setName('usuario').setDescription('Ver o perfil de outro membro'))
-    // Em teste, só do líder: esconde da lista de quem não é admin. Quem trava de verdade é o leaderOnly.
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    .addUserOption(o => o.setName('usuario').setDescription('Ver o perfil de outro membro')),
 
   new SlashCommandBuilder()
     .setName('guild')

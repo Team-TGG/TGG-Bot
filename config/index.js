@@ -176,8 +176,8 @@ export const insignias = {
   topsonId: '252249131202904074',
 };
 
-// .profile (ver src/handlers/perfilHandlers.js). Em teste até o lançamento: só o líder e só aqui, sem
-// isenção (pedido do usuário, 14/09/2026). No lançamento vai para Comandos (1437416406038872225), staff isenta.
+// .profile (ver src/handlers/perfilHandlers.js). Em teste até o lançamento: assistant para cima e só aqui,
+// sem isenção (pedido do usuário, 14/09/2026). No lançamento vai para Comandos (1437416406038872225), staff isenta.
 export const perfil = {
   channelId: '1437504463375175936', // Comandos Staff
   logChannelId: '1536704688689516624', // log-guilda - mensagem de perfil apagada pela staff
