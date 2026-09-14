@@ -706,6 +706,15 @@ insígnia não pode sumir do perfil porque a API tossiu às 4 da manhã. O tier 
 vitórias e 24 de ranked 1v1). Com `recorde` a insígnia guarda a melhor temporada medida; somar
 temporadas exigiria gravar o fechamento de cada uma.
 
+**A rota base (level, lendas, vitórias, dano, horas, arma) lê a v0, temporariamente.** Com conta
+vinculada, a v1 devolve a última conta vinculada em que a pessoa jogou, e não a pedida: um membro com
+level 100 e Scarlet 49 saía com 84 e 34 (14/09/2026). O bug foi reportado à Brawlhalla. Quando for
+corrigido, `lerGeral` volta para a v1 e os afetados rodam o sync do cartão. Enquanto isso, a rodada
+das 04:00 passa das 180 chamadas por 15 min da v0 e fica esperando o limitador, que é o mesmo do
+`.stats`: um `.stats` feito durante a varredura pode demorar. O sync não derruba valor inflado,
+porque o `recorde` segura o que a conta errada deu a mais. Detalhes na pegadinha 7 de
+[docs/brawlhalla-api.md](docs/brawlhalla-api.md).
+
 **Mensagens e call** somam a exportação do Apolo de 13/09/2026 (`player_activity.*_iniciais`) com o que
 [insigniasAtividade.js](src/services/insigniasAtividade.js) conta depois dela (`*_contadas`): só membro
 ativo, sem o canal de AFK, gravado a cada 5 min. Ler-somar-gravar é seguro aqui porque ninguém digita as

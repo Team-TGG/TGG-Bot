@@ -70,7 +70,7 @@ usam 4, em `lerApi` de [src/services/insigniasLeitura.js](../src/services/insign
 | `fetchPlayerGuildStatsNewAPI` | `/v1/player/guild` |
 | `fetchGuildStatsNewAPI` | `/v1/guild/stats` |
 | `fetchGuildMembersNewAPI` | `/v1/guild/members` |
-| `insigniasLeitura.js` (cron 04:00) | `/v1/player/stats` (`all`, `ranked_1v1`, `ranked_3v3`), `/v1/player/teams`, `/v1/guild/members`, `/v1/static/legends` |
+| `insigniasLeitura.js` (cron 04:00) | `/v1/player/stats` (`ranked_1v1`, `ranked_3v3`), `/v1/player/teams`, `/v1/guild/members`, `/v1/static/legends` — a rota base está na v0, ver abaixo |
 
 ### Ainda na v0 — a migrar
 
@@ -82,6 +82,7 @@ usam 4, em `lerApi` de [src/services/insigniasLeitura.js](../src/services/insign
 | `fetchClanStats` (517) | `/clan/{id}` | `/v1/guild/stats` + `/v1/guild/members` |
 | `nicknameSync.js:55` | `/clan/{id}` | `/v1/guild/members` |
 | `fetchLegends` (132) | `/legend/all` | `/v1/static/legends` |
+| `lerGeral` em `insigniasLeitura.js` | `/player/{id}/stats` | `/v1/player/stats` — **voltou para a v0 de propósito** (14/09/2026), pelo bug de conta vinculada (pegadinha 7). Volta quando a Brawlhalla corrigir |
 
 ### As duas rotas de membro não devolvem a mesma coisa — cuidado ao trocar
 
@@ -180,7 +181,8 @@ os `damage_*`/`ko_*` de itens e `region_ranks`. Cada item de `legends` traz `leg
 `damage_thrown_item`, `damage_weapon_one`/`_two`, `damage_gadgets`, `ko_unarmed`, `ko_weapon_one`/`_two`,
 `ko_gadgets`, `time_held_weapon_one`/`_two`, `xp`, `level` e `xp_percentage`. Ou seja, **tudo que a v0
 dá, menos `legend_name_key` e `ko_thrown_item`** — junte lenda por `legend_id`. `level` e `xp` **somem da
-resposta** em conta com pouquíssimas partidas (vista com 4 jogos): ausente não é 0.
+resposta** em conta com pouquíssimas partidas (vista com 4 jogos): ausente não é 0. Também somem, junto com o
+`level` de cada lenda, em conta afetada pelo bug de conta vinculada (pegadinha 7): vista em 14/09/2026 com 10 mil jogos.
 
 Nos modos ranked traz `rating`, `peak_rating`, `tier`, `region`, `global_rank`, `games` e `wins` — **da
 temporada atual, não da vida inteira**. Medido em 13/09/2026: o veterano com 63 mil vitórias tinha 24 de
@@ -245,3 +247,12 @@ Parâmetros: `page`, `max_results` (máx 100, **padrão 50**), `filter_by_id`, `
    183 de 200 membros saíram com zero vitória **sem um único erro registrado**. Repita o `404` antes de
    aceitá-lo e refaça em série quem sobrou. É o mesmo comportamento que o `CLAUDE.md` registra na
    `/v1/player/guild`, então vale para as rotas por conta em geral, não para uma só.
+
+7. **Com conta vinculada (cross progression), a v1 responde com a conta errada.** Pedindo a conta da
+   Steam de quem está jogando na vinculada do celular, `/v1/player/stats` devolve a **última conta
+   vinculada em que a pessoa jogou**; a v0 devolve a pedida. Medido em 14/09/2026 na mesma conta: v0 com
+   level 100, XP 1.237.193 e Scarlet 49; v1 com level 84, XP 741.005 e maior lenda 34. Reportado à
+   Brawlhalla por email. Até corrigirem, a rota base das insígnias lê a v0 (`lerGeral`). Não foi
+   conferido se as rotas de modo e `/v1/player/teams` têm o mesmo defeito. A v0 tem dois detalhes que
+   a v1 não tem: conta inexistente volta `200 {}` em vez de `404`, e os campos das lendas vêm sem
+   sublinhado (`damagedealt`, `matchtime`, `timeheldweaponone`).

@@ -41,12 +41,16 @@ function rateLimitWait(limit) {
 
 export async function apiFetch(url) {
   const limit = limitFor(url);
-  const wait = rateLimitWait(limit);
+  let wait = rateLimitWait(limit);
 
   if (wait > 0) {
     console.warn(`[Brawlhalla] Rate limit ${limit.label} atingido, aguardando ${Math.ceil(wait / 1000)}s`);
+  }
+  // Reconfere depois de acordar: chamadas que esperavam juntas acordam juntas, e sem isso todas entravam
+  // na vaga de uma só e passavam do teto. A varredura das insígnias na v0 bate nele toda noite.
+  while (wait > 0) {
     await new Promise(r => setTimeout(r, wait));
-    rateLimitWait(limit); // reaproveita a limpeza da janela após a espera
+    wait = rateLimitWait(limit);
   }
 
   limit.log.push(Date.now());

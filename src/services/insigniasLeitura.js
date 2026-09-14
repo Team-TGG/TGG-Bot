@@ -11,6 +11,7 @@ import { getFontesInsignias, getVinculosDeContas } from '../insignias.js';
 import { brawlhalla as brawlhallaConfig, insignias as config } from '../../config/index.js';
 
 const V1 = 'https://api.brawlhalla.com/v1';
+const V0 = 'https://api.brawlhalla.com';
 const DIA_MS = 24 * 60 * 60 * 1000;
 
 /* Guild points anteriores a 08/2026 não são confiáveis (a API devolvia valor errado). Vale só
@@ -116,9 +117,35 @@ function contarModosSemRegistro(ids, leituras) {
   return n;
 }
 
+// A v0 tira o sublinhado dos campos das lendas; somarJogo lê os nomes da v1.
+function paraFormatoV1(dados) {
+  return {
+    wins: dados.wins,
+    level: dados.level,
+    legends: (dados.legends ?? []).map(lenda => ({
+      legend_id: lenda.legend_id,
+      level: lenda.level,
+      damage_dealt: lenda.damagedealt,
+      match_time: lenda.matchtime,
+      time_held_weapon_one: lenda.timeheldweaponone,
+      time_held_weapon_two: lenda.timeheldweapontwo,
+    })),
+  };
+}
+
+/* Temporário: a v1 responde com a última conta vinculada em que a pessoa jogou, não com o id pedido
+   (bug já reportado à Brawlhalla, 14/09/2026). Quando corrigirem, volta para `${V1}/player/stats` e os
+   afetados rodam o sync do cartão. Ver "Insígnias do .profile" no CLAUDE.md. */
+async function lerGeral(id) {
+  const dados = await lerApi(`${V0}/player/${id}/stats?api_key=${process.env.BRAWLHALLA_API_KEY}`, ROTA_BASE);
+  if (semLeitura(dados)) return dados;
+  // Conta inexistente é 200 com `{}` na v0, onde a v1 dá 404.
+  return dados.brawlhalla_id ? paraFormatoV1(dados) : null;
+}
+
 async function lerConta(id) {
   const [geral, r1, r3, duplas] = await Promise.all([
-    lerApi(`${V1}/player/stats?brawlhalla_id=${id}`, ROTA_BASE),
+    lerGeral(id),
     lerApi(`${V1}/player/stats?brawlhalla_id=${id}&mode=ranked_1v1`, ROTA_MODO),
     lerApi(`${V1}/player/stats?brawlhalla_id=${id}&mode=ranked_3v3`, ROTA_MODO),
     lerApi(`${V1}/player/teams?brawlhalla_id=${id}`, ROTA_MODO),
@@ -138,7 +165,7 @@ async function lerContas(ids) {
     if (!faltando.length) break;
 
     for (const id of faltando) {
-      leituras.get(id).geral = await lerApi(`${V1}/player/stats?brawlhalla_id=${id}`, ROTA_BASE);
+      leituras.get(id).geral = await lerGeral(id);
     }
   }
 
