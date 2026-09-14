@@ -15,6 +15,10 @@ const RESERVAS = [
   ['NotoSansJP-Variable.ttf', 'Noto Sans JP'],
 ];
 
+/* Emoji colorido em COLRv1 (5 MB; a versão bitmap tem 25 MB e desenha igual). Na mensagem vem antes da
+   Symbols 2, senão ❤️ sai sem cor; no nick vem no fim, para ★ e ✔ de nick continuarem texto. */
+const EMOJI = ['NotoColorEmoji-COLRv1.ttf', 'Noto Color Emoji'];
+
 export const LARGURA = 1000;
 export const ALTURA = 420;
 
@@ -51,7 +55,7 @@ function carregarCanvas() {
     for (const peso of ['Regular', 'SemiBold', 'Bold', 'ExtraBold']) {
       m.GlobalFonts.registerFromPath(path.join(FONTES, `Montserrat-${peso}.ttf`), FAMILIA);
     }
-    for (const [arquivo, familia] of RESERVAS) {
+    for (const [arquivo, familia] of [...RESERVAS, EMOJI]) {
       m.GlobalFonts.registerFromPath(path.join(FONTES, arquivo), familia);
     }
     return m;
@@ -59,17 +63,22 @@ function carregarCanvas() {
   return canvasPromise;
 }
 
-const PILHA = [FAMILIA, ...RESERVAS.map(([, familia]) => `"${familia}"`)].join(', ');
-const fonte = (peso, tamanho) => `${peso} ${tamanho}px ${PILHA}`;
+const aspas = ([, familia]) => `"${familia}"`;
+const PILHA = [FAMILIA, ...[...RESERVAS, EMOJI].map(aspas)].join(', ');
+const PILHA_MENSAGEM = [FAMILIA, ...[RESERVAS[0], EMOJI, ...RESERVAS.slice(1)].map(aspas)].join(', ');
+const fonte = (peso, tamanho, pilha = PILHA) => `${peso} ${tamanho}px ${pilha}`;
 
 // ─── Texto ──────────────────────────────────────────────────────────────────
+
+const SEGMENTADOR = new Intl.Segmenter();
 
 function caber(ctx, texto, largura, forcarReticencias = false) {
   if (!forcarReticencias && ctx.measureText(texto).width <= largura) return texto;
 
-  let corte = texto;
-  while (corte.length > 1 && ctx.measureText(`${corte}…`).width > largura) corte = corte.slice(0, -1);
-  return `${corte.trimEnd()}…`;
+  // Corta por caractere visível: cortando por unidade de código, a reticência partia emoji ao meio.
+  const partes = [...SEGMENTADOR.segment(texto)].map((s) => s.segment);
+  while (partes.length > 1 && ctx.measureText(`${partes.join('')}…`).width > largura) partes.pop();
+  return `${partes.join('').trimEnd()}…`;
 }
 
 // Diminui a fonte até caber e só corta abaixo do mínimo: "Conquistad…" não se lê como nome de insígnia.
@@ -354,7 +363,7 @@ function desenharMensagem(ctx, mensagem, t) {
   }
 
   ctx.fillStyle = '#dde0e8';
-  ctx.font = fonte(400, 18);
+  ctx.font = fonte(400, 18, PILHA_MENSAGEM);
   quebrarLinhas(ctx, texto, w - 60, 4).forEach((linha, i) => ctx.fillText(linha, x + 40, y + 40 + i * 28));
 }
 

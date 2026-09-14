@@ -101,6 +101,10 @@ export default {
   'Mensagem salva': 'Message saved',
   'Mensagem removida': 'Message removed',
   'O cartão está sendo atualizado.': 'The card is being updated.',
+  'Mensagem não salva': 'Message not saved',
+  'A mensagem do perfil não pode ter link.': "Profile messages can't contain links.",
+  'A mensagem do perfil não pode ter palavrão.': "Profile messages can't contain profanity.",
+  'O que você escreveu, para copiar e ajustar:': 'What you wrote, so you can copy and edit it:',
 
   // .limpar-perfil
   'Apenas helpers ou superiores podem limpar perfis.': 'Only helpers and above can clear profiles.',

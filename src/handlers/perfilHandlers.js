@@ -10,6 +10,7 @@ import { getInsigniasGravadas, getPerfil, salvarPerfil } from '../insignias.js';
 import { CATEGORIAS, INSIGNIAS, textoDaInsignia } from '../services/insigniasCatalogo.js';
 import { recalcularInsignias } from '../services/insigniasMotor.js';
 import { desenharCartao, estiloDaInsignia, TIERS } from '../services/perfilCartao.js';
+import { motivoDeBloqueio } from '../services/filtroDeTexto.js';
 import { IDIOMAS, PADRAO, tradutor } from '../i18n/index.js';
 import { discord as discordConfig, perfil as config } from '../../config/index.js';
 import { createErrorEmbed, createSuccessEmbed, createWarningEmbed } from '../../utils/discordUtils.js';
@@ -464,6 +465,20 @@ async function abrirModalDeMensagem(interaction, t, dono) {
 
 async function salvarMensagem(interaction, t, client, dono, mensagemId) {
   const texto = interaction.fields.getTextInputValue('mensagem').replace(/\s+/g, ' ').trim();
+
+  const motivo = texto ? motivoDeBloqueio(texto) : null;
+  if (motivo) {
+    // O texto volta na resposta porque o modal fecha e não há como reabri-lo preenchido.
+    return interaction.reply(efemera({
+      embeds: [createErrorEmbed(t('Mensagem não salva'), [
+        motivo === 'link' ? t('A mensagem do perfil não pode ter link.') : t('A mensagem do perfil não pode ter palavrão.'),
+        '',
+        t('O que você escreveu, para copiar e ajustar:'),
+        `\`\`\`${texto.replace(/`/g, "'")}\`\`\``,
+      ].join('\n'))],
+    }));
+  }
+
   await salvarPerfil(dono, { mensagem: texto || null });
 
   await interaction.reply(efemera({

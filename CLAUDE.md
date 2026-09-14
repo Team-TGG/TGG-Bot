@@ -742,7 +742,15 @@ produção, como o de mensagens.
 assinatura do que ele desenha — mudou qualquer coisa, ou virou o dia, sai desenho novo. `@napi-rs/canvas`
 é carregado sob demanda pelo mesmo motivo do `sharp`. As fontes de reserva em `assets/fonts` (Noto Sans,
 Symbols 2 e JP) não são enfeite: 12 dos 195 nicks usam caractere que a Montserrat não tem, e a biblioteca
-não cai sozinha para fonte do sistema (14/09/2026). O desenho das insígnias é provisório até a arte do usuário.
+não cai sozinha para fonte do sistema (14/09/2026). Pelo mesmo motivo o emoji precisa de fonte própria
+(`NotoColorEmoji-COLRv1.ttf`, 5 MB; a versão bitmap tem 25 MB e desenha igual): sem ela, emoji vira
+quadrado vazio. Ela vem antes da Symbols 2 só na mensagem, senão ❤️ sai sem cor; no nick vem no fim, para
+★ e ✔ continuarem texto. O desenho das insígnias é provisório até a arte do usuário.
+
+A mensagem do perfil passa por [filtroDeTexto.js](src/services/filtroDeTexto.js) antes de salvar: link ou
+palavrão **bloqueia** e devolve o texto na resposta, em vez de trocar por asterisco. A lista casa palavra
+inteira (senão "cu" pegaria "cuidado"), com raízes só para flexão que não começa palavra comum. "Pica" e
+"rola" ficam de fora de propósito, porque são gíria do chat. O que escapar sai pelo `.limpar-perfil`.
 
 Os botões do cartão (vitrine, mensagem, sync, todas as insígnias) são roteados pelo prefixo `perfil_` em
 [interactions.js](src/interactions.js), com o dono e o ID da mensagem do cartão no `customId`, e redesenham
