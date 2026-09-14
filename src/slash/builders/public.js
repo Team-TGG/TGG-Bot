@@ -23,7 +23,10 @@ export const publicCommands = [
   new SlashCommandBuilder()
     .setName('profile')
     .setDescription('Mostra o cartão de perfil com a vitrine de insígnias')
-    .addUserOption(o => o.setName('usuario').setDescription('Ver o perfil de outro membro')),
+    // A lista de slash é montada pelo Discord antes de o bot saber quem é: aqui vale o idioma do app, não o cargo.
+    .setDescriptionLocalizations({ 'en-US': 'Shows the profile card with the badge showcase', 'en-GB': 'Shows the profile card with the badge showcase' })
+    .addUserOption(o => o.setName('usuario').setDescription('Ver o perfil de outro membro')
+      .setDescriptionLocalizations({ 'en-US': "View another member's profile", 'en-GB': "View another member's profile" })),
 
   new SlashCommandBuilder()
     .setName('guild')

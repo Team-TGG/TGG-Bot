@@ -119,6 +119,8 @@ O **TGG-Bot** é um serviço especializado para o Discord, projetado para a guil
 - [ ] Criar o cargo personalizado pelo bot, definindo nome e cores.
 - [ ] Deixar o dono do cargo personalizado editá-lo, dá-lo a outra pessoa e usá-lo no `.inv`.
 - [ ] Tasks de staff: cobrar cada tópico ainda aberto em `pendências`, marcando os responsáveis de tempos em tempos (definir o período).
+- [x] Responder em inglês para quem tem o cargo EU ou NA, começando pelo `.profile` (cartão, botões, lista de insígnias e `.limpar-perfil`).
+- [ ] Levar os dois idiomas para os outros comandos, começando pelos públicos e de economia, e para as mensagens gerais do bot (espera entre comandos, canal não permitido, erro genérico).
 
 ### Testes e treino do `.ia`
 Treinar aqui é calibrar as **descrições das ferramentas** e as instruções em

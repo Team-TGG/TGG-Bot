@@ -19,7 +19,8 @@ export const LARGURA = 1000;
 export const ALTURA = 420;
 
 /* A forma muda com o tier, e não só a cor: prata e platina se confundem pela cor, e o cartão precisa
-   ser legível em preto e branco. Quando a arte da fase 3 chegar, trocam as formas, não os nomes. */
+   ser legível em preto e branco. Quando a arte da fase 3 chegar, trocam as formas, não os nomes.
+   Os nomes passam por `t()` na hora de escrever; o inglês está em i18n/en/perfil.js. */
 export const TIERS = [
   { nome: 'Bronze', cor: '#cd8a4f', forma: 'circulo' },
   { nome: 'Prata', cor: '#c7ccd6', forma: 'quadrado' },
@@ -100,18 +101,25 @@ function quebrarLinhas(ctx, texto, largura, maxLinhas) {
   return linhas;
 }
 
-export function tempoDeGuilda(entrouEm, agora = new Date()) {
+export function tempoDeGuilda(entrouEm, t, agora = new Date()) {
   const dias = Math.floor((agora - entrouEm) / 86_400_000);
-  if (dias < 1) return 'Entrou hoje na guilda';
-  if (dias < 30) return `Na guilda há ${dias} ${dias === 1 ? 'dia' : 'dias'}`;
+  if (dias < 1) return t('Entrou hoje na guilda');
+
+  // Singular e plural como frases separadas, e não "dia(s)": o inglês precisa das duas formas.
+  const dia = (n) => (n === 1 ? t('{n} dia', { n }) : t('{n} dias', { n }));
+  const mes = (n) => (n === 1 ? t('{n} mês', { n }) : t('{n} meses', { n }));
+  const ano = (n) => (n === 1 ? t('{n} ano', { n }) : t('{n} anos', { n }));
 
   const meses = Math.floor(dias / 30.44);
-  if (meses < 12) return `Na guilda há ${meses} ${meses === 1 ? 'mês' : 'meses'}`;
-
   const anos = Math.floor(meses / 12);
   const resto = meses % 12;
-  return `Na guilda há ${anos} ${anos === 1 ? 'ano' : 'anos'}`
-    + (resto ? ` e ${resto} ${resto === 1 ? 'mês' : 'meses'}` : '');
+
+  let tempo;
+  if (dias < 30) tempo = dia(dias);
+  else if (meses < 12) tempo = mes(meses);
+  else tempo = resto ? t('{anos} e {meses}', { anos: ano(anos), meses: mes(resto) }) : ano(anos);
+
+  return t('Na guilda há {tempo}', { tempo });
 }
 
 // ─── Formas ─────────────────────────────────────────────────────────────────
@@ -278,7 +286,7 @@ async function desenharAvatar(ctx, loadImage, avatar, nick) {
   ctx.stroke();
 }
 
-function desenharIdentidade(ctx, { nick, rank, entrouEm, peak }) {
+function desenharIdentidade(ctx, { nick, rank, entrouEm, peak, t }) {
   const x = 208;
   const largura = 292;
 
@@ -287,24 +295,25 @@ function desenharIdentidade(ctx, { nick, rank, entrouEm, peak }) {
 
   ctx.fillStyle = COR.texto;
   ctx.font = fonte(800, 34);
-  ctx.fillText(caber(ctx, nick || 'Sem nick', largura), x, 76);
+  ctx.fillText(caber(ctx, nick || t('Sem nick'), largura), x, 76);
 
   ctx.fillStyle = rank === 'Leader' || rank === 'Officer' ? COR.destaque : COR.suave;
   ctx.font = fonte(700, 19);
   // undefined = a leitura da guilda falhou; null = leu e a pessoa não está nela.
-  ctx.fillText(rank === undefined ? 'Cargo indisponível' : RANKS[rank] ?? rank ?? 'Fora da guilda', x, 106);
+  const cargo = rank === undefined ? t('Cargo indisponível') : rank ? t(RANKS[rank] ?? rank) : t('Fora da guilda');
+  ctx.fillText(cargo, x, 106);
 
   ctx.fillStyle = COR.suave;
   ctx.font = fonte(400, 16);
-  ctx.fillText(caber(ctx, entrouEm ? tempoDeGuilda(entrouEm) : 'Tempo de guilda indisponível', largura), x, 131);
+  ctx.fillText(caber(ctx, entrouEm ? tempoDeGuilda(entrouEm, t) : t('Tempo de guilda indisponível'), largura), x, 131);
 
   ctx.fillStyle = COR.apagado;
   ctx.font = fonte(700, 12);
-  ctx.fillText('PEAK ELO', x, 165);
+  ctx.fillText(t('PEAK ELO'), x, 165);
 
   ctx.fillStyle = COR.texto;
   ctx.font = fonte(800, 30);
-  const valor = peak ? peak.elo.toLocaleString('pt-BR') : '—';
+  const valor = peak ? t.numero(peak.elo) : '—';
   ctx.fillText(valor, x, 198);
 
   if (peak?.modo) {
@@ -315,7 +324,7 @@ function desenharIdentidade(ctx, { nick, rank, entrouEm, peak }) {
   }
 }
 
-function desenharMensagem(ctx, mensagem) {
+function desenharMensagem(ctx, mensagem, t) {
   const x = 40;
   const y = 236;
   const w = 460;
@@ -340,7 +349,7 @@ function desenharMensagem(ctx, mensagem) {
   if (!texto) {
     ctx.fillStyle = COR.apagado;
     ctx.font = fonte(400, 16);
-    ctx.fillText('Sem mensagem ainda.', x + 40, y + 42);
+    ctx.fillText(t('Sem mensagem ainda.'), x + 40, y + 42);
     return;
   }
 
@@ -349,7 +358,7 @@ function desenharMensagem(ctx, mensagem) {
   quebrarLinhas(ctx, texto, w - 60, 4).forEach((linha, i) => ctx.fillText(linha, x + 40, y + 40 + i * 28));
 }
 
-function desenharVitrine(ctx, vitrine) {
+function desenharVitrine(ctx, vitrine, t) {
   const x = 524;
   const y = 24;
   const w = 452;
@@ -367,7 +376,7 @@ function desenharVitrine(ctx, vitrine) {
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = COR.apagado;
   ctx.font = fonte(700, 12);
-  ctx.fillText('VITRINE', x + 20, y + 28);
+  ctx.fillText(t('VITRINE'), x + 20, y + 28);
 
   const colunas = 4;
   const larguraCelula = (w - 24) / colunas;
@@ -395,13 +404,14 @@ function desenharVitrine(ctx, vitrine) {
 
     ctx.fillStyle = estilo.cor;
     ctx.font = fonte(600, 12);
-    ctx.fillText(estilo.nome, cx, linhaTopo + 131);
+    ctx.fillText(t(estilo.nome), cx, linhaTopo + 131);
   }
 }
 
 /**
  * `dados`: { avatar: Buffer|null, nick, rank, entrouEm: Date|null, peak: { elo, modo }|null, mensagem,
- * vitrine: até 8 { chave, nome, tier, tiers } }, com `tiers` = quantidade de tiers ou null na insígnia única.
+ * vitrine: até 8 { chave, nome, tier, tiers }, t }, com `tiers` = quantidade de tiers ou null na insígnia única,
+ * `nome` já no idioma do cartão e `t` o tradutor de i18n/index.js nesse idioma.
  */
 export async function desenharCartao(dados) {
   const { createCanvas, loadImage } = await carregarCanvas();
@@ -411,8 +421,8 @@ export async function desenharCartao(dados) {
   desenharFundo(ctx);
   await desenharAvatar(ctx, loadImage, dados.avatar, dados.nick);
   desenharIdentidade(ctx, dados);
-  desenharMensagem(ctx, dados.mensagem);
-  desenharVitrine(ctx, dados.vitrine ?? []);
+  desenharMensagem(ctx, dados.mensagem, dados.t);
+  desenharVitrine(ctx, dados.vitrine ?? [], dados.t);
 
   return canvas.encode('png');
 }

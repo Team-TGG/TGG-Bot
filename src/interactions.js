@@ -8,6 +8,7 @@ import { handleEscreverModalSubmit, handleFilaEsperaButton, handleAssumirTicket 
 import { handleTicketLido } from './services/ticketNudge.js';
 import { handleJustificativaButton, handleJustificativaHistorico } from './public.js';
 import { handlePerfilInteracao } from './handlers/perfilHandlers.js';
+import { tradutor } from './i18n/index.js';
 
 // Rate limit (mesmo do messageCreate anterior): 5s por usuário, staff isento.
 const rateLimitMap = new Map();
@@ -77,8 +78,9 @@ export function registerInteractionHandler(client) {
         await handlePerfilInteracao(interaction, client);
       } catch (err) {
         console.error('[PERFIL] interaction failed:', err);
+        const t = tradutor(interaction);
         const payload = {
-          embeds: [createErrorEmbed('Erro Interno', `Não consegui concluir: ${err.message}`)],
+          embeds: [createErrorEmbed(t('Erro Interno'), t('Não consegui concluir: {mensagem}', { mensagem: err.message }))],
           ephemeral: true,
         };
         if (interaction.replied || interaction.deferred) {

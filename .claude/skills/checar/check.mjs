@@ -133,6 +133,52 @@ for (const f of arquivos) {
   }
 }
 
+// ─── 6. Traduções ──────────────────────────────────────────────────────────────
+// A chave da tradução é a frase em português do código. Frase sem tradução não quebra (sai em português),
+// então é aviso — e é também o que acontece quando alguém edita o português e esquece o inglês.
+const { TRADUCOES, IDIOMAS } = await import(pathToFileURL(join(ROOT, 'src/i18n/index.js')).href);
+const avisosAntes = warns.length;
+
+// Mesma frase em dois arquivos com traduções diferentes: vale a do último importado, sem erro nenhum.
+for (const idioma of Object.keys(TRADUCOES)) {
+  const vistas = new Map();
+  for (const f of walk(`src/i18n/${idioma}`)) {
+    const dicionario = (await import(pathToFileURL(join(ROOT, f)).href)).default;
+    for (const [frase, traducao] of Object.entries(dicionario)) {
+      const anterior = vistas.get(frase);
+      if (anterior && String(anterior.traducao) !== String(traducao)) warn(`${f}: "${frase}" já traduzida diferente em ${anterior.f}`);
+      vistas.set(frase, { f, traducao });
+    }
+  }
+}
+
+// Só enxerga frase literal dentro do t(): concatenada ou com ${} passa sem conferência.
+const desescapar = (s) => s.replace(/\\n/g, '\n').replace(/\\(['"`\\])/g, '$1');
+const frasesNoCodigo = new Map(); // frase -> primeiro arquivo em que aparece
+for (const f of walk('src').filter((f) => !f.startsWith('src/i18n/'))) {
+  const txt = readFileSync(join(ROOT, f), 'utf8');
+  const literais = [
+    ...[...txt.matchAll(/\bt\(\s*(['"])((?:\\.|(?!\1)[^\\])*)\1/g)].map((m) => m[2]),
+    ...[...txt.matchAll(/\bt\(\s*`([^`$]*)`/g)].map((m) => m[1]),
+  ];
+  for (const frase of literais.map(desescapar)) if (!frasesNoCodigo.has(frase)) frasesNoCodigo.set(frase, f);
+}
+
+for (const idioma of Object.keys(TRADUCOES)) {
+  const faltando = [...frasesNoCodigo].filter(([frase]) => TRADUCOES[idioma][frase] === undefined);
+  for (const [frase, f] of faltando.slice(0, 10)) warn(`${f}: sem tradução '${idioma}' para "${frase}"`);
+  if (faltando.length > 10) warn(`… e mais ${faltando.length - 10} frase(s) sem tradução '${idioma}'`);
+}
+
+const { INSIGNIAS } = await import(pathToFileURL(join(ROOT, 'src/services/insigniasCatalogo.js')).href);
+const semTraducao = IDIOMAS.filter((i) => i !== 'pt')
+  .flatMap((idioma) => INSIGNIAS.filter((ins) => !ins[idioma]?.nome || !ins[idioma]?.descricao).map((ins) => `${ins.chave} (${idioma})`));
+if (semTraducao.length) warn(`insígnias sem nome/descrição traduzidos: ${semTraducao.join(', ')}`);
+
+if (warns.length === avisosAntes) {
+  pass(`traduções completas (${IDIOMAS.join('/')}): ${frasesNoCodigo.size} frases do código e ${INSIGNIAS.length} insígnias`);
+}
+
 // ─── Relatório ─────────────────────────────────────────────────────────────────
 const linha = '─'.repeat(72);
 console.log(`\n${linha}\n  CHECAGEM TGG-BOT\n${linha}`);

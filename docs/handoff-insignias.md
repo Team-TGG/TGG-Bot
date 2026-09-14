@@ -20,25 +20,27 @@ Ouro, Platina, Diamante), algumas únicas.
 | 1 | Motor: tabelas, catálogo, leitura, cálculo, cron 04:00, contadores | **pronta, na VM** |
 | 2 | Cartão em imagem, `.profile`, vitrine, botões, `.limpar-perfil` | **pronta, em teste com assistant+** |
 | 3 | Arte das insígnias e insígnias finais (feitas pelo usuário) | não começada |
-| 4 | Insígnia Explorador, de acesso ao site | **pronta; site no ar e gravando (testado pelo usuário), falta subir o bot** |
+| 4 | Insígnia Explorador, de acesso ao site | **pronta, no site e na VM** (14/09/2026) |
 
 ## Próximos passos, em ordem
 
-1. **Subir o último commit.** Push, `git pull` na VM e restart. Não precisa de SQL nem de `npm install`.
-2. **Conferir a Trégua.** `profile_badge_launches` precisa ter a linha `sem_marcar_topson`; sem ela, o
-   contador do Topson não começou (o SQL das duas tabelas tinha que ser rodado antes do deploy).
+Tudo commitado e rodando na VM em 14/09/2026, com a staff testando o `.profile`. Já conferido nesse dia:
+a Trégua começou (`profile_badge_launches` tem `sem_marcar_topson` em 2026-09-14) e a cobertura que
+preocupava se resolveu sozinha — `profile_badges` foi de 140 para **195 dos 197** ativos, todos com conta
+vinculada. `site_logins` tinha 1 linha: o Explorador só aparece para quem abrir o site.
+
+1. **Feedback da staff** sobre o `.profile` — ajustar o que vier do teste. Inclui pedir para alguém com cargo
+   EU ou NA abrir o `.profile` e clicar nos botões: o inglês foi testado fora do Discord, não com clique real.
+2. **Quarta 16/09 depois das 04:00:** conferir se os 2 ativos sem insígnia entraram (provavelmente
+   cadastro recente) e se o Explorador foi gravado para quem já acessou o site.
 3. **Quinta 17/09/2026:** conferir se a semana `2026-09-10` apareceu em `weekly_mvp_history` com ~20
    linhas. É a primeira quarta gravando sozinha, pelo cron do MVP.
-4. **Investigar a cobertura do cron.** Em 14/09/2026, depois da primeira rodada das 04:00, `profile_badges`
-   tinha **140** membros e havia **195** ativos. Não foi investigado: pode ser só quem não tem conta
-   vinculada, ou membro ficando de fora. Olhar o log `[Insignias] Recalculated` da VM primeiro.
-5. **Nomes finais** — o usuário vai trocar. É só o campo `nome` no catálogo; nunca a `chave`.
-6. **Fase 3** — quando a arte chegar (ver abaixo).
-7. **Lançamento** — checklist abaixo.
-8. **Meados de novembro/2026:** revisar com dado real os cortes da contribuição semanal (base de só 4
+4. **Nomes finais** — o usuário vai trocar. É só o campo `nome` no catálogo, e o `en.nome` da mesma entrada;
+   nunca a `chave`. Os nomes em inglês de 14/09/2026 são tradução provisória, feita junto com os dois idiomas.
+5. **Fase 3** — quando a arte chegar (ver abaixo).
+6. **Lançamento** — checklist abaixo.
+7. **Meados de novembro/2026:** revisar com dado real os cortes da contribuição semanal (base de só 4
    semanas em 09/2026), do Tagarela e da Voz Ativa.
-9. **Fase 4 — subir o bot** com o Explorador. A tabela `site_logins` já existe e o site já grava
-   (14/09/2026); o bot passa a dar a insígnia no cron das 04:00 ou no sync do cartão.
 
 ### Checklist do lançamento
 
@@ -168,6 +170,10 @@ Voz Ativa 20/50/100/175/300 h; Assíduo 3/7/30/60/100; Vínculo 1/2/3; Trégua 1
 
 **Fase 2:** vitrine por espaço; mensagem de 150; "todas as insígnias" é o único botão de quem não é dono;
 `.limpar-perfil` para helper+ com DM e log; aliases `perfil` e `pf`; em teste com assistant+ em comandos-staff (antes só o líder).
+
+**Idioma:** cargos EU e NA recebem o `.profile` em inglês (14/09/2026) — cartão no idioma de quem pediu,
+respostas no de quem clicou, DM do `.limpar-perfil` no de quem recebe, log-guilda em português. Detalhes na
+seção "Idioma por cargo" do CLAUDE.md.
 
 ## Para começar um chat novo
 

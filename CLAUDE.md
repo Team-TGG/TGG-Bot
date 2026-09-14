@@ -81,6 +81,7 @@ Isso é intencional, não sujeira — não "limpe" sem pedir.
 | Sincronização | [src/discord.js](src/discord.js) | mapas de cargo e a lógica de aplicar cargos por rank/ELO |
 | Agendamento | [src/scheduler/cron.js](src/scheduler/cron.js), [src/services/](src/services/) | crons e loops de fundo |
 | Config | [config/index.js](config/index.js), [config/emojis.js](config/emojis.js) | IDs de cargo/canal, emojis customizados |
+| Idioma | [src/i18n/](src/i18n/) | tradutor por cargo (EU/NA em inglês) e as traduções — ver [Idioma por cargo](#idioma-por-cargo-pten) |
 
 ### Permissões (três mecanismos independentes)
 
@@ -96,6 +97,50 @@ Isso é intencional, não sujeira — não "limpe" sem pedir.
    `Math.max`, então empate não é problema.
 
 `LEADER_ID` e `ALLOWED_USER_IDS` são IDs fixos no código. `ALLOWED_USER_IDS` está marcado como deprecated.
+
+### Idioma por cargo (pt/en)
+
+Quem tem o cargo **EU** ou **NA** recebe o bot em inglês; o resto, em português (pedido do usuário,
+14/09/2026). Os IDs ficam em `idiomas` na [config](config/index.js). É por cargo e não pelo idioma do
+app do Discord porque a mensagem de prefixo não traz idioma nenhum. Por enquanto só o `.profile` (e o
+`.limpar-perfil`) passam por aqui; a intenção é levar para todos os comandos, um de cada vez.
+
+**A chave é a própria frase em português.** O código continua legível e português não tem dicionário:
+
+```js
+const t = tradutor(message);   // message (o shim do slash também serve), interaction, GuildMember ou 'pt'/'en'
+createErrorEmbed(t('Membro inválido'), t('<@{id}> não é membro ativo da guilda.', { id }));
+```
+
+Em português sai a frase como está; em inglês, a tradução de [src/i18n/en/](src/i18n/en/), um arquivo por
+assunto no formato `{ 'frase em português': 'English phrase' }`. Arquivo novo entra no `TRADUCOES` de
+[index.js](src/i18n/index.js); `en/comum.js` guarda o que vários comandos repetem (acesso negado, canal
+errado, erro interno). `t.idioma` diz qual idioma saiu e `t.numero(n)` formata no padrão dele (1.000 × 1,000).
+
+Levar um comando antigo para os dois idiomas é: pôr `const t = tradutor(message)` no começo do handler,
+envolver cada frase em `t(...)` e escrever o inglês em `en/`. Frase sem tradução **não quebra** — sai em
+português e loga `[I18N]` uma vez.
+
+O preço da frase como chave: **mudou o português, a tradução se solta** e a frase volta a sair em português.
+A checagem estática pega isso — lê todo `t('...')` do código e lista o que não tem inglês. Para ela
+enxergar, a frase dentro do `t()` tem que ser um texto só, sem `+` nem `${}`: frase longa fica numa linha
+longa. Frase que chega por variável (`t(estilo.nome)`, nome de tier e de categoria) passa sem conferência,
+e quem avisa é o `[I18N]` no log. Plural que muda a frase vira duas frases (`'{n} dia'` e `'{n} dias'`), e
+tradução pode ser função quando o português resolve com "(s)" e o inglês não.
+
+Decisões de quem vê o quê, que valem como modelo:
+
+- **Resposta** vai no idioma de quem usou o comando ou clicou no botão.
+- **O que fica no canal para todos** (o cartão do `.profile`) vai no idioma de quem pediu, e esse idioma
+  é gravado no `customId` dos botões. Sem isso, o dono clicar em "Vitrine" num cartão pedido por outra
+  pessoa redesenharia o cartão no idioma do dono. Cartão antigo, sem o sufixo, fica em português.
+- **DM** vai no idioma de quem recebe (a DM do `.limpar-perfil`, não o de quem limpou).
+- **Log e aviso de staff** em log-guilda continuam em português; log de console, em inglês.
+- **Descrição de slash command** não tem como seguir o cargo: a lista é montada pelo Discord antes de o
+  bot saber quem é. Ela usa `setDescriptionLocalizations` (idioma do app), como o `/profile`.
+
+Nome e descrição das insígnias moram no **catálogo**, no campo `en` de cada entrada, e não num
+dicionário: renomear uma insígnia continua sendo editar uma entrada só.
 
 ### IDs hardcoded
 
@@ -843,7 +888,8 @@ Sem migrations no repo — o schema vive no Supabase. Domínios principais:
   O `time` de `createPagination` é a vida útil **absoluta** do collector, e o padrão são 60s — lista
   com muitas páginas fica inalcançável do meio para o fim. Passe `idle` (reinicia a cada clique) e um
   `time` maior de teto, como faz o `.lb-guilda`. Os outros comandos paginados ainda estão nos 60s.
-- Texto voltado ao usuário em **português (pt-BR)**; logs em inglês com prefixo entre colchetes
+- Texto voltado ao usuário em **português (pt-BR)**, e em inglês para os cargos EU e NA nos comandos que já
+  passam pelo tradutor (ver [Idioma por cargo](#idioma-por-cargo-pten)); logs em inglês com prefixo entre colchetes
   (`[CRON]`, `[ELO ADD]`, `[WeeklyInfo]`).
 - Erros: handlers deixam a exceção subir para o try/catch de `index.js`/`interactions.js`, que responde um
   embed de erro genérico. Falhas de API externa que não devem abortar o fluxo são engolidas com

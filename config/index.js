@@ -13,6 +13,14 @@ export const STAFF_ROLE_IDS = {
   leader: '1437427830286717009',
 }
 
+// Idioma das respostas por cargo do Discord (ver src/i18n/index.js). Quem não tem nenhum destes recebe português.
+export const idiomas = {
+  en: [
+    '1536339002238705734', // EU
+    '1543642248585937057', // NA
+  ],
+};
+
 // Modo dev: sobe o bot sem nada que afete o servidor real - sem registrar slash
 // commands, sem crons, sem lembrete de inativos, sem restaurar mutes/warns.
 //

@@ -23,6 +23,7 @@ import { escanearTickets, reconciliarTickets, CATEGORIA_TICKETS_ID } from './ser
 import { definirResponsavel, getTicket } from './tickets.js';
 import { recalcularOrdemDaFila } from './services/ticketReorder.js';
 import { lerAlvoDoArgumento, limparMensagemDoPerfil } from './handlers/perfilHandlers.js';
+import { tradutor } from './i18n/index.js';
 
 // Funções auxiliares
 
@@ -3046,27 +3047,29 @@ export const handleIa = adminOnly(async (message, args) => {
 
 // .limpar-perfil <@membro|ID>
 export async function handleLimparPerfil(message, args, client) {
+  const t = tradutor(message);
+
   // Helper para cima (decisão do usuário, 14/09/2026)
   if (!hasPermission(message.member, 1)) {
-    return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Apenas helpers ou superiores podem limpar perfis.')] });
+    return message.reply({ embeds: [createErrorEmbed(t('Acesso Negado'), t('Apenas helpers ou superiores podem limpar perfis.'))] });
   }
 
   const alvoId = lerAlvoDoArgumento(args[0]);
   if (!alvoId) {
-    return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.limpar-perfil <@membro/ID>`')] });
+    return message.reply({ embeds: [createErrorEmbed(t('Formato Inválido'), t('Uso: `.limpar-perfil <@membro/ID>`'))] });
   }
 
   const { limpou, dmEntregue } = await limparMensagemDoPerfil(client, { alvoId, staffId: message.author.id });
 
   if (!limpou) {
-    return message.reply({ embeds: [createErrorEmbed('Nada para limpar', `<@${alvoId}> não tem mensagem no perfil.`)] });
+    return message.reply({ embeds: [createErrorEmbed(t('Nada para limpar'), t('<@{id}> não tem mensagem no perfil.', { id: alvoId }))] });
   }
 
   // O cartão é imagem: o que já foi enviado continua com a mensagem antiga até alguém apagar.
   return message.reply({
-    embeds: [createSuccessEmbed('Perfil limpo',
-      `A mensagem de <@${alvoId}> foi removida e registrada em log-guilda.`
-      + (dmEntregue ? '' : '\nA DM de aviso não chegou (DM fechada).')
-      + '\nCartões já enviados continuam com a imagem antiga: apague essas mensagens se precisar.')],
+    embeds: [createSuccessEmbed(t('Perfil limpo'),
+      t('A mensagem de <@{id}> foi removida e registrada em log-guilda.', { id: alvoId })
+      + (dmEntregue ? '' : `\n${t('A DM de aviso não chegou (DM fechada).')}`)
+      + `\n${t('Cartões já enviados continuam com a imagem antiga: apague essas mensagens se precisar.')}`)],
   });
 }

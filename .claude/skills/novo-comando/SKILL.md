@@ -51,6 +51,15 @@ Regras do repo: toda saída é embed (`createErrorEmbed` / `createSuccessEmbed` 
 texto em pt-BR e log em inglês com prefixo (`[EXEMPLO]`); emoji vem de `EMOJIS`, nunca com ID colado.
 Não use try/catch para erro genérico — deixe subir para o handler global.
 
+**Idioma.** Membro com cargo EU ou NA recebe o bot em inglês. Comando novo já nasce assim: o handler
+cria o tradutor na primeira linha — `const t = tradutor(message)` — e passa cada frase por ele, em
+português mesmo: `t('Membro não encontrado')`, `t('Você tem {n} moedas', { n })`. O inglês vai em
+`src/i18n/en/<assunto>.js`, com a frase em português como chave (arquivo novo entra no `TRADUCOES` de
+`src/i18n/index.js`). Frases genéricas (acesso negado, canal errado, erro interno) já estão em
+`src/i18n/en/comum.js`. A frase dentro do `t()` é um texto só, sem `+` no meio, senão a checagem não
+confere. Log continua em inglês e aviso de staff em log-guilda continua em português. Modelo pronto: o
+`.profile`; regras na seção "Idioma por cargo" do CLAUDE.md.
+
 ## Edição 2 — `src/commands.js`
 
 Importe o handler no topo (no import do arquivo certo), acrescente os aliases em `COMMAND_ALIASES`

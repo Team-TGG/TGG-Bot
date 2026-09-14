@@ -14,6 +14,7 @@ import { QUIZ_REWARD } from './handlers/tggCoinsHandlers.js';
 import { addTransaction, updateBalance } from './tggCoins.js';
 import { registrarUsoDoHelp } from './insignias.js';
 import { lerAlvoDoArgumento, montarRespostaDoCartao } from './handlers/perfilHandlers.js';
+import { tradutor } from './i18n/index.js';
 
 import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage, createPagination } from '../utils/discordUtils.js';
 import { isAdmin, adminOnly, channelOnly, hasPermission } from '../utils/permissions.js';
@@ -23,14 +24,17 @@ import { SOCIALS } from '../config/socials.js';
 // .profile [@membro]
 // Em teste, assistant para cima e só em comandos-staff (ver `perfil` na config). O canal é checado aqui e
 // não com channelOnly, que isenta admin: a trava não valeria para metade de quem está testando.
+// O cartão sai no idioma de quem pediu (ver botoesDoCartao).
 export async function handleProfile(message, args, client) {
+  const t = tradutor(message);
+
   if (!hasPermission(message.member, 1)) {
-    return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'O `.profile` está em teste, só para assistants ou superiores.')] });
+    return message.reply({ embeds: [createErrorEmbed(t('Acesso Negado'), t('O `.profile` está em teste, só para assistants ou superiores.'))] });
   }
 
   if ((message.channelId ?? message.channel?.id) !== perfilConfig.channelId) {
     return message.reply({
-      embeds: [createErrorEmbed('Canal Errado', `Esse comando só funciona no canal <#${perfilConfig.channelId}>.`)],
+      embeds: [createErrorEmbed(t('Canal Errado'), t('Esse comando só funciona no canal <#{canal}>.', { canal: perfilConfig.channelId }))],
     });
   }
 
@@ -39,24 +43,24 @@ export async function handleProfile(message, args, client) {
 
   if (!alvoId) {
     return message.reply({
-      embeds: [createErrorEmbed('Membro inválido', 'Use `.profile`, `.profile @membro` ou `.profile <ID do Discord>`.')],
+      embeds: [createErrorEmbed(t('Membro inválido'), t('Use `.profile`, `.profile @membro` ou `.profile <ID do Discord>`.'))],
     });
   }
 
   const autor = await getUserByDiscordId(message.author.id);
   if (!autor?.active) {
     return message.reply({
-      embeds: [createErrorEmbed('Perfil só para membros', 'O `.profile` é para membros ativos da guilda. Se você é membro, peça para a staff conferir seu cadastro.')],
+      embeds: [createErrorEmbed(t('Perfil só para membros'), t('O `.profile` é para membros ativos da guilda. Se você é membro, peça para a staff conferir seu cadastro.'))],
     });
   }
 
   const usuario = alvoId === message.author.id ? autor : await getUserByDiscordId(alvoId);
   if (!usuario?.active) {
-    return message.reply({ embeds: [createErrorEmbed('Perfil não encontrado', `<@${alvoId}> não é membro ativo da guilda.`)] });
+    return message.reply({ embeds: [createErrorEmbed(t('Perfil não encontrado'), t('<@{id}> não é membro ativo da guilda.', { id: alvoId }))] });
   }
 
-  const aviso = await message.reply({ embeds: [createLoadingEmbed('Gerando o perfil...')] });
-  await aviso.edit(await montarRespostaDoCartao(client, usuario, message.guild));
+  const aviso = await message.reply({ embeds: [createLoadingEmbed(t('Gerando o perfil...'))] });
+  await aviso.edit(await montarRespostaDoCartao(client, usuario, message.guild, t.idioma));
 }
 
 // .help
