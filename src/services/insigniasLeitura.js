@@ -6,7 +6,7 @@
 // motor mantém o tier de ontem; zero só sai de dado lido que deu zero. É a mesma distinção do
 // contribuicaoSemanal.js, e aqui pesa mais, porque a v1 falha calada (ver lerApi).
 import { apiFetch } from '../brawlhalla.js';
-import { getActiveUsersWithBrawlhallaId, getLastWednesdayReference } from '../db.js';
+import { getActiveUsersWithBrawlhallaId, getLastWednesdayReference, formatDateTime } from '../db.js';
 import { getFontesInsignias, getVinculosDeContas } from '../insignias.js';
 import { brawlhalla as brawlhallaConfig, insignias as config } from '../../config/index.js';
 
@@ -341,6 +341,26 @@ function contarSemanasSemInativar(brawlhallaId, inatividade, semanasDeGuilda) {
   return inicio ? Math.min(semanas, Math.floor(semanasDeGuilda)) : Math.floor(semanasDeGuilda);
 }
 
+/* Maior sequência de dias inteiros sem marcar o Topson, do lançamento até ontem: hoje ainda não terminou.
+   O dia do lançamento conta inteiro, mesmo com o contador ligado no meio dele (decisão do usuário, 14/09/2026).
+   Dias são `AAAA-MM-DD` no fuso do processo, e viram número de dia para a conta não tropeçar em horário. */
+export function maiorTregua(diasMarcados, lancamento, hoje) {
+  const numero = (dia) => Date.UTC(+dia.slice(0, 4), +dia.slice(5, 7) - 1, +dia.slice(8, 10)) / DIA_MS;
+  const inicio = numero(lancamento);
+  const fim = numero(hoje);
+
+  const marcados = [...diasMarcados].map(numero).filter(d => d >= inicio && d < fim).sort((a, b) => a - b);
+
+  let anterior = inicio - 1;
+  let maior = 0;
+  for (const dia of marcados) {
+    maior = Math.max(maior, dia - anterior - 1);
+    anterior = dia;
+  }
+
+  return Math.max(maior, fim - anterior - 1);
+}
+
 function contarPor(linhas, coluna) {
   const contagem = new Map();
   for (const linha of linhas) {
@@ -437,6 +457,13 @@ export async function lerContextos({ discordIds = null } = {}) {
   const atividadePorMembro = fontes.atividades ? new Map(fontes.atividades.map(a => [String(a.discord_id), a])) : null;
   const usaramHelp = fontes.usosDoHelp ? new Set(fontes.usosDoHelp.map(u => String(u.discord_id))) : null;
 
+  // Sem a data de lançamento não há de onde contar: "não sei", e não zero dias.
+  const lancamentoTregua = fontes.lancamentos?.find(l => l.badge_key === 'sem_marcar_topson')?.dia ?? null;
+  const marcouTopson = fontes.marcacoesTopson && lancamentoTregua
+    ? agruparConjuntos(fontes.marcacoesTopson, 'discord_id', 'dia')
+    : null;
+  const hoje = formatDateTime(agora).slice(0, 10);
+
   const contextos = usuarios.map(usuario => {
     const discordId = String(usuario.discord_id);
     const main = String(usuario.brawlhalla_id);
@@ -498,6 +525,9 @@ export async function lerContextos({ discordIds = null } = {}) {
         aniversario: aniversarios.has(discordId),
         quiz: quizzes.has(discordId),
         usouHelp: usaramHelp ? usaramHelp.has(discordId) : null,
+        diasSemMarcarTopson: marcouTopson
+          ? maiorTregua(marcouTopson.get(discordId) ?? [], lancamentoTregua, hoje)
+          : null,
         warnsAtivos: warnsAtivos.get(discordId) ?? 0,
       },
     };
@@ -518,6 +548,7 @@ export async function lerContextos({ discordIds = null } = {}) {
       mvpDisponivel: !!fontes.mvps,
       atividadeDisponivel: !!fontes.atividades,
       helpDisponivel: !!fontes.usosDoHelp,
+      treguaDisponivel: !!marcouTopson,
       leituraMs: Date.now() - inicio,
     },
   };

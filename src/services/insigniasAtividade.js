@@ -7,19 +7,28 @@
 //
 // Só roda em produção (decisão do usuário, 02/09/2026): dois processos com o mesmo token contam cada
 // mensagem duas vezes, e aqui a contagem é permanente.
-import { getAllUsers } from '../db.js';
-import { getAtividadeContada, gravarAtividadeContada } from '../insignias.js';
-import { discord as discordConfig } from '../../config/index.js';
+import { getAllUsers, formatDateTime } from '../db.js';
+import { getAtividadeContada, gravarAtividadeContada, registrarLancamento, registrarMarcacoesTopson } from '../insignias.js';
+import { discord as discordConfig, insignias as insigniasConfig } from '../../config/index.js';
 
 const INTERVALO_MS = 5 * 60 * 1000;
+const CHAVE_TREGUA = 'sem_marcar_topson';
+
+// Só a menção escrita no texto: `message.mentions.users` traz também o autor da mensagem respondida,
+// e resposta a mensagem do Topson não é marcação (decisão do usuário).
+const MENCAO_TOPSON = new RegExp(`<@!?${insigniasConfig.topsonId}>`);
 
 const mensagensPendentes = new Map();  // discordId -> quantidade
 const segundosPendentes = new Map();   // discordId -> segundos
 const emCall = new Map();              // discordId -> instante da última âncora (ms)
+const marcacoesPendentes = new Map();  // `discordId|dia` -> { discord_id, dia }
 
 let membrosAtivos = new Set();
 let timer = null;
 let gravando = false;
+let treguaLancada = false;
+
+const diaDe = (instante) => formatDateTime(new Date(instante)).slice(0, 10);
 
 function somar(mapa, chave, valor) {
   if (valor <= 0) return;
@@ -40,9 +49,50 @@ export function registrarMensagemParaInsignias(message) {
   if (!timer) return;
   if (!message.guild || message.guild.id !== discordConfig.guildId) return;
   if (message.author.bot) return;
+
+  // Antes do filtro de ativo: quem vira membro depois precisa chegar com a marcação no histórico.
+  registrarMarcacaoTopson(message);
+
   if (!membrosAtivos.has(message.author.id)) return;
 
   somar(mensagensPendentes, message.author.id, 1);
+}
+
+function registrarMarcacaoTopson(message) {
+  if (message.author.id === insigniasConfig.topsonId) return;
+  if (!MENCAO_TOPSON.test(message.content)) return;
+
+  const dia = diaDe(message.createdTimestamp);
+  marcacoesPendentes.set(`${message.author.id}|${dia}`, { discord_id: message.author.id, dia });
+}
+
+async function gravarMarcacoesTopson() {
+  if (!marcacoesPendentes.size) return;
+
+  const linhas = [...marcacoesPendentes.values()];
+  marcacoesPendentes.clear();
+
+  try {
+    await registrarMarcacoesTopson(linhas);
+    console.log(`[INSIGNIAS ATIVIDADE] Topson mentions: ${linhas.length} row(s)`);
+  } catch (err) {
+    // O insert ignora repetidos, então devolver à fila não duplica; perder a marcação daria a Trégua a quem marcou.
+    for (const linha of linhas) marcacoesPendentes.set(`${linha.discord_id}|${linha.dia}`, linha);
+    console.error(`[INSIGNIAS ATIVIDADE] Topson mentions flush failed: ${err.message}`);
+  }
+}
+
+// O primeiro dia gravado é o começo da Trégua. Tenta a cada ciclo até conseguir, para uma falha no boot
+// não empurrar o lançamento para o próximo restart.
+async function lancarTregua() {
+  if (treguaLancada) return;
+
+  try {
+    await registrarLancamento(CHAVE_TREGUA, diaDe(Date.now()));
+    treguaLancada = true;
+  } catch (err) {
+    console.warn(`[INSIGNIAS ATIVIDADE] failed to register Trégua launch: ${err.message}`);
+  }
 }
 
 // Canal de AFK não conta, como no ticketActivity: é para onde o Discord manda quem parou de interagir.
@@ -144,8 +194,12 @@ export async function iniciarContadorDeAtividade(client) {
     if (membrosAtivos.has(state.id) && contaComoCall(state)) emCall.set(state.id, agora);
   }
 
+  await lancarTregua();
+
   timer = setInterval(() => {
     gravarCiclo().catch(err => console.error('[INSIGNIAS ATIVIDADE] cycle failed:', err));
+    gravarMarcacoesTopson();
+    lancarTregua();
   }, INTERVALO_MS);
 
   console.log(`[INSIGNIAS ATIVIDADE] counter active - ${INTERVALO_MS / 60000} min cycle, `

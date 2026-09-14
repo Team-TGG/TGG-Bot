@@ -172,6 +172,8 @@ export const insignias = {
   // O cargo VIP da loja (ROLE, 5.000). Existe também "Cargos de cor (VIP)" (ROLE_VIP, 1.000), que
   // é o que o VIP destrava — a insígnia é de comprar o VIP, não o que ele compra.
   vipShopId: '5dc0490c-1cc9-4df2-af7f-ddb0365af618',
+  // Trégua. O Topson é o líder hoje, mas a insígnia é sobre a pessoa, por isso não usa LEADER_ID.
+  topsonId: '252249131202904074',
 };
 
 // Duelo semanal de guildas, cadastrado sozinho na quinta 06:00 (ver src/services/guildDuelService.js).

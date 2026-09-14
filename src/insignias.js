@@ -59,6 +59,7 @@ export async function getFontesInsignias({ discordIds = null, contas = null } = 
   const [
     semanas, carteiras, streaks, conquistas, compras, loja, motds, warns,
     aniversarios, quizzes, inativacoes, primeiraInativacao, mvps, atividades, usosDoHelp,
+    marcacoesTopson, lancamentos,
   ] = await Promise.all([
     lerTudo(() => daConta(supabase.from('player_weekly_info')
       .select('brawlhalla_id, week_start, guild_points, initial_wins_1v1, initial_wins_2v2, initial_wins_3v3')).order('id')),
@@ -81,6 +82,9 @@ export async function getFontesInsignias({ discordIds = null, contas = null } = 
       .order('week_start').order('discord_id')),
     lerTudoSeExistir(() => doMembro(supabase.from('player_activity').select('*')).order('discord_id')),
     lerTudoSeExistir(() => doMembro(supabase.from('help_usage').select('discord_id')).order('discord_id')),
+    lerTudoSeExistir(() => doMembro(supabase.from('topson_mentions').select('discord_id, dia'))
+      .order('discord_id').order('dia')),
+    lerTudoSeExistir(() => supabase.from('profile_badge_launches').select('badge_key, dia').order('badge_key')),
   ]);
 
   if (primeiraInativacao.error) throw primeiraInativacao.error;
@@ -92,6 +96,8 @@ export async function getFontesInsignias({ discordIds = null, contas = null } = 
     mvps,
     atividades,
     usosDoHelp,
+    marcacoesTopson,
+    lancamentos,
   };
 }
 
@@ -174,6 +180,24 @@ export async function registrarUsoDoHelp(discordId) {
   if (error) throw error;
 
   jaUsaramHelp.add(id);
+}
+
+/** Primeiro dia em que o contador de uma insígnia ligou. Só insere: religar o bot não muda a data. */
+export async function registrarLancamento(badgeKey, dia) {
+  const { error } = await getClient()
+    .from('profile_badge_launches')
+    .upsert({ badge_key: badgeKey, dia }, { onConflict: 'badge_key', ignoreDuplicates: true });
+
+  if (error) throw error;
+}
+
+/** `[{ discord_id, dia }]` de quem marcou o Topson. O mesmo dia repetido não duplica. */
+export async function registrarMarcacoesTopson(linhas) {
+  const { error } = await getClient()
+    .from('topson_mentions')
+    .upsert(linhas, { onConflict: 'discord_id,dia', ignoreDuplicates: true });
+
+  if (error) throw error;
 }
 
 /** O que o contador já somou de mensagem e call, para o ciclo somar por cima. */

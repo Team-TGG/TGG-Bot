@@ -66,3 +66,21 @@ create table if not exists help_usage (
   discord_id      text        primary key,
   primeiro_uso_em timestamptz not null default now()
 );
+
+-- Dia em que o contador de cada insígnia ligou pela primeira vez, gravado pelo bot no boot. Só insert:
+-- religar não muda a data. É o começo da contagem de insígnia sem dado anterior (Trégua).
+-- `dia` vem do bot no fuso de São Paulo; o current_date do Supabase é UTC e erraria depois das 21h.
+create table if not exists profile_badge_launches (
+  badge_key  text        primary key,
+  dia        date        not null,
+  created_at timestamptz not null default now()
+);
+
+-- Cada dia em que alguém marcou o Topson (Trégua): uma linha por pessoa por dia, só insert.
+-- Só a menção escrita no texto conta; resposta a mensagem dele não. `dia` no fuso de São Paulo.
+create table if not exists topson_mentions (
+  discord_id text        not null,
+  dia        date        not null,
+  created_at timestamptz not null default now(),
+  primary key (discord_id, dia)
+);

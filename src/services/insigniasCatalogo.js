@@ -202,9 +202,10 @@ export const INSIGNIAS = [
   },
   {
     chave: 'sem_marcar_topson', nome: 'Trégua', categoria: DISCORD, unidade: 'dias',
-    descricao: 'Passe dias inteiros sem marcar o Topson',
-    tiers: [1, 2, 3, 4, 5], acumulacao: 'atual', pendente: 'contador começa no lançamento',
-    medir: () => null,
+    descricao: 'Passe dias inteiros sem marcar o Topson (vale a sua maior sequência)',
+    // Maior sequência e vale para todos, inclusive quem nunca marcou (decisões do usuário, 14/09/2026).
+    tiers: [1, 2, 3, 4, 5], acumulacao: 'recorde',
+    medir: (c) => c.discord.diasSemMarcarTopson,
   },
   {
     chave: 'usou_help', nome: 'Curioso', categoria: DISCORD,

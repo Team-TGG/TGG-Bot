@@ -58,8 +58,9 @@ usuário**. O `raw.json` de lá guarda as respostas da API de 02/09 e permite va
 2. ~~MVP da quarta gravar em `weekly_mvp_history`~~ — feito em 14/09/2026 (`gravarMvpsDaSemana`).
    **Precisa estar na VM antes de quarta 16/09/2026 06:00.** Na quinta 17/09, conferir se a semana
    `2026-09-10` apareceu na tabela com ~20 linhas.
-3. **Contador do Topson** (insígnia Trégua) — escutar menção ao usuário Topson. Vale para todos, inclusive
-   quem nunca marcou (decisão 12).
+3. ~~Contador do Topson~~ — feito em 14/09/2026 (`insigniasAtividade.js`, tabelas `topson_mentions` e
+   `profile_badge_launches`). **O usuário precisa rodar o SQL das duas** em [docs/sql/insignias.sql](sql/insignias.sql)
+   antes do deploy: o dia do lançamento é o primeiro boot em que a gravação der certo.
 4. ~~Contador do `.help`~~ — feito em 14/09/2026 (`registrarUsoDoHelp`, tabela `help_usage`).
    **O usuário precisa rodar o SQL da `help_usage`** em [docs/sql/insignias.sql](sql/insignias.sql).
 5. **Fase 2** — ver seção abaixo.
@@ -139,7 +140,8 @@ categorias (Jogo, Guilda, Discord, Economia); vitrine de 8.
 - **Dinastia** conta a **maior** sequência de semanas como MVP.
 - **Completista**: todas no tier máximo, exceto Ficha Limpa e ela mesma.
 - **Topson**: por pessoa, dia inteiro de 00:00 a 00:00 sem marcar, tiers de 1 a 5 dias, conta só a
-  partir do lançamento, e resposta a mensagem dele não conta como marcação.
+  partir do lançamento, e resposta a mensagem dele não conta como marcação. Vale a **maior** sequência,
+  para todos, e o dia do lançamento conta inteiro (14/09/2026).
 - **2v2** subconta de propósito: a v1 só devolve dupla com 10+ jogos.
 - **VIP** é o item `ROLE` de 5.000 moedas, não os cargos de cor.
 - Mensagens e call: exportação do Apolo como base, contador por cima, só membros ativos, travado em dev.
