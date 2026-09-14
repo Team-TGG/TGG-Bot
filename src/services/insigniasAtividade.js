@@ -9,14 +9,15 @@
 // mensagem duas vezes, e aqui a contagem é permanente.
 import { getAllUsers, formatDateTime } from '../db.js';
 import { getAtividadeContada, gravarAtividadeContada, registrarLancamento, registrarMarcacoesTopson } from '../insignias.js';
-import { discord as discordConfig, insignias as insigniasConfig } from '../../config/index.js';
+import { discord as discordConfig, insignias as insigniasConfig, STAFF_ROLE_IDS } from '../../config/index.js';
 
 const INTERVALO_MS = 5 * 60 * 1000;
 const CHAVE_TREGUA = 'sem_marcar_topson';
 
 // Só a menção escrita no texto: `message.mentions.users` traz também o autor da mensagem respondida,
-// e resposta a mensagem do Topson não é marcação (decisão do usuário).
-const MENCAO_TOPSON = new RegExp(`<@!?${insigniasConfig.topsonId}>`);
+// e resposta a mensagem do Topson não é marcação (decisão do usuário). Marcar o cargo @Leader também
+// quebra a Trégua: chega no Topson do mesmo jeito (decisão do usuário, 14/09/2026).
+const MENCAO_TOPSON = new RegExp(`<@!?${insigniasConfig.topsonId}>|<@&${STAFF_ROLE_IDS.leader}>`);
 
 const mensagensPendentes = new Map();  // discordId -> quantidade
 const segundosPendentes = new Map();   // discordId -> segundos

@@ -733,7 +733,8 @@ dado anterior ao deploy do site.
 `profile_badge_launches` (o dia em que o contador ligou pela primeira vez, gravado pelo próprio bot). Vale a
 **maior** sequência de dias inteiros sem marcar, do lançamento até ontem, inclusive para quem nunca marcou.
 Só a menção escrita no texto conta — `message.mentions.users` também traz o autor de mensagem respondida,
-e resposta não é marcação. Marcação feita com o bot fora do ar não é registrada, e o contador só roda em
+e resposta não é marcação. Marcar o cargo `@Leader` (`STAFF_ROLE_IDS.leader`) conta como marcar o Topson
+(decisão do usuário, 14/09/2026); antes dessa data, só a menção direta era registrada. Marcação feita com o bot fora do ar não é registrada, e o contador só roda em
 produção, como o de mensagens.
 
 **Cartão do `.profile`**: [perfilCartao.js](src/services/perfilCartao.js) só desenha, com os dados prontos;

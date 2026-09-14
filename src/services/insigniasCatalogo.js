@@ -236,8 +236,8 @@ export const INSIGNIAS = [
   },
   {
     chave: 'sem_marcar_topson', nome: 'Trégua', categoria: DISCORD, unidade: 'dias',
-    descricao: 'Sua maior sequência de dias inteiros sem marcar o Topson',
-    en: { nome: 'Truce', descricao: 'Your longest streak of full days without pinging Topson' },
+    descricao: 'Sua maior sequência de dias inteiros sem marcar o Topson nem o @Leader',
+    en: { nome: 'Truce', descricao: 'Your longest streak of full days without pinging Topson or @Leader' },
     // Maior sequência e vale para todos, inclusive quem nunca marcou (decisões do usuário, 14/09/2026).
     tiers: [1, 2, 3, 4, 5], acumulacao: 'recorde',
     medir: (c) => c.discord.diasSemMarcarTopson,
