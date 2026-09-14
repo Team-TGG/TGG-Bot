@@ -341,21 +341,6 @@ function contarSemanasSemInativar(brawlhallaId, inatividade, semanasDeGuilda) {
   return inicio ? Math.min(semanas, Math.floor(semanasDeGuilda)) : Math.floor(semanasDeGuilda);
 }
 
-/* O .daily deixa recuperar a streak por 300 moedas quando se passaram dois dias desde o último.
-   Até lá ela não está perdida; depois, a coluna ainda guarda o número antigo até a pessoa voltar
-   a dar .daily, então a data é que decide. */
-function streakDoDaily(linha, agora) {
-  if (!linha?.last_daily) return 0;
-
-  const hoje = new Date(agora);
-  hoje.setHours(0, 0, 0, 0);
-  const ultimo = new Date(linha.last_daily);
-  ultimo.setHours(0, 0, 0, 0);
-
-  const dias = Math.round((hoje - ultimo) / DIA_MS);
-  return dias <= 2 ? Number(linha.streak || 0) : 0;
-}
-
 function contarPor(linhas, coluna) {
   const contagem = new Map();
   for (const linha of linhas) {
@@ -419,8 +404,12 @@ export async function lerContextos({ discordIds = null } = {}) {
   }
   for (const linhas of semanasPorConta.values()) linhas.sort((a, b) => (a.week_start < b.week_start ? -1 : 1));
 
-  const saldo = new Map(fontes.carteiras.map(c => [String(c.discord_id), Number(c.balance || 0)]));
-  const streak = new Map(fontes.streaks.map(s => [String(s.discord_id), s]));
+  // Total ganho, de todo tipo: `vw_tgg_coins_wallet_total` soma as entradas sem descontar gasto.
+  const ganhos = new Map(fontes.carteiras.map(c => [String(c.discord_id), Number(c.balance || 0)]));
+
+  // A coluna guarda o número antigo de quem perdeu a streak: é sequência feita de verdade, e o `recorde`
+  // do catálogo segura o valor quando a pessoa recomeça do 1.
+  const streak = new Map(fontes.streaks.map(s => [String(s.discord_id), Number(s.streak || 0)]));
   const conquistas = contarPor(fontes.conquistas, 'discord_id');
   const compras = contarPor(fontes.compras, 'discord_id');
   const motds = contarPor(fontes.motds, 'discord_id');
@@ -495,8 +484,8 @@ export async function lerContextos({ discordIds = null } = {}) {
       mvp,
       atividade,
       economia: {
-        saldo: saldo.get(discordId) ?? 0,
-        streakDaily: streakDoDaily(streak.get(discordId), agora),
+        coinsGanhos: ganhos.get(discordId) ?? 0,
+        streakDaily: streak.get(discordId) ?? 0,
         conquistas: conquistas.get(discordId) ?? 0,
         itensComprados: compras.get(discordId) ?? 0,
         coresDeEvento: coresDeEvento.get(discordId)?.size ?? 0,

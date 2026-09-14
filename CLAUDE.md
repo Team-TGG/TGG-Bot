@@ -672,8 +672,12 @@ Armadilhas que o cálculo já trata e não devem ser "simplificadas":
 - Leitura de tabela inteira pagina: o PostgREST corta todo select em 10.000 linhas sem erro.
 - Recorde semanal ignora semana com base 0 e par de semanas não adjacente — sem isso o recorde de 1v1
   saía 385 vitórias em 7 dias, que eram 157.
-- A streak do `.daily` é decidida pela data: a coluna guarda o número antigo de quem já perdeu (63
-  linhas em 13/09/2026, uma com 133 dias parada havia 21).
+- A streak do `.daily` vale a **maior**, e a coluna guarda o número antigo de quem já perdeu (63
+  linhas em 13/09/2026): ele conta, porque foi feito de verdade, e o `recorde` o segura quando a pessoa
+  recomeça do 1.
+- `vw_tgg_coins_wallet_total`, que o Cofre lê, **não é o saldo**, apesar do nome: é a soma de toda entrada
+  de moeda, sem descontar gasto (326 de 326 carteiras batem, 14/09/2026). É exatamente o "total ganho de
+  todo tipo" que a insígnia quer. O saldo de verdade fica em `tgg_coins_wallet.balance`.
 - Semanas sem inativar não passam do tempo de guilda, e na quarta antes das 06:10 a âncora recua uma
   semana, porque a inativação daquele dia ainda não rodou.
 - `birthdays.user_id` é int8 e precisa de `::text`, senão o snowflake perde os últimos dígitos.

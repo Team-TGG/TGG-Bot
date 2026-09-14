@@ -9,7 +9,6 @@ import { getClient } from './db.js';
    paginar exige ordem estável, senão a mesma linha cai em duas páginas e outra em nenhuma. */
 const PAGINA = 1000;
 const LOTE_ESCRITA = 500;
-
 async function lerTudo(montarConsulta) {
   const linhas = [];
 
@@ -63,8 +62,9 @@ export async function getFontesInsignias({ discordIds = null, contas = null } = 
   ] = await Promise.all([
     lerTudo(() => daConta(supabase.from('player_weekly_info')
       .select('brawlhalla_id, week_start, guild_points, initial_wins_1v1, initial_wins_2v2, initial_wins_3v3')).order('id')),
+    // Apesar do nome, não é o saldo: a view soma toda entrada de moeda sem descontar gasto (14/09/2026).
     lerTudo(() => doMembro(supabase.from('vw_tgg_coins_wallet_total').select('discord_id, balance')).order('discord_id')),
-    lerTudo(() => doMembro(supabase.from('tgg_coins_daily_streak').select('discord_id, streak, last_daily')).order('discord_id')),
+    lerTudo(() => doMembro(supabase.from('tgg_coins_daily_streak').select('discord_id, streak')).order('discord_id')),
     lerTudo(() => doMembro(supabase.from('tgg_coins_achievements_finished').select('discord_id')).order('id')),
     lerTudo(() => doMembro(supabase.from('tgg_coins_purchases').select('discord_id, shop_id')).order('id')),
     lerTudo(() => supabase.from('tgg_coins_shop').select('id, type').order('id')),

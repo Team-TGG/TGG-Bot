@@ -10,14 +10,14 @@ Atualizado em 13/09/2026. **Ao terminar uma fase, atualize este arquivo** — é
 ## O projeto em uma frase
 
 Um comando `.profile`, só para membros da guilda, que gera uma **imagem** com o perfil do membro e uma
-vitrine de insígnias conquistadas automaticamente. São 40 insígnias em 4 categorias, a maioria com 5
+vitrine de insígnias conquistadas automaticamente. São 39 insígnias em 4 categorias, a maioria com 5
 tiers (Bronze, Prata, Ouro, Platina, Diamante).
 
 ## Fases
 
 | Fase | O que é | Estado |
 | :-- | :-- | :-- |
-| 1 | Motor: tabelas, catálogo, leitura, cálculo, cron 04:00, contador de mensagens/call | **pronta, commitada — falta deploy** |
+| 1 | Motor: tabelas, catálogo, leitura, cálculo, cron 04:00, contador de mensagens/call | **pronta, na VM** |
 | 2 | Cartão em imagem, comando `.profile`, vitrine, botões | não começada |
 | 3 | Arte das insígnias (feita pelo usuário) | não começada |
 | 4 | Insígnia de login no site (depende do site) | não começada |
@@ -28,7 +28,7 @@ tiers (Bronze, Prata, Ouro, Platina, Diamante).
 
 | Arquivo | Papel |
 | :-- | :-- |
-| [src/services/insigniasCatalogo.js](../src/services/insigniasCatalogo.js) | as 40 insígnias: nome, cortes, o que cada uma mede |
+| [src/services/insigniasCatalogo.js](../src/services/insigniasCatalogo.js) | as 39 insígnias: nome, cortes, o que cada uma mede |
 | [src/services/insigniasLeitura.js](../src/services/insigniasLeitura.js) | lê API v1 e banco, monta o contexto de cada membro |
 | [src/services/insigniasMotor.js](../src/services/insigniasMotor.js) | calcula tier e grava — `recalcularInsignias({ discordIds, gravar })` |
 | [src/services/insigniasAtividade.js](../src/services/insigniasAtividade.js) | contador de mensagens e call, grava a cada 5 min, só em produção |
@@ -54,13 +54,12 @@ usuário**. O `raw.json` de lá guarda as respostas da API de 02/09 e permite va
 
 ## O que falta, em ordem
 
-1. **Deploy da fase 1.** Até subir na VM, o cron das 04:00 e o contador não rodam — e as mensagens entre
-   a exportação do Apolo (13/09) e o deploy não entram em lugar nenhum.
-2. **Urgente, antes de quarta 16/09/2026: o MVP da quarta gravar em `weekly_mvp_history`.** Hoje o
-   histórico é só o que foi importado, até 03/09. Se o cron do MVP (`weeklyMvpService.js`) não passar a
-   gravar, as insígnias Destaque e Dinastia param no tempo. Gravar com `week_start` = a quinta que abriu a
-   semana medida, igual ao histórico importado.
-3. **Contador do Topson** (insígnia Trégua) — escutar menção ao usuário Topson; depende da decisão 12.
+1. ~~Deploy da fase 1~~ — feito (confirmado pelo usuário em 14/09/2026).
+2. ~~MVP da quarta gravar em `weekly_mvp_history`~~ — feito em 14/09/2026 (`gravarMvpsDaSemana`).
+   **Precisa estar na VM antes de quarta 16/09/2026 06:00.** Na quinta 17/09, conferir se a semana
+   `2026-09-10` apareceu na tabela com ~20 linhas.
+3. **Contador do Topson** (insígnia Trégua) — escutar menção ao usuário Topson. Vale para todos, inclusive
+   quem nunca marcou (decisão 12).
 4. **Contador do `.help`** (insígnia Curioso) — gravar quem usou.
 5. **Fase 2** — ver seção abaixo.
 6. **Revisar cortes com dado real** depois de algumas noites de cron: as insígnias de ranked convergem ao
@@ -95,28 +94,23 @@ distinguíveis **em preto e branco** — prata e platina se confundem pela cor.
 
 Os números saíram da medição de 13/09/2026 sobre os membros ativos.
 
-1. **Level da conta** dá Diamante para 56% da guilda (o jogo para no 100 e 113 já estão lá). Virar única
-   ("chegou ao 100"), remover ou manter?
-2. **Conquistas concluídas** (15/30/50/70/100): o recordista tem 58, então Platina e Diamante são
-   impossíveis hoje e Bronze pega 9%. Manter ou baixar (ex.: 5/15/30/45/60)?
-3. **Semanas sem inativar**: o histórico só tem 28 semanas, então 111 membros empatam no teto. Aceitar que
-   os tiers altos abram com o tempo?
-4. **TGG Coins** mede saldo: quem gasta na loja perde a insígnia. Trocar para total ganho?
-5. **Streak do `.daily`** conta a sequência atual. Trocar para a maior, como a Dinastia?
-6. **Ficha Limpa** é de 96% da guilda — na prática marca 8 pessoas. Manter ou exigir algo como "6 meses"?
-7. **Cores de evento** (1..5): só existem 3 itens `EVENT_ROLE` na loja, Platina e Diamante travados.
-8. **Contas vinculadas**: 93% têm zero. Reduzir para 3 tiers?
-9. **Contribuição semanal**: publicar com base de 4 semanas e revisar em 60 dias?
-10. **Completista** depende de "Entrou no site", que não existe. Contar só as insígnias já implementadas?
-11. **Vitórias ranked são da temporada**, não da vida inteira. Hoje guardam a **melhor temporada**
-    (recomendado). Alternativas: temporada atual (zera a cada ~3 meses) ou soma das temporadas (exige gravar
-    o fechamento de cada uma).
-12. **Topson**: vale para quem nunca marcou? Se vale, é insígnia de graça para quase todo o servidor.
-13. **Lista das 40 insígnias**: imagem ou texto? Recomendação: texto (busca, quebra de linha, sem render
-    por página); imagem só no cartão.
+1. ~~Level da conta~~ — **manter os 5 tiers** (14/09/2026).
+2. ~~Conquistas concluídas~~ — **manter 15/30/50/70/100** (14/09/2026).
+3. ~~Semanas sem inativar~~ — **aceitar**: os tiers altos abrem com o tempo (14/09/2026).
+4. ~~TGG Coins~~ — **todo tipo de ganho, sem excluir tipo nenhum** (14/09/2026). A pergunta partia de
+   premissa errada: `vw_tgg_coins_wallet_total` já é a soma das entradas, não o saldo, então o Cofre já
+   media isso. Cortes e distribuição continuam os do relatório.
+5. ~~Streak do `.daily`~~ — **maior sequência**, `recorde` (14/09/2026).
+6. ~~Ficha Limpa~~ — **manter como está** (14/09/2026).
+7. ~~Cores de evento~~ — **manter 1..5**; abrem com cor nova (14/09/2026).
+8. ~~Contas vinculadas~~ — **3 tiers (1/2/3)** (14/09/2026).
+9. ~~Contribuição semanal~~ — **publicar e revisar em meados de novembro/2026** (14/09/2026).
+10. ~~Completista~~ — **conta todas, inclusive pendentes**: ninguém pega até o site gravar o login (14/09/2026).
+11. ~~Vitórias ranked~~ — **melhor temporada**, como já está (14/09/2026).
+12. ~~Topson~~ — **vale para todos**, inclusive quem nunca marcou (14/09/2026).
+13. ~~Lista das insígnias~~ — **texto** (embed paginado); imagem só no cartão (14/09/2026).
 14. **Nomes finais** — o usuário está revisando. Mudar é só editar `nome` no catálogo; nunca a `chave`.
-15. **Embalado** (vitórias totais numa semana) não tem fonte: `player_weekly_info` não guarda o total.
-    Remover ou passar a gravar o total semanal?
+15. ~~Embalado~~ — **removido** do catálogo; ficam 39 insígnias (14/09/2026).
 16. Observação, sem ação obrigatória: Tagarela e Voz Ativa têm mais gente no Diamante que no Ouro e na
     Platina somados.
 

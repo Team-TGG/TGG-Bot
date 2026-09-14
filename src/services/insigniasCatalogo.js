@@ -85,13 +85,6 @@ export const INSIGNIAS = [
     tiers: [7, 15, 40, 80, 200], acumulacao: 'atual',
     medir: (c) => c.semanal.vitorias?.v3 ?? null,
   },
-  {
-    // player_weekly_info guarda vitórias por modo ranked, não o total. Sem fonte e sem cortes.
-    chave: 'recorde_semana_total', nome: 'Embalado', categoria: JOGO, unidade: 'vitórias numa semana',
-    descricao: 'Vença partidas em qualquer modo numa única semana',
-    tiers: null, acumulacao: 'atual', pendente: 'sem fonte de dados',
-    medir: () => null,
-  },
 
   // ─── Jogo: volume ───────────────────────────────────────────────────────────
   {
@@ -201,7 +194,8 @@ export const INSIGNIAS = [
   {
     chave: 'contas_vinculadas', nome: 'Vínculo', categoria: DISCORD, unidade: 'contas',
     descricao: 'Vincule contas alternativas à sua',
-    tiers: [1, 2, 3, 4, 5], acumulacao: 'atual',
+    // 3 tiers, não 5: 93% da guilda tem zero contas vinculadas (decisão do usuário, 14/09/2026).
+    tiers: [1, 2, 3], acumulacao: 'atual',
     medir: (c) => c.discord.contasVinculadas,
   },
   {
@@ -251,16 +245,17 @@ export const INSIGNIAS = [
 
   // ─── Economia ───────────────────────────────────────────────────────────────
   {
-    // Saldo, não total ganho: quem gasta na loja pode perder tier (decisão 04 do relatório, em aberto).
+    // Total ganho, não saldo: gastar na loja não tira a insígnia (decisão do usuário, 14/09/2026).
     chave: 'tgg_coins', nome: 'Cofre', categoria: ECONOMIA, unidade: 'TGG Coins',
-    descricao: 'Tenha TGG Coins guardados',
+    descricao: 'Ganhe TGG Coins (gastar não conta contra)',
     tiers: [300, 2100, 8000, 17_500, 28_000], acumulacao: 'atual',
-    medir: (c) => c.economia.saldo,
+    medir: (c) => c.economia.coinsGanhos,
   },
   {
+    // A maior sequência, não a atual, como a Dinastia (decisão do usuário, 14/09/2026).
     chave: 'streak_daily', nome: 'Assíduo', categoria: ECONOMIA, unidade: 'dias seguidos',
-    descricao: 'Mantenha sua streak no .daily',
-    tiers: [3, 7, 30, 60, 100], acumulacao: 'atual',
+    descricao: 'Faça uma sequência no .daily (vale a sua maior)',
+    tiers: [3, 7, 30, 60, 100], acumulacao: 'recorde',
     medir: (c) => c.economia.streakDaily,
   },
   {
