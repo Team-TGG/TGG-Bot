@@ -111,8 +111,9 @@ Os números saíram da medição de 13/09/2026 sobre os membros ativos.
 13. ~~Lista das insígnias~~ — **texto** (embed paginado); imagem só no cartão (14/09/2026).
 14. **Nomes finais** — o usuário está revisando. Mudar é só editar `nome` no catálogo; nunca a `chave`.
 15. ~~Embalado~~ — **removido** do catálogo; ficam 39 insígnias (14/09/2026).
-16. Observação, sem ação obrigatória: Tagarela e Voz Ativa têm mais gente no Diamante que no Ouro e na
-    Platina somados.
+16. ~~Tagarela e Voz Ativa~~ — cortes novos do usuário (14/09/2026): Tagarela 500/3k/10k/25k/50k
+    (39/14/9/8/6 membros por tier); Voz Ativa 20/50/100/175/300 h (28/19/10/8/13, o Diamante ainda
+    passa a Platina, aceito).
 
 ## Decisões já tomadas — não pergunte de novo
 
@@ -145,7 +146,7 @@ categorias (Jogo, Guilda, Discord, Economia); vitrine de 8.
 
 **Cortes definidos pelo usuário** (o resto veio da medição): contribuição total 40k/100k/200k/300k/500k;
 contribuição semanal 5k/10k/20k/30k/40k; MVP total 2/6/12/18/26; streak de MVP 2/4/6/8/10; mensagens
-1k/3k/5k/7k/10k; call 20/50/100/150/200 h; streak do daily 3/7/30/60/100; conquistas 15/30/50/70/100;
+500/3k/10k/25k/50k; call 20/50/100/175/300 h; streak do daily 3/7/30/60/100; conquistas 15/30/50/70/100;
 cores de evento 1..5; Topson 1..5 dias. Os valores em vigor estão no catálogo.
 
 ## Para começar um chat novo

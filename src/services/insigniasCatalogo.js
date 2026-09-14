@@ -176,13 +176,15 @@ export const INSIGNIAS = [
   {
     chave: 'mensagens', nome: 'Tagarela', categoria: DISCORD, unidade: 'mensagens',
     descricao: 'Mande mensagens no servidor',
-    tiers: [1000, 3000, 5000, 7000, 10_000], acumulacao: 'atual',
+    // Cortes do usuário em 14/09/2026: com 1k..10k o Diamante era o tier mais cheio depois do Bronze.
+    tiers: [500, 3000, 10_000, 25_000, 50_000], acumulacao: 'atual',
     medir: (c) => c.atividade?.mensagens ?? null,
   },
   {
     chave: 'horas_call', nome: 'Voz Ativa', categoria: DISCORD, unidade: 'horas',
     descricao: 'Fique em call no servidor',
-    tiers: [20, 50, 100, 150, 200], acumulacao: 'atual',
+    // Cortes do usuário em 14/09/2026, pelo mesmo motivo do Tagarela.
+    tiers: [20, 50, 100, 175, 300], acumulacao: 'atual',
     medir: (c) => c.atividade?.horasCall ?? null,
   },
   {
