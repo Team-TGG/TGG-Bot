@@ -7,6 +7,7 @@ import { createErrorEmbed } from '../utils/discordUtils.js';
 import { handleEscreverModalSubmit, handleFilaEsperaButton, handleAssumirTicket } from './admin.js';
 import { handleTicketLido } from './services/ticketNudge.js';
 import { handleJustificativaButton, handleJustificativaHistorico } from './public.js';
+import { handlePerfilInteracao } from './handlers/perfilHandlers.js';
 
 // Rate limit (mesmo do messageCreate anterior): 5s por usuário, staff isento.
 const rateLimitMap = new Map();
@@ -65,6 +66,27 @@ export function registerInteractionHandler(client) {
   client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isChatInputCommand()) {
       await handleChatInput(interaction, client);
+      return;
+    }
+
+    // Botões, menus e modal do cartão do .profile. Antes do bloco de modais, que devolve todo modal que não
+    // conhece. Mesma razão dos de justificativa: o cartão fica no canal por horas e o collector morreria no restart.
+    if ((interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit())
+      && interaction.customId.startsWith('perfil_')) {
+      try {
+        await handlePerfilInteracao(interaction, client);
+      } catch (err) {
+        console.error('[PERFIL] interaction failed:', err);
+        const payload = {
+          embeds: [createErrorEmbed('Erro Interno', `Não consegui concluir: ${err.message}`)],
+          ephemeral: true,
+        };
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp(payload).catch(() => {});
+        } else {
+          await interaction.reply(payload).catch(() => {});
+        }
+      }
       return;
     }
 

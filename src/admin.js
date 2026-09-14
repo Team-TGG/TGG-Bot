@@ -22,6 +22,7 @@ import { FERRAMENTAS, EXECUTORES, INSTRUCAO_ESCOLHA, INSTRUCAO_RESPOSTA } from '
 import { escanearTickets, reconciliarTickets, CATEGORIA_TICKETS_ID } from './services/ticketQueue.js';
 import { definirResponsavel, getTicket } from './tickets.js';
 import { recalcularOrdemDaFila } from './services/ticketReorder.js';
+import { lerAlvoDoArgumento, limparMensagemDoPerfil } from './handlers/perfilHandlers.js';
 
 // Funções auxiliares
 
@@ -3042,3 +3043,30 @@ export const handleIa = adminOnly(async (message, args) => {
     });
   }
 });
+
+// .limpar-perfil <@membro|ID>
+export async function handleLimparPerfil(message, args, client) {
+  // Helper para cima (decisão do usuário, 14/09/2026)
+  if (!hasPermission(message.member, 1)) {
+    return message.reply({ embeds: [createErrorEmbed('Acesso Negado', 'Apenas helpers ou superiores podem limpar perfis.')] });
+  }
+
+  const alvoId = lerAlvoDoArgumento(args[0]);
+  if (!alvoId) {
+    return message.reply({ embeds: [createErrorEmbed('Formato Inválido', 'Uso: `.limpar-perfil <@membro/ID>`')] });
+  }
+
+  const { limpou, dmEntregue } = await limparMensagemDoPerfil(client, { alvoId, staffId: message.author.id });
+
+  if (!limpou) {
+    return message.reply({ embeds: [createErrorEmbed('Nada para limpar', `<@${alvoId}> não tem mensagem no perfil.`)] });
+  }
+
+  // O cartão é imagem: o que já foi enviado continua com a mensagem antiga até alguém apagar.
+  return message.reply({
+    embeds: [createSuccessEmbed('Perfil limpo',
+      `A mensagem de <@${alvoId}> foi removida e registrada em log-guilda.`
+      + (dmEntregue ? '' : '\nA DM de aviso não chegou (DM fechada).')
+      + '\nCartões já enviados continuam com a imagem antiga: apague essas mensagens se precisar.')],
+  });
+}

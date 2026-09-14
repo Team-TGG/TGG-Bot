@@ -113,6 +113,18 @@ export async function getPerfil(discordId) {
   return data;
 }
 
+/**
+ * Grava só os campos passados (`mensagem`, `vitrine`, `ultimo_sync_em`). O upsert atualiza apenas as colunas
+ * que vão no corpo, então salvar a mensagem não apaga a vitrine.
+ */
+export async function salvarPerfil(discordId, campos) {
+  const { error } = await getClient()
+    .from('profiles')
+    .upsert({ discord_id: String(discordId), ...campos, atualizado_em: new Date().toISOString() }, { onConflict: 'discord_id' });
+
+  if (error) throw error;
+}
+
 /** Estado gravado das insígnias. */
 export async function getInsigniasGravadas(discordIds = null) {
   const supabase = getClient();

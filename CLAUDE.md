@@ -684,6 +684,13 @@ assinatura do que ele desenha — mudou qualquer coisa, ou virou o dia, sai dese
 Symbols 2 e JP) não são enfeite: 12 dos 195 nicks usam caractere que a Montserrat não tem, e a biblioteca
 não cai sozinha para fonte do sistema (14/09/2026). O desenho das insígnias é provisório até a arte do usuário.
 
+Os botões do cartão (vitrine, mensagem, sync, todas as insígnias) são roteados pelo prefixo `perfil_` em
+[interactions.js](src/interactions.js), com o dono e o ID da mensagem do cartão no `customId`, e redesenham
+o cartão no canal depois de salvar. Só "todas as insígnias" é de quem vê; o resto, do dono. A vitrine é
+**posicional** (`profiles.vitrine` guarda null no espaço vazio) e, na primeira edição, a automática vira a
+escolhida. `.limpar-perfil` (helper+) apaga a mensagem, avisa por DM e registra em log-guilda — cartões já
+enviados continuam com a imagem antiga, porque é imagem.
+
 Armadilhas que o cálculo já trata e não devem ser "simplificadas":
 
 - Leitura de tabela inteira pagina: o PostgREST corta todo select em 10.000 linhas sem erro.

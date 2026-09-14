@@ -1,5 +1,5 @@
 // Handlers
-import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleEditWarn, handleMute, handleUnmute, handleBan, handleKick, handleBam, handleInacAll, handleInacList, handleInativar, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleScanTickets, handleImportarTickets, handleAbrirTickets, handleFecharTickets, handleWam, handleJustificativas, handleScan, handleBlindagens, handleIa } from './admin.js';
+import { handleLimparPerfil, handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleEditWarn, handleMute, handleUnmute, handleBan, handleKick, handleBam, handleInacAll, handleInacList, handleInativar, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleScanTickets, handleImportarTickets, handleAbrirTickets, handleFecharTickets, handleWam, handleJustificativas, handleScan, handleBlindagens, handleIa } from './admin.js';
 import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes, handleDuel, handleCrz, handleVideoGuilda, handleAlts, handleJustificativa, handleResumo, handleLbGuilda, handleProfile } from './public.js';
 import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins, handleAddAccount, handleQuiz, handleInventory } from './tggCoinsCommands.js';
 
@@ -52,6 +52,8 @@ export const COMMAND_ALIASES = {
   'atualizar': 'refresh-cache',
   'att': 'refresh-cache',
   'warn': 'warn',
+  'limpar-perfil': 'limpar-perfil',
+  'limparperfil': 'limpar-perfil',
   'unwarn': 'unwarn',
   'warns': 'warns',
   'warnings': 'warns',
@@ -271,6 +273,7 @@ export const commands = {
   'sync-nick': handleSyncNick,
   'refresh-cache': handleRefreshCache,
   warn: handleWarn,
+  'limpar-perfil': handleLimparPerfil,
   wam: handleWam,
   unwarn: handleUnwarn,
   warns: handleWarns,

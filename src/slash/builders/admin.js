@@ -175,4 +175,10 @@ export const adminCommands = [
     .setDescription('Pergunta em português sobre contribuição, MVPs e inativação da semana')
     .addStringOption(o => o.setName('pergunta').setDescription('Ex: quantos estão abaixo do mínimo? quem são os MVPs?').setRequired(true))
     .setDefaultMemberPermissions(MOD_DEFAULT_PERMS),
+
+  // Sem permissão padrão: a regra é helper para cima, conferida no handler, e não uma permissão do Discord.
+  new SlashCommandBuilder()
+    .setName('limpar-perfil')
+    .setDescription('Apaga a mensagem imprópria do perfil de um membro (avisa por DM e em log-guilda)')
+    .addUserOption(o => o.setName('usuario').setDescription('@membro').setRequired(true)),
 ];

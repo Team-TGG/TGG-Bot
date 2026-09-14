@@ -13,7 +13,7 @@ import { selecionarMvpsDasLinhas, faltaParaMvp } from './services/weeklyMvpServi
 import { QUIZ_REWARD } from './handlers/tggCoinsHandlers.js';
 import { addTransaction, updateBalance } from './tggCoins.js';
 import { registrarUsoDoHelp } from './insignias.js';
-import { gerarCartaoDoPerfil } from './handlers/perfilHandlers.js';
+import { lerAlvoDoArgumento, montarRespostaDoCartao } from './handlers/perfilHandlers.js';
 
 import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage, createPagination } from '../utils/discordUtils.js';
 import { isAdmin, adminOnly, channelOnly, leaderOnly } from '../utils/permissions.js';
@@ -30,7 +30,14 @@ export const handleProfile = leaderOnly(async (message, args, client) => {
     });
   }
 
-  const alvo = message.mentions.users.first() ?? message.author;
+  // Menção ou ID puro: pelo ID dá para ver o perfil de quem saiu do servidor e não pode ser mencionado.
+  const alvoId = args[0] ? lerAlvoDoArgumento(args[0]) : message.author.id;
+
+  if (!alvoId) {
+    return message.reply({
+      embeds: [createErrorEmbed('Membro inválido', 'Use `.profile`, `.profile @membro` ou `.profile <ID do Discord>`.')],
+    });
+  }
 
   const autor = await getUserByDiscordId(message.author.id);
   if (!autor?.active) {
@@ -39,18 +46,13 @@ export const handleProfile = leaderOnly(async (message, args, client) => {
     });
   }
 
-  const usuario = alvo.id === message.author.id ? autor : await getUserByDiscordId(alvo.id);
+  const usuario = alvoId === message.author.id ? autor : await getUserByDiscordId(alvoId);
   if (!usuario?.active) {
-    return message.reply({ embeds: [createErrorEmbed('Perfil não encontrado', `${alvo} não é membro ativo da guilda.`)] });
+    return message.reply({ embeds: [createErrorEmbed('Perfil não encontrado', `<@${alvoId}> não é membro ativo da guilda.`)] });
   }
 
   const aviso = await message.reply({ embeds: [createLoadingEmbed('Gerando o perfil...')] });
-
-  const guild = message.guild ?? await client.guilds.fetch(discordConfig.guildId);
-  const membro = await guild.members.fetch(alvo.id).catch(() => null);
-  const png = await gerarCartaoDoPerfil(usuario, membro ?? alvo);
-
-  await aviso.edit({ embeds: [], files: [new AttachmentBuilder(png, { name: 'perfil.png' })] });
+  await aviso.edit(await montarRespostaDoCartao(client, usuario, message.guild));
 });
 
 // .help

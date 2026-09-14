@@ -180,6 +180,9 @@ export const insignias = {
 // isenção (pedido do usuário, 14/09/2026). No lançamento vai para Comandos (1437416406038872225), staff isenta.
 export const perfil = {
   channelId: '1437504463375175936', // Comandos Staff
+  logChannelId: '1536704688689516624', // log-guilda - mensagem de perfil apagada pela staff
+  mensagemMax: 150,
+  syncCooldownMs: 15 * 60 * 1000,
 };
 
 // Duelo semanal de guildas, cadastrado sozinho na quinta 06:00 (ver src/services/guildDuelService.js).
