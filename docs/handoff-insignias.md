@@ -18,9 +18,9 @@ Ouro, Platina, Diamante), algumas únicas.
 | Fase | O que é | Estado |
 | :-- | :-- | :-- |
 | 1 | Motor: tabelas, catálogo, leitura, cálculo, cron 04:00, contadores | **pronta, na VM** |
-| 2 | Cartão em imagem, `.profile`, vitrine, botões, `.limpar-perfil` | **pronta, em teste só com o líder** |
+| 2 | Cartão em imagem, `.profile`, vitrine, botões, `.limpar-perfil` | **pronta, em teste com assistant+** |
 | 3 | Arte das insígnias e insígnias finais (feitas pelo usuário) | não começada |
-| 4 | Insígnia Explorador, de login no site (depende do site) | não começada |
+| 4 | Insígnia Explorador, de acesso ao site | **pronta; site no ar e gravando (testado pelo usuário), falta subir o bot** |
 
 ## Próximos passos, em ordem
 
@@ -37,16 +37,18 @@ Ouro, Platina, Diamante), algumas únicas.
 7. **Lançamento** — checklist abaixo.
 8. **Meados de novembro/2026:** revisar com dado real os cortes da contribuição semanal (base de só 4
    semanas em 09/2026), do Tagarela e da Voz Ativa.
-9. **Fase 4** — quando o site gravar o login.
+9. **Fase 4 — subir o bot** com o Explorador. A tabela `site_logins` já existe e o site já grava
+   (14/09/2026); o bot passa a dar a insígnia no cron das 04:00 ou no sync do cartão.
 
 ### Checklist do lançamento
 
-O `.profile` está **em teste** (pedido do usuário, 14/09/2026). Para abrir à guilda:
+O `.profile` está **em teste com assistant para cima, só em comandos-staff** (pedido do usuário, 14/09/2026;
+antes era só o líder). O `/profile` já aparece para todos na lista de slash, e quem não é staff recebe
+"Acesso Negado". Para abrir à guilda:
 
 - `config/index.js` → `perfil.channelId` de volta para Comandos (`1437416406038872225`).
-- `handleProfile` em `public.js`: trocar `leaderOnly` + a checagem de canal sem isenção por
-  `channelOnly(perfilConfig.channelId, ...)`, que isenta staff. As checagens de membro ativo já estão lá.
-- Builder `/profile` em `slash/builders/public.js`: tirar o `setDefaultMemberPermissions(Administrator)`.
+- `handleProfile` em `public.js`: trocar o `hasPermission(message.member, 1)` + a checagem de canal sem
+  isenção por `channelOnly(perfilConfig.channelId, ...)`, que isenta staff. As checagens de membro ativo já estão lá.
 - Voltar a linha do `.profile` na primeira página do `.help`.
 - Trocar o desenho provisório pela arte da fase 3, se ela já existir.
 
@@ -144,8 +146,10 @@ categorias (Jogo, Guilda, Discord, Economia); vitrine de 8; cartão horizontal; 
 - Vitórias ranqueadas guardam a **melhor temporada**.
 - **Staff conta como MVP** pela regra do cargo: sem ocupar vaga, mas só acima do corte.
 - **Dinastia**, **Assíduo** (`.daily`) e **Trégua** valem a **maior** sequência.
-- **Completista**: todas no tier máximo, exceto Ficha Limpa e ela mesma, **inclusive as pendentes** — ninguém
-  pega até o site gravar o login.
+- **Completista**: todas no tier máximo, exceto Ficha Limpa e ela mesma. Com o Explorador medido, não
+  sobra nenhuma pendente.
+- **Explorador**: basta **um acesso** ao site, gravado pelo próprio site uma vez por sessão (o cookie dura 30
+  dias, então gravar só no OAuth deixaria de fora quem já estava logado). Sem dado anterior ao deploy.
 - **Trégua**: dia inteiro de 00:00 a 00:00 sem marcar o Topson, tiers de 1 a 5 dias, **vale para todos**
   (inclusive quem nunca marcou), conta a partir do lançamento e o dia do lançamento conta inteiro. Resposta
   a mensagem dele não é marcação.
@@ -163,7 +167,7 @@ semanal 5k/10k/20k/30k/40k; MVP total 2/6/12/18/26; streak de MVP 2/4/6/8/10; Ta
 Voz Ativa 20/50/100/175/300 h; Assíduo 3/7/30/60/100; Vínculo 1/2/3; Trégua 1..5 dias.
 
 **Fase 2:** vitrine por espaço; mensagem de 150; "todas as insígnias" é o único botão de quem não é dono;
-`.limpar-perfil` para helper+ com DM e log; aliases `perfil` e `pf`; em teste só o líder em comandos-staff.
+`.limpar-perfil` para helper+ com DM e log; aliases `perfil` e `pf`; em teste com assistant+ em comandos-staff (antes só o líder).
 
 ## Para começar um chat novo
 

@@ -219,8 +219,8 @@ export const INSIGNIAS = [
   {
     chave: 'entrou_site', nome: 'Explorador', categoria: DISCORD,
     descricao: 'Entrar no site da TGG',
-    tiers: null, acumulacao: 'recorde', pendente: 'depende do site gravar o login',
-    medir: () => null,
+    tiers: null, acumulacao: 'recorde',
+    medir: (c) => c.discord.entrouNoSite,
   },
   {
     chave: 'aniversario', nome: 'Aniversariante', categoria: DISCORD,

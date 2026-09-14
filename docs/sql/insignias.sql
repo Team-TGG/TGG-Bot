@@ -76,6 +76,15 @@ create table if not exists profile_badge_launches (
   created_at timestamptz not null default now()
 );
 
+-- Quem já entrou no site da TGG (Explorador). Quem grava é o SITE (load-session.php), não o bot: uma vez
+-- por sessão, e a sessão dura 30 dias, então é "acesso", não cada login pelo Discord. O upsert do site
+-- manda só `ultimo_acesso_em`, por isso `primeiro_acesso_em` guarda a primeira vez. Sem dado antes de 14/09/2026.
+create table if not exists site_logins (
+  discord_id         text        primary key,
+  primeiro_acesso_em timestamptz not null default now(),
+  ultimo_acesso_em   timestamptz not null default now()
+);
+
 -- Cada dia em que alguém marcou o Topson (Trégua): uma linha por pessoa por dia, só insert.
 -- Só a menção escrita no texto conta; resposta a mensagem dele não. `dia` no fuso de São Paulo.
 create table if not exists topson_mentions (

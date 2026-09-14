@@ -670,6 +670,11 @@ mesma hora — senão o período entre a exportação antiga e a nova é contado
 **Curioso** lê `help_usage`, que o próprio `.help` grava na primeira vez de cada membro (só insert, sem
 esperar a resposta do comando). Não há dado anterior a 14/09/2026: quem usou antes precisa usar de novo.
 
+**Explorador** lê `site_logins`, a única tabela das insígnias que o bot **só lê**: quem grava é o site, em
+`load-session.php` (repo `TGG`), uma vez por sessão. Fica no guard das páginas e não no OAuth porque o
+cookie do site dura 30 dias e quem já estava logado nunca passaria pelo login. Um acesso basta; não há
+dado anterior ao deploy do site.
+
 **Trégua** lê `topson_mentions` (um dia por pessoa que marcou o Topson, `insignias.topsonId`) e
 `profile_badge_launches` (o dia em que o contador ligou pela primeira vez, gravado pelo próprio bot). Vale a
 **maior** sequência de dias inteiros sem marcar, do lançamento até ontem, inclusive para quem nunca marcou.

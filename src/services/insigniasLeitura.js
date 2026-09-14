@@ -456,6 +456,7 @@ export async function lerContextos({ discordIds = null } = {}) {
   const mvpsPorMembro = fontes.mvps ? agruparConjuntos(fontes.mvps, 'discord_id', 'week_start') : null;
   const atividadePorMembro = fontes.atividades ? new Map(fontes.atividades.map(a => [String(a.discord_id), a])) : null;
   const usaramHelp = fontes.usosDoHelp ? new Set(fontes.usosDoHelp.map(u => String(u.discord_id))) : null;
+  const entraramNoSite = fontes.acessosAoSite ? new Set(fontes.acessosAoSite.map(a => String(a.discord_id))) : null;
 
   // Sem a data de lançamento não há de onde contar: "não sei", e não zero dias.
   const lancamentoTregua = fontes.lancamentos?.find(l => l.badge_key === 'sem_marcar_topson')?.dia ?? null;
@@ -525,6 +526,7 @@ export async function lerContextos({ discordIds = null } = {}) {
         aniversario: aniversarios.has(discordId),
         quiz: quizzes.has(discordId),
         usouHelp: usaramHelp ? usaramHelp.has(discordId) : null,
+        entrouNoSite: entraramNoSite ? entraramNoSite.has(discordId) : null,
         diasSemMarcarTopson: marcouTopson
           ? maiorTregua(marcouTopson.get(discordId) ?? [], lancamentoTregua, hoje)
           : null,

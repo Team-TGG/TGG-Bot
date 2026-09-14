@@ -59,7 +59,7 @@ export async function getFontesInsignias({ discordIds = null, contas = null } = 
   const [
     semanas, carteiras, streaks, conquistas, compras, loja, motds, warns,
     aniversarios, quizzes, inativacoes, primeiraInativacao, mvps, atividades, usosDoHelp,
-    marcacoesTopson, lancamentos,
+    marcacoesTopson, lancamentos, acessosAoSite,
   ] = await Promise.all([
     lerTudo(() => daConta(supabase.from('player_weekly_info')
       .select('brawlhalla_id, week_start, guild_points, initial_wins_1v1, initial_wins_2v2, initial_wins_3v3')).order('id')),
@@ -85,6 +85,8 @@ export async function getFontesInsignias({ discordIds = null, contas = null } = 
     lerTudoSeExistir(() => doMembro(supabase.from('topson_mentions').select('discord_id, dia'))
       .order('discord_id').order('dia')),
     lerTudoSeExistir(() => supabase.from('profile_badge_launches').select('badge_key, dia').order('badge_key')),
+    // Gravada pelo site, não pelo bot (load-session.php, repo TGG).
+    lerTudoSeExistir(() => doMembro(supabase.from('site_logins').select('discord_id')).order('discord_id')),
   ]);
 
   if (primeiraInativacao.error) throw primeiraInativacao.error;
@@ -98,6 +100,7 @@ export async function getFontesInsignias({ discordIds = null, contas = null } = 
     usosDoHelp,
     marcacoesTopson,
     lancamentos,
+    acessosAoSite,
   };
 }
 
