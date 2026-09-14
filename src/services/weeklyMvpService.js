@@ -3,6 +3,7 @@ import { calcularContribuicaoSemanal } from './contribuicaoSemanal.js';
 import { addTransaction, updateBalance, getTransactionsByTypes } from '../tggCoins.js';
 import { weeklyMvp as config, discord as discordConfig } from '../../config/index.js';
 import { LEADER_ID } from '../../utils/permissions.js';
+import { gravarMvpsDaSemana } from '../insignias.js';
 
 /**
  * MVPs da semana: os membros com mais contribuição (guild points ganhos na semana).
@@ -316,6 +317,14 @@ export async function trocarMvpsDaSemana(client) {
       return { trocado: false, weekStart, motivo: 'SEM_PONTUACAO' };
     }
 
+    // Antes do cargo: MVP é decidido pelo ranking, e cargo inexistente não pode apagar a semana das insígnias
+    const historicoGravado = await gravarMvpsDaSemana(weekStart, mvps.map(m => m.discordId))
+      .then(() => true)
+      .catch(err => {
+        console.error(`[MVP] falha ao gravar a semana ${weekStart} em weekly_mvp_history:`, err.message);
+        return false;
+      });
+
     const resultado = await aplicarCargoMvp(client, mvps);
 
     console.log(
@@ -357,7 +366,7 @@ export async function trocarMvpsDaSemana(client) {
       return false;
     });
 
-    return { trocado: true, weekStart, mvps, ...resultado, premiacao, anunciado };
+    return { trocado: true, weekStart, mvps, ...resultado, premiacao, anunciado, historicoGravado };
 
   } catch (err) {
     console.error('[MVP] falha ao trocar os MVPs da semana', err);

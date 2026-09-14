@@ -128,6 +128,34 @@ export async function registrarTiersAlcancados(tiers) {
   }
 }
 
+/**
+ * Espelha a lista do cargo: rodar a quarta de novo com o ranking virado tira quem saiu dela, como o
+ * cargo faz. Insere antes de limpar, para uma falha no meio nunca deixar a semana vazia — semana
+ * faltando quebra a Dinastia de todo mundo. `week_start` é a quinta, igual ao histórico importado.
+ */
+export async function gravarMvpsDaSemana(weekStart, discordIds) {
+  const supabase = getClient();
+  const semana = String(weekStart).slice(0, 10);
+  const ids = [...new Set(discordIds.map(String))];
+
+  const { error: erroInsercao } = await supabase
+    .from('weekly_mvp_history')
+    .upsert(ids.map(discord_id => ({ week_start: semana, discord_id })), {
+      onConflict: 'week_start,discord_id',
+      ignoreDuplicates: true,
+    });
+
+  if (erroInsercao) throw erroInsercao;
+
+  const { error: erroLimpeza } = await supabase
+    .from('weekly_mvp_history')
+    .delete()
+    .eq('week_start', semana)
+    .not('discord_id', 'in', `(${ids.join(',')})`);
+
+  if (erroLimpeza) throw erroLimpeza;
+}
+
 /** O que o contador já somou de mensagem e call, para o ciclo somar por cima. */
 export async function getAtividadeContada(discordIds) {
   const { data, error } = await getClient()

@@ -36,7 +36,8 @@ create table if not exists profiles (
   atualizado_em  timestamptz not null default now()
 );
 
--- MVP de cada semana, uma linha por pessoa por semana. O histórico é preenchido à mão.
+-- MVP de cada semana, uma linha por pessoa por semana, staff incluída. Até 03/09/2026 foi importado
+-- à mão; a partir da quarta 16/09/2026 o cron do MVP grava (gravarMvpsDaSemana em src/insignias.js).
 -- A streak conta semanas consecutivas pela ORDEM das datas presentes na tabela, não por 7 dias
 -- exatos — então tanto faz gravar a quarta do MVP ou a quinta que abriu a semana, desde que seja
 -- sempre a mesma. Semana inteira faltando na tabela quebra a streak de todo mundo.

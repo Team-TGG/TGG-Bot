@@ -216,6 +216,11 @@ vaga; a contagem fecha quando a 14ª vaga é preenchida, então officer que apar
 fora. Staff aqui é quem é staff em **qualquer** das duas fontes (`users.role` **ou** o `rank` do
 jogo): medido em 08/08/2026, 6 pessoas divergiam entre as duas, nas duas direções.
 
+A mesma lista, staff incluída, vai para `weekly_mvp_history` (Destaque e Dinastia do `.profile`)
+com `week_start` = a quinta que abriu a semana, **antes** do cargo: o MVP é decidido pelo ranking, e
+um cargo que falha não pode deixar a semana de fora, porque semana faltando quebra a Dinastia de
+todos. Rodar de novo espelha a lista nova, como o cargo.
+
 **Prêmio do top 3** — a mesma rodada paga 250/200/150 TGG Coins (`weeklyMvp.premios`) para as três
 maiores contribuições, no formato do `.addcoins`: transação de tipo `TOP 1 SEMANA 13/08/2026` mais o
 saldo somado. Aqui é o **ranking puro, staff incluída** (decisão do usuário, 18/08/2026) — ao
