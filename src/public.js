@@ -12,6 +12,7 @@ import { CONTRIBUICAO_MINIMA } from './services/weeklyInactiveService.js';
 import { selecionarMvpsDasLinhas, faltaParaMvp } from './services/weeklyMvpService.js';
 import { QUIZ_REWARD } from './handlers/tggCoinsHandlers.js';
 import { addTransaction, updateBalance } from './tggCoins.js';
+import { registrarUsoDoHelp } from './insignias.js';
 
 import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage, createPagination } from '../utils/discordUtils.js';
 import { isAdmin, adminOnly, channelOnly } from '../utils/permissions.js';
@@ -20,6 +21,10 @@ import { SOCIALS } from '../config/socials.js';
 
 // .help
 export async function handleHelp(message, args, client) {
+  // Sem await: a insígnia Curioso não pode atrasar nem derrubar o .help
+  registrarUsoDoHelp(message.author.id)
+    .catch(err => console.warn(`[Insignias] falha ao registrar uso do .help: ${err.message}`));
+
   const page1 = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle(`${EMOJIS.crossedSwords} Guilda`)

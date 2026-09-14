@@ -59,3 +59,10 @@ create table if not exists player_activity (
   segundos_call_contados bigint      not null default 0,
   atualizado_em          timestamptz not null default now()
 );
+
+-- Quem já usou o .help (Curioso), gravado pelo próprio comando na primeira vez. Só insert.
+-- Não existe dado anterior à criação (14/09/2026): quem usou antes precisa usar de novo.
+create table if not exists help_usage (
+  discord_id      text        primary key,
+  primeiro_uso_em timestamptz not null default now()
+);

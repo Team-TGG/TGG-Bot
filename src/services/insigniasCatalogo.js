@@ -209,8 +209,8 @@ export const INSIGNIAS = [
   {
     chave: 'usou_help', nome: 'Curioso', categoria: DISCORD,
     descricao: 'Use o .help',
-    tiers: null, acumulacao: 'recorde', pendente: 'contador começa no lançamento',
-    medir: () => null,
+    tiers: null, acumulacao: 'recorde',
+    medir: (c) => c.discord.usouHelp,
   },
   {
     chave: 'entrou_site', nome: 'Explorador', categoria: DISCORD,

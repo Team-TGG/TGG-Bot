@@ -58,7 +58,7 @@ export async function getFontesInsignias({ discordIds = null, contas = null } = 
 
   const [
     semanas, carteiras, streaks, conquistas, compras, loja, motds, warns,
-    aniversarios, quizzes, inativacoes, primeiraInativacao, mvps, atividades,
+    aniversarios, quizzes, inativacoes, primeiraInativacao, mvps, atividades, usosDoHelp,
   ] = await Promise.all([
     lerTudo(() => daConta(supabase.from('player_weekly_info')
       .select('brawlhalla_id, week_start, guild_points, initial_wins_1v1, initial_wins_2v2, initial_wins_3v3')).order('id')),
@@ -80,6 +80,7 @@ export async function getFontesInsignias({ discordIds = null, contas = null } = 
     lerTudoSeExistir(() => supabase.from('weekly_mvp_history').select('week_start, discord_id')
       .order('week_start').order('discord_id')),
     lerTudoSeExistir(() => doMembro(supabase.from('player_activity').select('*')).order('discord_id')),
+    lerTudoSeExistir(() => doMembro(supabase.from('help_usage').select('discord_id')).order('discord_id')),
   ]);
 
   if (primeiraInativacao.error) throw primeiraInativacao.error;
@@ -90,6 +91,7 @@ export async function getFontesInsignias({ discordIds = null, contas = null } = 
     inicioInatividade: primeiraInativacao.data?.[0]?.week_reference ?? null,
     mvps,
     atividades,
+    usosDoHelp,
   };
 }
 
@@ -154,6 +156,24 @@ export async function gravarMvpsDaSemana(weekStart, discordIds) {
     .not('discord_id', 'in', `(${ids.join(',')})`);
 
   if (erroLimpeza) throw erroLimpeza;
+}
+
+// Quem já foi gravado neste processo: o .help é chamado muitas vezes e só a primeira importa.
+const jaUsaramHelp = new Set();
+
+/** Primeira vez que o membro usa o .help (Curioso). Só insere: a data gravada é a do primeiro uso. */
+export async function registrarUsoDoHelp(discordId) {
+  const id = String(discordId);
+  if (jaUsaramHelp.has(id)) return;
+
+  const { error } = await getClient()
+    .from('help_usage')
+    .upsert({ discord_id: id }, { onConflict: 'discord_id', ignoreDuplicates: true });
+
+  if (error?.code === 'PGRST205') throw new Error('tabela help_usage não existe - rode docs/sql/insignias.sql');
+  if (error) throw error;
+
+  jaUsaramHelp.add(id);
 }
 
 /** O que o contador já somou de mensagem e call, para o ciclo somar por cima. */

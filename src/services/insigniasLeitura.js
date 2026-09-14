@@ -435,6 +435,7 @@ export async function lerContextos({ discordIds = null } = {}) {
   const semanasDeMvp = fontes.mvps ? [...new Set(fontes.mvps.map(m => m.week_start))].sort().reverse() : null;
   const mvpsPorMembro = fontes.mvps ? agruparConjuntos(fontes.mvps, 'discord_id', 'week_start') : null;
   const atividadePorMembro = fontes.atividades ? new Map(fontes.atividades.map(a => [String(a.discord_id), a])) : null;
+  const usaramHelp = fontes.usosDoHelp ? new Set(fontes.usosDoHelp.map(u => String(u.discord_id))) : null;
 
   const contextos = usuarios.map(usuario => {
     const discordId = String(usuario.discord_id);
@@ -496,6 +497,7 @@ export async function lerContextos({ discordIds = null } = {}) {
         contasVinculadas: altsPorMain.get(main)?.size ?? 0,
         aniversario: aniversarios.has(discordId),
         quiz: quizzes.has(discordId),
+        usouHelp: usaramHelp ? usaramHelp.has(discordId) : null,
         warnsAtivos: warnsAtivos.get(discordId) ?? 0,
       },
     };
@@ -515,6 +517,7 @@ export async function lerContextos({ discordIds = null } = {}) {
       rotasDeModo,
       mvpDisponivel: !!fontes.mvps,
       atividadeDisponivel: !!fontes.atividades,
+      helpDisponivel: !!fontes.usosDoHelp,
       leituraMs: Date.now() - inicio,
     },
   };

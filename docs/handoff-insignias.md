@@ -60,7 +60,8 @@ usuário**. O `raw.json` de lá guarda as respostas da API de 02/09 e permite va
    `2026-09-10` apareceu na tabela com ~20 linhas.
 3. **Contador do Topson** (insígnia Trégua) — escutar menção ao usuário Topson. Vale para todos, inclusive
    quem nunca marcou (decisão 12).
-4. **Contador do `.help`** (insígnia Curioso) — gravar quem usou.
+4. ~~Contador do `.help`~~ — feito em 14/09/2026 (`registrarUsoDoHelp`, tabela `help_usage`).
+   **O usuário precisa rodar o SQL da `help_usage`** em [docs/sql/insignias.sql](sql/insignias.sql).
 5. **Fase 2** — ver seção abaixo.
 6. **Revisar cortes com dado real** depois de algumas noites de cron: as insígnias de ranked convergem ao
    longo das noites, e o recorde de contribuição semanal tem só 4 semanas de base (revisar em ~60 dias).

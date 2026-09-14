@@ -667,6 +667,9 @@ ativo, sem o canal de AFK, gravado a cada 5 min. Ler-somar-gravar é seguro aqui
 `*_contadas` e o contador não roda em dev. Importar uma exportação nova exige zerar as `*_contadas` na
 mesma hora — senão o período entre a exportação antiga e a nova é contado duas vezes.
 
+**Curioso** lê `help_usage`, que o próprio `.help` grava na primeira vez de cada membro (só insert, sem
+esperar a resposta do comando). Não há dado anterior a 14/09/2026: quem usou antes precisa usar de novo.
+
 Armadilhas que o cálculo já trata e não devem ser "simplificadas":
 
 - Leitura de tabela inteira pagina: o PostgREST corta todo select em 10.000 linhas sem erro.
