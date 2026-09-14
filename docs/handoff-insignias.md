@@ -5,22 +5,50 @@ ele diz o que já existe, o que falta e o que já foi decidido — para não per
 usuário já respondeu. O *como funciona* está na seção "Insígnias do `.profile`" do
 [CLAUDE.md](../CLAUDE.md); aqui fica o *onde estamos*.
 
-Atualizado em 13/09/2026. **Ao terminar uma fase, atualize este arquivo** — é ele que o próximo chat lê.
+Atualizado em 14/09/2026. **Ao terminar uma fase, atualize este arquivo** — é ele que o próximo chat lê.
 
 ## O projeto em uma frase
 
-Um comando `.profile`, só para membros da guilda, que gera uma **imagem** com o perfil do membro e uma
-vitrine de insígnias conquistadas automaticamente. São 39 insígnias em 4 categorias, a maioria com 5
-tiers (Bronze, Prata, Ouro, Platina, Diamante).
+Um comando `.profile` que gera uma **imagem** com o perfil do membro e uma vitrine de insígnias
+conquistadas automaticamente. São 39 insígnias em 4 categorias, a maioria com 5 tiers (Bronze, Prata,
+Ouro, Platina, Diamante), algumas únicas.
 
 ## Fases
 
 | Fase | O que é | Estado |
 | :-- | :-- | :-- |
-| 1 | Motor: tabelas, catálogo, leitura, cálculo, cron 04:00, contador de mensagens/call | **pronta, na VM** |
-| 2 | Cartão em imagem, comando `.profile`, vitrine, botões | **pronta, em teste só com o líder** |
-| 3 | Arte das insígnias (feita pelo usuário) | não começada |
-| 4 | Insígnia de login no site (depende do site) | não começada |
+| 1 | Motor: tabelas, catálogo, leitura, cálculo, cron 04:00, contadores | **pronta, na VM** |
+| 2 | Cartão em imagem, `.profile`, vitrine, botões, `.limpar-perfil` | **pronta, em teste só com o líder** |
+| 3 | Arte das insígnias e insígnias finais (feitas pelo usuário) | não começada |
+| 4 | Insígnia Explorador, de login no site (depende do site) | não começada |
+
+## Próximos passos, em ordem
+
+1. **Subir o último commit.** Push, `git pull` na VM e restart. Não precisa de SQL nem de `npm install`.
+2. **Conferir a Trégua.** `profile_badge_launches` precisa ter a linha `sem_marcar_topson`; sem ela, o
+   contador do Topson não começou (o SQL das duas tabelas tinha que ser rodado antes do deploy).
+3. **Quinta 17/09/2026:** conferir se a semana `2026-09-10` apareceu em `weekly_mvp_history` com ~20
+   linhas. É a primeira quarta gravando sozinha, pelo cron do MVP.
+4. **Investigar a cobertura do cron.** Em 14/09/2026, depois da primeira rodada das 04:00, `profile_badges`
+   tinha **140** membros e havia **195** ativos. Não foi investigado: pode ser só quem não tem conta
+   vinculada, ou membro ficando de fora. Olhar o log `[Insignias] Recalculated` da VM primeiro.
+5. **Nomes finais** — o usuário vai trocar. É só o campo `nome` no catálogo; nunca a `chave`.
+6. **Fase 3** — quando a arte chegar (ver abaixo).
+7. **Lançamento** — checklist abaixo.
+8. **Meados de novembro/2026:** revisar com dado real os cortes da contribuição semanal (base de só 4
+   semanas em 09/2026), do Tagarela e da Voz Ativa.
+9. **Fase 4** — quando o site gravar o login.
+
+### Checklist do lançamento
+
+O `.profile` está **em teste** (pedido do usuário, 14/09/2026). Para abrir à guilda:
+
+- `config/index.js` → `perfil.channelId` de volta para Comandos (`1437416406038872225`).
+- `handleProfile` em `public.js`: trocar `leaderOnly` + a checagem de canal sem isenção por
+  `channelOnly(perfilConfig.channelId, ...)`, que isenta staff. As checagens de membro ativo já estão lá.
+- Builder `/profile` em `slash/builders/public.js`: tirar o `setDefaultMemberPermissions(Administrator)`.
+- Voltar a linha do `.profile` na primeira página do `.help`.
+- Trocar o desenho provisório pela arte da fase 3, se ela já existir.
 
 ## O que já existe
 
@@ -28,116 +56,76 @@ tiers (Bronze, Prata, Ouro, Platina, Diamante).
 
 | Arquivo | Papel |
 | :-- | :-- |
-| [src/services/insigniasCatalogo.js](../src/services/insigniasCatalogo.js) | as 39 insígnias: nome, cortes, o que cada uma mede |
+| [src/services/insigniasCatalogo.js](../src/services/insigniasCatalogo.js) | as 39 insígnias: nome, cortes, o que cada uma mede (`descricao`) |
 | [src/services/insigniasLeitura.js](../src/services/insigniasLeitura.js) | lê API v1 e banco, monta o contexto de cada membro |
 | [src/services/insigniasMotor.js](../src/services/insigniasMotor.js) | calcula tier e grava — `recalcularInsignias({ discordIds, gravar })` |
-| [src/services/insigniasAtividade.js](../src/services/insigniasAtividade.js) | contador de mensagens e call, grava a cada 5 min, só em produção |
+| [src/services/insigniasAtividade.js](../src/services/insigniasAtividade.js) | contadores de mensagens, call e marcação do Topson, a cada 5 min, só em produção |
+| [src/services/perfilCartao.js](../src/services/perfilCartao.js) | desenha o cartão (só desenho, sem banco nem API) |
+| [src/handlers/perfilHandlers.js](../src/handlers/perfilHandlers.js) | dados e cache do cartão, vitrine, botões, lista, sync, limpeza |
 | [src/insignias.js](../src/insignias.js) | acesso ao Supabase |
-| [docs/sql/insignias.sql](sql/insignias.sql) | SQL das 5 tabelas |
+| [docs/sql/insignias.sql](sql/insignias.sql) | SQL de todas as tabelas das insígnias |
+| `assets/fonts/` | Montserrat e três Noto de reserva, com as licenças |
 
-**No banco** (SQL já rodado pelo usuário em 13/09/2026):
+**No banco** (todo o SQL já rodado pelo usuário):
 
-- `weekly_mvp_history` — 594 linhas, 33 semanas de 22/01 a 03/09/2026, importadas à mão.
-- `player_activity` — 194 membros, exportação do Apolo feita em 13/09/2026 nas colunas `*_iniciais`.
-- `profile_badges` / `profile_badge_tiers` — **só um membro gravado** (teste). O resto entra na primeira
-  rodada do cron depois do deploy.
-- `profiles` — vazia; é da fase 2.
+- `profile_badges` / `profile_badge_tiers` — estado e histórico de tiers, reescritos às 04:00.
+- `weekly_mvp_history` — 594 linhas importadas (22/01 a 03/09/2026); daqui para frente o cron do MVP grava.
+- `player_activity` — exportação do Apolo de 13/09/2026 em `*_iniciais`, contador em `*_contadas`.
+- `help_usage` — quem já usou o `.help` (Curioso). Só desde 14/09/2026.
+- `topson_mentions` e `profile_badge_launches` — contador da Trégua e o dia em que ele começou.
+- `profiles` — mensagem, vitrine e último sync de cada membro.
 
-**Validado em 13/09/2026:** o cálculo bateu com a medição em 183 de 183 membros; a leitura ao vivo pegou
-226 de 226 contas; a gravação não duplica; o contador não apaga o número do Apolo.
+**Validado:** o cálculo bateu com a medição em 183 de 183 membros (13/09/2026). Cartão, vitrine, botões,
+lista, sync e `.limpar-perfil` foram testados com interações simuladas e dados reais (14/09/2026), e o
+usuário testou no Discord.
 
 **Relatório dos cortes** para a staff:
 https://claude.ai/code/artifact/1229cd9a-d1f2-48f3-9157-9b63cb03d842 (privado, do usuário).
 
-**Scripts da medição** ficam em `cache/_medicao/` — ignorado pelo git, **só existe na máquina do
-usuário**. O `raw.json` de lá guarda as respostas da API de 02/09 e permite validar o motor sem a API.
+**Só na máquina do usuário** (ignorado pelo git): `cache/_medicao/` com os scripts da medição e o
+`raw.json` da API de 02/09; `cache/_previa/` com as prévias do cartão e da lista.
 
-## O que falta, em ordem
+## Como a fase 2 ficou
 
-1. ~~Deploy da fase 1~~ — feito (confirmado pelo usuário em 14/09/2026).
-2. ~~MVP da quarta gravar em `weekly_mvp_history`~~ — feito em 14/09/2026 (`gravarMvpsDaSemana`).
-   **Precisa estar na VM antes de quarta 16/09/2026 06:00.** Na quinta 17/09, conferir se a semana
-   `2026-09-10` apareceu na tabela com ~20 linhas.
-3. ~~Contador do Topson~~ — feito em 14/09/2026 (`insigniasAtividade.js`, tabelas `topson_mentions` e
-   `profile_badge_launches`). **O usuário precisa rodar o SQL das duas** em [docs/sql/insignias.sql](sql/insignias.sql)
-   antes do deploy: o dia do lançamento é o primeiro boot em que a gravação der certo.
-4. ~~Contador do `.help`~~ — feito em 14/09/2026 (`registrarUsoDoHelp`, tabela `help_usage`).
-   **O usuário precisa rodar o SQL da `help_usage`** em [docs/sql/insignias.sql](sql/insignias.sql).
-5. **Fase 2** — ver seção abaixo.
-6. **Revisar cortes com dado real** depois de algumas noites de cron: as insígnias de ranked convergem ao
-   longo das noites, e o recorde de contribuição semanal tem só 4 semanas de base (revisar em ~60 dias).
+**Cartão** — imagem 1000×420: avatar, nick do jogo, **rank do jogo** (não `users.role`), tempo de guilda,
+peak de elo (maior entre 1v1/2v2/3v3, **resolvido pela conta principal** como no `.scan`), mensagem e
+vitrine de 8. Montserrat com Noto Sans, Symbols 2 e JP de reserva, porque 12 dos 195 nicks usam caractere
+que a Montserrat não tem (só o ࿐ de um nick fica sem desenho). O PNG fica em memória e é redesenhado
+quando muda qualquer coisa que ele mostra, ou quando vira o dia.
 
-### Fase 2 — o que precisa ter
+**Comando** — `.profile`, `.perfil`, `.pf`, `/profile`; aceita menção ou **ID do Discord** (serve para quem
+saiu do servidor). Autor e alvo precisam ser membros ativos.
 
-**Feito em 14/09/2026** (partes 1 e 2 de 5): cartão em [perfilCartao.js](../src/services/perfilCartao.js),
-dados e cache em [perfilHandlers.js](../src/handlers/perfilHandlers.js), `.profile` / `.perfil` / `.pf` /
-`/profile` em `public.js`. Decidido: horizontal 1000×420, **rank do jogo** (não `users.role`), vitrine vazia
-mostra as **8 de maior tier**, Montserrat com três Noto de reserva (~15 MB em `assets/fonts`), insígnia única
-com **visual próprio** (selo lilás). Prévias em `cache/_previa/` (fora do git). Depois, no mesmo dia: `.profile <ID do Discord>`, elo resolvido pela conta principal
-(`resolveBrawlhallaId`, como no `.scan`), e as partes 3 a 5 — botões roteados por `perfil_`, vitrine **por
-espaço** (espaço → categoria → insígnia, só as conquistadas, trocar de lugar se já estiver noutro espaço),
-"todas as insígnias" em abas por categoria (qualquer um vê; o resto é só do dono), sync com cooldown de 15 min
-carimbado antes de começar, mensagem de até **150** caracteres por modal, e `.limpar-perfil` para **helper+**
-com DM ao membro e registro em log-guilda.
+**Botões** — roteados pelo prefixo `perfil_`, sobrevivem a restart e redesenham o cartão no canal:
 
-**Em teste, até o lançamento** (pedido do usuário, 14/09/2026): o `.profile` é **só do líder** (`LEADER_ID`)
-e **só em comandos-staff** (`1437504463375175936`), sem a isenção de staff, e fica fora do `.help`. No
-lançamento: canal Comandos (`1437416406038872225`) com staff isenta, membros ativos, e volta ao `.help`.
+- **Vitrine** (só o dono): espaço → categoria → insígnia, só as conquistadas; se a escolhida já está noutro
+  espaço, as duas trocam. Posicional (espaço vazio é null). Sem escolha, mostra as **8 de maior tier**, e na
+  primeira edição essa vitrine automática vira a escolhida.
+- **Editar mensagem** (só o dono): modal, até **150** caracteres.
+- **Sync** (só o dono): recalcula o membro, cooldown de **15 min** carimbado antes de começar.
+- **Todas as insígnias** (qualquer um): abre na aba **Faltando** (o que não está no máximo, da mais perto do
+  próximo tier para a mais longe), mais uma aba por categoria. **7 por página.** Cada insígnia em três
+  linhas: nome e tier (atual → próximo), **o que é contado** (a `descricao` do catálogo: modo, período, se
+  soma as contas) e barra `▰▱` com porcentagem e números sem unidade.
 
-- `.profile` (e `.profile @membro`): três edições do padrão do repo (handler, `commands.js`, builder).
-- Só membro com `active = true`; pode ver o perfil de outro membro ativo; quem não tem cadastro recebe erro.
-- Só no canal `1437416406038872225`, staff isenta.
-- **Imagem**, não embed, gerada com `@napi-rs/canvas` e uma fonte `.ttf` no repo (livre, ex.: Google Fonts).
-- Cartão: foto de perfil, mensagem customizada, nick no jogo, cargo/rank na guilda, tempo de guilda, peak
-  elo (maior entre os modos) e a vitrine.
-- Vitrine de **8** insígnias escolhidas pelo membro; escolha por select de categoria → select de insígnia
-  (o select do Discord aceita 25 opções).
-- Insígnia desenhada como **base** (forma e cor mudam com o tier) + **ícone cinza tingido** na cor do tier.
-  Até a arte existir: bases geradas por código e a inicial do nome como ícone.
-- Botão **todas as insígnias**: efêmero, desbloqueadas e bloqueadas, com progresso e como desbloquear.
-- Botão **sync**: recalcula só o membro (`recalcularInsignias({ discordIds: [id] })`), cooldown de 15 min
-  gravado em `profiles.ultimo_sync_em`.
-- Botão **editar perfil**: modal com a mensagem customizada.
-- Comando de staff para apagar mensagem imprópria. Sem filtro automático.
-- Cache da imagem por membro, invalidado quando o tier muda.
+**`.limpar-perfil <@membro|ID>`** — helper para cima: apaga a mensagem, avisa por DM e registra em
+log-guilda com o texto removido. Cartões já enviados continuam com a imagem antiga.
+
+**Visual provisório** — bases geradas por código (círculo, quadrado, hexágono, escudo, gema e um selo lilás
+para a insígnia única) e a inicial do nome como ícone.
 
 ### Fase 3 — arte (do usuário)
 
-6 bases (os 5 tiers e a insígnia única, que tem visual próprio), 39 ícones, fundo do cartão e o visual
-da insígnia bloqueada. **As insígnias também podem mudar no lançamento, junto com a arte** (aviso do
-usuário, 14/09/2026): o desenho gerado por código em `perfilCartao.js` é provisório e não vale polir. Ícone em **silhueta chapada**
-(a tintura apaga sombreado), 256×256 com o desenho nos 200px centrais. As 5 bases precisam ser
-distinguíveis **em preto e branco** — prata e platina se confundem pela cor.
-
-## Decisões em aberto
-
-Os números saíram da medição de 13/09/2026 sobre os membros ativos.
-
-1. ~~Level da conta~~ — **manter os 5 tiers** (14/09/2026).
-2. ~~Conquistas concluídas~~ — **manter 15/30/50/70/100** (14/09/2026).
-3. ~~Semanas sem inativar~~ — **aceitar**: os tiers altos abrem com o tempo (14/09/2026).
-4. ~~TGG Coins~~ — **todo tipo de ganho, sem excluir tipo nenhum** (14/09/2026). A pergunta partia de
-   premissa errada: `vw_tgg_coins_wallet_total` já é a soma das entradas, não o saldo, então o Cofre já
-   media isso. Cortes e distribuição continuam os do relatório.
-5. ~~Streak do `.daily`~~ — **maior sequência**, `recorde` (14/09/2026).
-6. ~~Ficha Limpa~~ — **manter como está** (14/09/2026).
-7. ~~Cores de evento~~ — **manter 1..5**; abrem com cor nova (14/09/2026).
-8. ~~Contas vinculadas~~ — **3 tiers (1/2/3)** (14/09/2026).
-9. ~~Contribuição semanal~~ — **publicar e revisar em meados de novembro/2026** (14/09/2026).
-10. ~~Completista~~ — **conta todas, inclusive pendentes**: ninguém pega até o site gravar o login (14/09/2026).
-11. ~~Vitórias ranked~~ — **melhor temporada**, como já está (14/09/2026).
-12. ~~Topson~~ — **vale para todos**, inclusive quem nunca marcou (14/09/2026).
-13. ~~Lista das insígnias~~ — **texto** (embed paginado); imagem só no cartão (14/09/2026).
-14. **Nomes finais** — o usuário está revisando. Mudar é só editar `nome` no catálogo; nunca a `chave`.
-15. ~~Embalado~~ — **removido** do catálogo; ficam 39 insígnias (14/09/2026).
-16. ~~Tagarela e Voz Ativa~~ — cortes novos do usuário (14/09/2026): Tagarela 500/3k/10k/25k/50k
-    (39/14/9/8/6 membros por tier); Voz Ativa 20/50/100/175/300 h (28/19/10/8/13, o Diamante ainda
-    passa a Platina, aceito).
+6 bases (os 5 tiers e a única), 39 ícones, fundo do cartão e o visual da insígnia bloqueada. **As
+insígnias também podem mudar no lançamento, junto com a arte** (aviso do usuário, 14/09/2026): o desenho
+de `perfilCartao.js` é provisório e não vale polir. Ícone em **silhueta chapada** (a tintura apaga
+sombreado), 256×256 com o desenho nos 200px centrais. As bases precisam ser distinguíveis **em preto e
+branco** — prata e platina se confundem pela cor.
 
 ## Decisões já tomadas — não pergunte de novo
 
-**Formato:** perfil em imagem, sem emoji nenhum; base + ícone tingido; 5 tiers com esses nomes; 4
-categorias (Jogo, Guilda, Discord, Economia); vitrine de 8.
+**Formato:** cartão em imagem, sem emoji no cartão; base + ícone tingido; 5 tiers com esses nomes; 4
+categorias (Jogo, Guilda, Discord, Economia); vitrine de 8; cartão horizontal; lista em texto, não imagem.
 
 **Regras gerais:**
 
@@ -153,22 +141,30 @@ categorias (Jogo, Guilda, Discord, Economia); vitrine de 8.
 - Tempo de guilda conta a **entrada mais recente**.
 - Contribuição usa só dado de **08/2026 em diante**; vitórias semanais usam o histórico inteiro.
 - Recordes semanais guardam o **recorde**, não a semana atual.
+- Vitórias ranqueadas guardam a **melhor temporada**.
 - **Staff conta como MVP** pela regra do cargo: sem ocupar vaga, mas só acima do corte.
-- **Dinastia** conta a **maior** sequência de semanas como MVP.
-- **Completista**: todas no tier máximo, exceto Ficha Limpa e ela mesma.
-- **Topson**: por pessoa, dia inteiro de 00:00 a 00:00 sem marcar, tiers de 1 a 5 dias, conta só a
-  partir do lançamento, e resposta a mensagem dele não conta como marcação. Vale a **maior** sequência,
-  para todos, e o dia do lançamento conta inteiro (14/09/2026).
+- **Dinastia**, **Assíduo** (`.daily`) e **Trégua** valem a **maior** sequência.
+- **Completista**: todas no tier máximo, exceto Ficha Limpa e ela mesma, **inclusive as pendentes** — ninguém
+  pega até o site gravar o login.
+- **Trégua**: dia inteiro de 00:00 a 00:00 sem marcar o Topson, tiers de 1 a 5 dias, **vale para todos**
+  (inclusive quem nunca marcou), conta a partir do lançamento e o dia do lançamento conta inteiro. Resposta
+  a mensagem dele não é marcação.
+- **Cofre** mede todo tipo de ganho, sem excluir tipo nenhum. `vw_tgg_coins_wallet_total` já é a soma das
+  entradas, não o saldo.
 - **2v2** subconta de propósito: a v1 só devolve dupla com 10+ jogos.
 - **VIP** é o item `ROLE` de 5.000 moedas, não os cargos de cor.
 - Mensagens e call: exportação do Apolo como base, contador por cima, só membros ativos, travado em dev.
-- Removidas: Apoiador da comunidade, Alterou o perfil no site, Eventos de ticket.
+- **Removidas:** Apoiador da comunidade, Alterou o perfil no site, Eventos de ticket, Embalado.
 
-**Cortes definidos pelo usuário** (o resto veio da medição): contribuição total 40k/100k/200k/300k/500k;
-contribuição semanal 5k/10k/20k/30k/40k; MVP total 2/6/12/18/26; streak de MVP 2/4/6/8/10; mensagens
-500/3k/10k/25k/50k; call 20/50/100/175/300 h; streak do daily 3/7/30/60/100; conquistas 15/30/50/70/100;
-cores de evento 1..5; Topson 1..5 dias. Os valores em vigor estão no catálogo.
+**Cortes** — os valores em vigor estão no catálogo. Mantidos de propósito mesmo com tier alto vazio:
+Veterano (level da conta, 5 tiers), Colecionador 15/30/50/70/100, Constante (abre com o tempo), Camaleão 1..5
+(abre com cor nova). Definidos pelo usuário: contribuição total 40k/100k/200k/300k/500k; contribuição
+semanal 5k/10k/20k/30k/40k; MVP total 2/6/12/18/26; streak de MVP 2/4/6/8/10; Tagarela 500/3k/10k/25k/50k;
+Voz Ativa 20/50/100/175/300 h; Assíduo 3/7/30/60/100; Vínculo 1/2/3; Trégua 1..5 dias.
+
+**Fase 2:** vitrine por espaço; mensagem de 150; "todas as insígnias" é o único botão de quem não é dono;
+`.limpar-perfil` para helper+ com DM e log; aliases `perfil` e `pf`; em teste só o líder em comandos-staff.
 
 ## Para começar um chat novo
 
-Algo como: *"Leia `docs/handoff-insignias.md` e vamos fazer [o item X / a fase 2]."*
+Algo como: *"Leia `docs/handoff-insignias.md` e vamos fazer [o passo X / o lançamento / a arte da fase 3]."*

@@ -160,7 +160,7 @@ export function botoesDoCartao(dono) {
     new ButtonBuilder().setCustomId(`perfil_btn_vitrine_${dono}`).setLabel('Vitrine').setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId(`perfil_btn_mensagem_${dono}`).setLabel('Editar mensagem').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`perfil_btn_sync_${dono}`).setLabel('Sync').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`perfil_lista_${dono}_0`).setLabel('Todas as insígnias').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`perfil_lista_${dono}_0_0`).setLabel('Todas as insígnias').setStyle(ButtonStyle.Secondary),
   );
 }
 
@@ -287,47 +287,104 @@ async function salvarEspaco(interaction, client, dono, mensagemId, espaco, chave
 
 const formatar = (valor) => Math.floor(valor).toLocaleString('pt-BR');
 
-/** Uma insígnia na lista: tier atual, quanto falta para o próximo e como conquistar. */
-export function linhaDaLista(insignia, gravada) {
-  const tiers = insignia.tiers?.length ?? null;
-  const tier = Math.min(Number(gravada?.tier ?? 0), tiers ?? 1);
-  const estilo = estiloDaInsignia({ tier, tiers });
+// 7 e não 10: com a linha do que é contado, cada insígnia virou três linhas (pedido do usuário, 14/09/2026).
+const POR_PAGINA = 7;
+const ABAS_DA_LISTA = ['Faltando', ...Object.values(CATEGORIAS)];
 
-  const status = insignia.pendente ? 'em breve' : estilo?.nome ?? 'bloqueada';
-  let progresso = '';
-
-  if (tiers && !insignia.pendente) {
-    const proximo = insignia.tiers[tier];
-    const valor = gravada?.valor == null ? null : Number(gravada.valor);
-
-    if (proximo === undefined) progresso = ' · tier máximo';
-    else if (valor === null) progresso = ` · ${TIERS[tier].nome} com ${formatar(proximo)} ${insignia.unidade}`;
-    else progresso = ` · ${formatar(valor)} / ${formatar(proximo)} ${insignia.unidade} para ${TIERS[tier].nome}`;
-  }
-
-  return `**${insignia.nome}** — ${status}${progresso}\n${insignia.descricao}`;
+export function barra(percentual) {
+  const cheios = Math.floor(Math.max(0, Math.min(100, percentual)) / 10);
+  return '▰'.repeat(cheios) + '▱'.repeat(10 - cheios);
 }
 
-async function mostrarLista(interaction, dono, aba) {
+/**
+ * Onde o membro está numa insígnia. `percentual` conta do zero até o próximo corte (80 de 160 = 50%), como os
+ * números da linha se leem; null quando não há barra: única, completa, em breve ou sem medição.
+ */
+export function situacaoDaInsignia(insignia, gravada) {
+  const tiers = insignia.tiers?.length ?? null;
+  const tier = Math.min(Number(gravada?.tier ?? 0), tiers ?? 1);
+  const completa = tiers ? tier >= tiers : tier > 0;
+  const proximo = tiers && !completa ? insignia.tiers[tier] : null;
+  const valor = gravada?.valor == null ? null : Number(gravada.valor);
+  const percentual = proximo != null && valor != null ? Math.min(100, Math.floor((valor / proximo) * 100)) : null;
+
+  return { insignia, tier, tiers, estilo: estiloDaInsignia({ tier, tiers }), completa, proximo, valor, percentual };
+}
+
+/* Três linhas: nome e tier, o que é contado e a barra. O que é contado vai sempre, até na completa: o nome não
+   se explica sozinho, e "18 / 26 semanas seguidas" sem dizer seguidas de quê não informa nada (pedido do
+   usuário, 14/09/2026). Por isso a barra sai sem unidade — a linha de cima já diz. */
+export function linhaDaLista({ insignia, tier, tiers, estilo, completa, proximo, valor, percentual }) {
+  const nome = `**${insignia.nome}**`;
+  const mede = insignia.descricao;
+
+  if (insignia.pendente) return `${nome} · em breve\n${mede}`;
+  if (completa) return `${nome} · ${estilo.nome}${tiers ? ' · completa' : ''}\n${mede}`;
+  if (!tiers) return `${nome} · bloqueada\n${mede}`;
+
+  const alvo = TIERS[tier].nome;
+  const progresso = valor == null
+    ? `${barra(0)} sem medição ainda · ${alvo} com ${formatar(proximo)}`
+    : `${barra(percentual)} ${percentual}% · ${formatar(valor)} / ${formatar(proximo)}`;
+
+  return `${nome} · ${estilo?.nome ?? 'bloqueada'} → ${alvo}\n${mede}\n${progresso}`;
+}
+
+/**
+ * Aba 0, "Faltando": tudo que não está no máximo, de todas as categorias, da mais perto do próximo tier para a
+ * mais longe. Sem barra (única bloqueada, sem medição) vai para o fim; "em breve" não entra, não há o que fazer.
+ */
+export function itensDaAba(aba, gravadas) {
+  const situacoes = INSIGNIAS.map((i) => situacaoDaInsignia(i, gravadas.get(i.chave)));
+
+  if (aba > 0) return situacoes.filter((s) => s.insignia.categoria === ABAS_DA_LISTA[aba]);
+
+  return situacoes
+    .filter((s) => !s.completa && !s.insignia.pendente)
+    .sort((a, b) => (b.percentual ?? -1) - (a.percentual ?? -1) || ORDEM.get(a.insignia.chave) - ORDEM.get(b.insignia.chave));
+}
+
+async function mostrarLista(interaction, dono, abaPedida, paginaPedida) {
   const gravadas = new Map((await getInsigniasGravadas([dono])).map((g) => [g.badge_key, g]));
-  const [, categoria] = ABAS[aba] ?? ABAS[0];
+  const aba = ABAS_DA_LISTA[abaPedida] ? abaPedida : 0;
+  const itens = itensDaAba(aba, gravadas);
+
+  const paginas = Math.max(1, Math.ceil(itens.length / POR_PAGINA));
+  const pagina = Math.min(Math.max(0, paginaPedida), paginas - 1);
+
+  const resumo = aba === 0
+    ? `${itens.length} faltando`
+    : `${itens.filter((s) => s.completa).length} de ${itens.length} completas`;
+
+  const corpo = itens.length
+    ? itens.slice(pagina * POR_PAGINA, (pagina + 1) * POR_PAGINA).map(linhaDaLista).join('\n\n')
+    : 'Nada faltando: todas as insígnias disponíveis estão no máximo.';
 
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle(`Insígnias · ${categoria}`)
-    .setDescription(`Perfil de <@${dono}>\n\n${INSIGNIAS
-      .filter((i) => i.categoria === categoria)
-      .map((i) => linhaDaLista(i, gravadas.get(i.chave)))
-      .join('\n\n')}`)
-    .setFooter({ text: 'Recalculadas todo dia às 04:00' });
+    .setTitle(`Insígnias · ${ABAS_DA_LISTA[aba]}`)
+    .setDescription(`Perfil de <@${dono}> · ${resumo}\n\n${corpo}`)
+    .setFooter({ text: `Página ${pagina + 1} de ${paginas} · semana vai de quinta a quinta · recalculadas todo dia às 04:00` });
 
-  const abas = new ActionRowBuilder().addComponents(ABAS.map(([, nome], i) => new ButtonBuilder()
-    .setCustomId(`perfil_lista_${dono}_${i}`)
+  // O sufixo `_aba` evita customId repetido: sem ele, a aba atual e o "Anterior" da página 2 teriam o mesmo.
+  const abas = new ActionRowBuilder().addComponents(ABAS_DA_LISTA.map((nome, i) => new ButtonBuilder()
+    .setCustomId(`perfil_lista_${dono}_${i}_0_aba`)
     .setLabel(nome)
     .setStyle(i === aba ? ButtonStyle.Primary : ButtonStyle.Secondary)
     .setDisabled(i === aba)));
 
-  const payload = { embeds: [embed], components: [abas] };
+  const components = [abas];
+
+  if (paginas > 1) {
+    components.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`perfil_lista_${dono}_${aba}_${pagina - 1}`).setLabel('Anterior')
+        .setStyle(ButtonStyle.Secondary).setDisabled(pagina === 0),
+      new ButtonBuilder().setCustomId(`perfil_lista_${dono}_${aba}_${pagina + 1}`).setLabel('Próxima')
+        .setStyle(ButtonStyle.Secondary).setDisabled(pagina === paginas - 1),
+    ));
+  }
+
+  const payload = { embeds: [embed], components };
 
   // Do cartão, abre efêmera; dentro dela, trocar de aba reescreve a mesma mensagem.
   if (interaction.message?.flags?.has(MessageFlags.Ephemeral)) return interaction.update(payload);
@@ -395,7 +452,8 @@ async function salvarMensagem(interaction, client, dono, mensagemId) {
 export async function handlePerfilInteracao(interaction, client) {
   const [, acao, ...partes] = interaction.customId.split('_');
 
-  if (acao === 'lista') return mostrarLista(interaction, partes[0], Number(partes[1]));
+  // Cartão enviado antes da paginação tem `perfil_lista_<dono>_0`, sem página: vira a primeira.
+  if (acao === 'lista') return mostrarLista(interaction, partes[0], Number(partes[1]) || 0, Number(partes[2]) || 0);
 
   if (acao === 'btn') {
     const [qual, dono] = partes;

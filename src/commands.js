@@ -90,6 +90,7 @@ export const COMMAND_ALIASES = {
   'deily': 'daily',
   'deyly': 'daily',
   'deyli': 'daily',
+  'whatsapp': 'daily',
   'deiucu': 'daily', // Gameru
   'deiocu': 'daily',
   'dailhe': 'daily', // Violet
