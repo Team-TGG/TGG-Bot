@@ -4,7 +4,7 @@ import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, ge
 import { getPlayerWeeklyGuildPoints } from './guild.js';
 import { calcularDueloDaSemana, SEM_DUELO } from './services/dueloSemanal.js';
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI, fetchPlayerGuildStatsNewAPI, fetchPlayerBasicNewAPI } from './brawlhalla.js';
-import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, videoGuilda as videoGuildaConfig, justificativas as justificativasConfig, weeklyMvp as weeklyMvpConfig } from '../config/index.js';
+import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, videoGuilda as videoGuildaConfig, justificativas as justificativasConfig, weeklyMvp as weeklyMvpConfig, perfil as perfilConfig } from '../config/index.js';
 import { criarPedidoDeBlindagem, decidirBlindagem, getBlindagem, getPedidoPendenteDoMembro, registrarMensagemDoPedido, MAX_SEMANAS, STATUS } from './inactivity.js';
 import { calculateGames, calculateGamesFromClosedWeek, ORDENS_LB_GUILDA, POR_PAGINA_LB_GUILDA, ordenarLbGuilda, embedLbGuilda } from './handlers/publicHandlers.js';
 import { calcularContribuicaoSemanal, MOTIVOS } from './services/contribuicaoSemanal.js';
@@ -13,11 +13,45 @@ import { selecionarMvpsDasLinhas, faltaParaMvp } from './services/weeklyMvpServi
 import { QUIZ_REWARD } from './handlers/tggCoinsHandlers.js';
 import { addTransaction, updateBalance } from './tggCoins.js';
 import { registrarUsoDoHelp } from './insignias.js';
+import { gerarCartaoDoPerfil } from './handlers/perfilHandlers.js';
 
 import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage, createPagination } from '../utils/discordUtils.js';
-import { isAdmin, adminOnly, channelOnly } from '../utils/permissions.js';
+import { isAdmin, adminOnly, channelOnly, leaderOnly } from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
 import { SOCIALS } from '../config/socials.js';
+
+// .profile [@membro]
+// Em teste, só o líder e só em comandos-staff (ver `perfil` na config). O canal é checado aqui e não com
+// channelOnly, que isenta admin: o líder é admin, e a trava não valeria justamente para ele.
+export const handleProfile = leaderOnly(async (message, args, client) => {
+  if ((message.channelId ?? message.channel?.id) !== perfilConfig.channelId) {
+    return message.reply({
+      embeds: [createErrorEmbed('Canal Errado', `Esse comando só funciona no canal <#${perfilConfig.channelId}>.`)],
+    });
+  }
+
+  const alvo = message.mentions.users.first() ?? message.author;
+
+  const autor = await getUserByDiscordId(message.author.id);
+  if (!autor?.active) {
+    return message.reply({
+      embeds: [createErrorEmbed('Perfil só para membros', 'O `.profile` é para membros ativos da guilda. Se você é membro, peça para a staff conferir seu cadastro.')],
+    });
+  }
+
+  const usuario = alvo.id === message.author.id ? autor : await getUserByDiscordId(alvo.id);
+  if (!usuario?.active) {
+    return message.reply({ embeds: [createErrorEmbed('Perfil não encontrado', `${alvo} não é membro ativo da guilda.`)] });
+  }
+
+  const aviso = await message.reply({ embeds: [createLoadingEmbed('Gerando o perfil...')] });
+
+  const guild = message.guild ?? await client.guilds.fetch(discordConfig.guildId);
+  const membro = await guild.members.fetch(alvo.id).catch(() => null);
+  const png = await gerarCartaoDoPerfil(usuario, membro ?? alvo);
+
+  await aviso.edit({ embeds: [], files: [new AttachmentBuilder(png, { name: 'perfil.png' })] });
+});
 
 // .help
 export async function handleHelp(message, args, client) {

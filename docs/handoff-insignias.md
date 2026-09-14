@@ -18,7 +18,7 @@ tiers (Bronze, Prata, Ouro, Platina, Diamante).
 | Fase | O que é | Estado |
 | :-- | :-- | :-- |
 | 1 | Motor: tabelas, catálogo, leitura, cálculo, cron 04:00, contador de mensagens/call | **pronta, na VM** |
-| 2 | Cartão em imagem, comando `.profile`, vitrine, botões | não começada |
+| 2 | Cartão em imagem, comando `.profile`, vitrine, botões | **em andamento**: cartão e comando prontos; faltam vitrine, lista e botões |
 | 3 | Arte das insígnias (feita pelo usuário) | não começada |
 | 4 | Insígnia de login no site (depende do site) | não começada |
 
@@ -69,6 +69,17 @@ usuário**. O `raw.json` de lá guarda as respostas da API de 02/09 e permite va
 
 ### Fase 2 — o que precisa ter
 
+**Feito em 14/09/2026** (partes 1 e 2 de 5): cartão em [perfilCartao.js](../src/services/perfilCartao.js),
+dados e cache em [perfilHandlers.js](../src/handlers/perfilHandlers.js), `.profile` / `.perfil` / `.pf` /
+`/profile` em `public.js`. Decidido: horizontal 1000×420, **rank do jogo** (não `users.role`), vitrine vazia
+mostra as **8 de maior tier**, Montserrat com três Noto de reserva (~15 MB em `assets/fonts`), insígnia única
+com **visual próprio** (selo lilás). Prévias em `cache/_previa/` (fora do git). Faltam as partes 3 a 5:
+escolha da vitrine, botão "todas as insígnias", sync, editar mensagem e o comando da staff.
+
+**Em teste, até o lançamento** (pedido do usuário, 14/09/2026): o `.profile` é **só do líder** (`LEADER_ID`)
+e **só em comandos-staff** (`1437504463375175936`), sem a isenção de staff, e fica fora do `.help`. No
+lançamento: canal Comandos (`1437416406038872225`) com staff isenta, membros ativos, e volta ao `.help`.
+
 - `.profile` (e `.profile @membro`): três edições do padrão do repo (handler, `commands.js`, builder).
 - Só membro com `active = true`; pode ver o perfil de outro membro ativo; quem não tem cadastro recebe erro.
 - Só no canal `1437416406038872225`, staff isenta.
@@ -88,7 +99,9 @@ usuário**. O `raw.json` de lá guarda as respostas da API de 02/09 e permite va
 
 ### Fase 3 — arte (do usuário)
 
-5 bases, 40 ícones, fundo do cartão e o visual da insígnia bloqueada. Ícone em **silhueta chapada**
+6 bases (os 5 tiers e a insígnia única, que tem visual próprio), 39 ícones, fundo do cartão e o visual
+da insígnia bloqueada. **As insígnias também podem mudar no lançamento, junto com a arte** (aviso do
+usuário, 14/09/2026): o desenho gerado por código em `perfilCartao.js` é provisório e não vale polir. Ícone em **silhueta chapada**
 (a tintura apaga sombreado), 256×256 com o desenho nos 200px centrais. As 5 bases precisam ser
 distinguíveis **em preto e branco** — prata e platina se confundem pela cor.
 

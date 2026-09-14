@@ -101,6 +101,18 @@ export async function getFontesInsignias({ discordIds = null, contas = null } = 
   };
 }
 
+/** Linha de `profiles` do membro, ou null para quem nunca mexeu no próprio perfil. */
+export async function getPerfil(discordId) {
+  const { data, error } = await getClient()
+    .from('profiles')
+    .select('discord_id, mensagem, vitrine, ultimo_sync_em')
+    .eq('discord_id', String(discordId))
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
 /** Estado gravado das insígnias. */
 export async function getInsigniasGravadas(discordIds = null) {
   const supabase = getClient();

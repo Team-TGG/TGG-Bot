@@ -414,6 +414,44 @@ export async function getUsersByBrawlhallaIds(brawlhallaIds) {
  *
  * Por isso as duas consultas partem do mesmo ID da guilda mas em campos diferentes.
  */
+/**
+ * Conta principal e alts de um membro, sem repetir. Lê as duas tabelas de vínculo, como as insígnias:
+ * o Topson tem 6 alts só em `tgg_coins_achievements_alts` e nenhuma em `alt_ids` (14/09/2026).
+ */
+export async function getContasDoMembro(brawlhallaId) {
+  const supabase = getClient();
+  const id = String(brawlhallaId);
+
+  const [alts, altsDeConquista] = await Promise.all([
+    supabase.from('alt_ids').select('alt_id').eq('main_id', id),
+    supabase.from('tgg_coins_achievements_alts').select('alt_id').eq('main_id', id),
+  ]);
+
+  if (alts.error) throw alts.error;
+  if (altsDeConquista.error) throw altsDeConquista.error;
+
+  return [...new Set([id, ...[...alts.data, ...altsDeConquista.data].map((r) => String(r.alt_id))])];
+}
+
+/** O maior peak entre 1v1, 2v2 e 3v3 de todas as contas: `{ elo, modo }`, ou null para quem nunca jogou ranked. */
+export async function getPeakElo(contas) {
+  const { data, error } = await getClient()
+    .from('vw_player_elo_max')
+    .select('brawlhalla_id, max_1v1, max_2v2, max_3v3')
+    .in('brawlhalla_id', contas);
+
+  if (error) throw error;
+
+  let peak = null;
+  for (const linha of data ?? []) {
+    for (const modo of ['1v1', '2v2', '3v3']) {
+      const elo = Number(linha[`max_${modo}`] || 0);
+      if (elo > (peak?.elo ?? 0)) peak = { elo, modo };
+    }
+  }
+  return peak;
+}
+
 export async function getContasVinculadas(guildBrawlhallaId) {
   const supabase = getClient();
   const id = String(guildBrawlhallaId);

@@ -1,6 +1,6 @@
 // Handlers
 import { handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleEditWarn, handleMute, handleUnmute, handleBan, handleKick, handleBam, handleInacAll, handleInacList, handleInativar, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleScanTickets, handleImportarTickets, handleAbrirTickets, handleFecharTickets, handleWam, handleJustificativas, handleScan, handleBlindagens, handleIa } from './admin.js';
-import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes, handleDuel, handleCrz, handleVideoGuilda, handleAlts, handleJustificativa, handleResumo, handleLbGuilda } from './public.js';
+import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes, handleDuel, handleCrz, handleVideoGuilda, handleAlts, handleJustificativa, handleResumo, handleLbGuilda, handleProfile } from './public.js';
 import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins, handleAddAccount, handleQuiz, handleInventory } from './tggCoinsCommands.js';
 
 // Command Aliases
@@ -28,6 +28,9 @@ export const COMMAND_ALIASES = {
   'ranking-guilda': 'lb-guilda',
   'rankguilda': 'lb-guilda',
   'rank-guilda': 'lb-guilda',
+  'profile': 'profile',
+  'perfil': 'profile',
+  'pf': 'profile',
   'missoes': 'missoes',
   'missões': 'missoes',
   'missao': 'missoes',
@@ -248,6 +251,7 @@ export const commands = {
   stats: handleStats,
   guild: handleGuild,
   'lb-guilda': handleLbGuilda,
+  profile: handleProfile,
   missoes: handleMissoes,
   active: handleActive,
   justificativa: handleJustificativa,

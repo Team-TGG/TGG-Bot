@@ -677,6 +677,13 @@ Só a menção escrita no texto conta — `message.mentions.users` também traz 
 e resposta não é marcação. Marcação feita com o bot fora do ar não é registrada, e o contador só roda em
 produção, como o de mensagens.
 
+**Cartão do `.profile`**: [perfilCartao.js](src/services/perfilCartao.js) só desenha, com os dados prontos;
+[perfilHandlers.js](src/handlers/perfilHandlers.js) junta os dados e guarda o PNG em memória com a
+assinatura do que ele desenha — mudou qualquer coisa, ou virou o dia, sai desenho novo. `@napi-rs/canvas`
+é carregado sob demanda pelo mesmo motivo do `sharp`. As fontes de reserva em `assets/fonts` (Noto Sans,
+Symbols 2 e JP) não são enfeite: 12 dos 195 nicks usam caractere que a Montserrat não tem, e a biblioteca
+não cai sozinha para fonte do sistema (14/09/2026). O desenho das insígnias é provisório até a arte do usuário.
+
 Armadilhas que o cálculo já trata e não devem ser "simplificadas":
 
 - Leitura de tabela inteira pagina: o PostgREST corta todo select em 10.000 linhas sem erro.
