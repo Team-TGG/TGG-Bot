@@ -11,7 +11,7 @@ import { syncNicknames, fetchBrawlhallaClanData } from './src/nicknameSync.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, STAFF_ROLE_IDS, runtime } from './config/index.js';
 import { startCronJobs } from './src/scheduler/cron.js';
 import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo } from './src/db.js';
-import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from './utils/discordUtils.js';
+import { createErrorEmbed, createSuccessEmbed, createCommandErrorEmbed, sendCleanMessage } from './utils/discordUtils.js';
 import { checkChannelPermission } from './utils/permissions.js';
 
 // Services
@@ -176,7 +176,7 @@ async function main() {
     } catch (err) {
       console.error('[Command Error]', err);
       await message.reply({
-        embeds: [createErrorEmbed('Erro Interno', `Um erro inesperado ocorreu: ${err.message}`)]
+        embeds: [createCommandErrorEmbed(err)]
       }).catch(() => {});
     }
   });

@@ -811,6 +811,10 @@ Dois caches em disco, ambos no `.gitignore`:
 - `cache/` — por jogador (`player_<id>.json`) e compartilhado (`shared.json`), TTL de 5 min,
   gerenciado em [src/brawlhalla.js](src/brawlhalla.js). Há dois rate limiters próprios (v1: 2000 req / 5 min;
   v0: 180 req / 15 min) que *esperam* em vez de falhar.
+  Quando a chamada falha, os fetchers devolvem o cache **vencido**, sem limite de idade — exceto
+  em **5xx**: aí o `apiFetch` lança erro com `apiForaDoAr` e o texto `MENSAGEM_API_FORA_DO_AR`, e
+  o catch global responde um aviso em vez de "erro inesperado". Cache de dias atrás fica abaixo
+  da base semanal e dava jogos negativos no `.scan` (16/09/2026, manutenção do jogo).
 - `.brawlhalla-clan-cache.json` — snapshot do clã, atualizado por `fetchBrawlhallaClanData()`.
   `syncNicknames` prefere o cache e só chama a API se o arquivo não existir; `.refresh-cache` força atualização.
 

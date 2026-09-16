@@ -30,6 +30,12 @@ export function createWarningEmbed(title, description) {
     .setDescription(description);
 }
 
+// Resposta do try/catch global: API fora do ar não é erro do bot, e "erro inesperado" mandaria reportar
+export function createCommandErrorEmbed(err) {
+  if (err?.apiForaDoAr) return createWarningEmbed('API do Brawlhalla fora do ar', err.message);
+  return createErrorEmbed('Erro Interno', `Um erro inesperado ocorreu: ${err.message}`);
+}
+
 export async function sendCleanMessage(msg, content) {
   try {
     if (msg && msg.edit) {
