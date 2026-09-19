@@ -3,7 +3,7 @@ import { commands } from './commands.js';
 import { runAsSlash } from '../utils/slashAdapter.js';
 import { checkInteractionChannelPermission, isAdmin } from '../utils/permissions.js';
 import { STAFF_ROLE_IDS } from '../config/index.js';
-import { createErrorEmbed } from '../utils/discordUtils.js';
+import { createErrorEmbed, createCommandErrorEmbed } from '../utils/discordUtils.js';
 import { handleEscreverModalSubmit, handleFilaEsperaButton, handleAssumirTicket } from './admin.js';
 import { handleTicketLido } from './services/ticketNudge.js';
 import { handleJustificativaButton, handleJustificativaHistorico } from './public.js';
@@ -53,7 +53,7 @@ async function handleChatInput(interaction, client) {
   } catch (err) {
     console.error('[Slash Command Error]', err);
     const payload = {
-      embeds: [createErrorEmbed('Erro Interno', `Um erro inesperado ocorreu: ${err.message}`)],
+      embeds: [createCommandErrorEmbed(err)],
     };
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp(payload).catch(() => {});

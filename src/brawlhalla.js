@@ -39,6 +39,15 @@ function rateLimitWait(limit) {
   return limit.window - (now - limit.log[0]) + 50;
 }
 
+export const MENSAGEM_API_FORA_DO_AR =
+  'A API do Brawlhalla está fora do ar no momento, o que costuma acontecer quando o jogo está em manutenção ou atualização. Tente de novo em alguns minutos.';
+
+// Cache vencido cobre falha pontual, não API fora do ar: aí ele pode ter dias, e quem subtrai a
+// leitura de uma base semanal (.scan, .games) sai com número negativo (16/09/2026).
+function cacheVencido(key, err) {
+  return err?.apiForaDoAr ? null : getCached(key, true);
+}
+
 export async function apiFetch(url) {
   const limit = limitFor(url);
   let wait = rateLimitWait(limit);
@@ -55,6 +64,16 @@ export async function apiFetch(url) {
 
   limit.log.push(Date.now());
   const res = await fetch(url);
+
+  if (res.status >= 500) {
+    // Sem a query: ela carrega a api_key
+    console.warn(`[Brawlhalla] API unavailable (${res.status}) at ${url.split('?')[0]}`);
+    const erro = new Error(MENSAGEM_API_FORA_DO_AR);
+    erro.status = res.status;
+    erro.apiForaDoAr = true;
+    throw erro;
+  }
+
   if (!res.ok) {
     const contentType = res.headers.get('content-type') || '';
     let details = '';
@@ -474,7 +493,7 @@ export async function fetchPlayerStats(brawlhallaId) {
     setCached(key, combined);
     return combined;
   } catch (err) {
-    const stale = getCached(key, true);
+    const stale = cacheVencido(key, err);
     if (stale) return stale;
     throw err;
   }
@@ -521,7 +540,7 @@ export async function fetchPlayerStatsNoResolve(brawlhallaId) {
     setCached(key, combined);
     return combined;
   } catch (err) {
-    const stale = getCached(key, true);
+    const stale = cacheVencido(key, err);
     if (stale) return stale;
     throw err;
   }
@@ -549,7 +568,7 @@ export async function fetchClanStats(clanId = process.env.BRAWLHALLA_CLAN_ID || 
     return data;
   } catch (err) {
     console.warn(`[Brawlhalla] API fetch failed for clan ${clanId}, checking stale cache:`, err.message);
-    const stale = getCached(key, true);
+    const stale = cacheVencido(key, err);
     if (stale) return stale;
     throw err;
   }
@@ -738,7 +757,7 @@ export async function fetchPlayerStatsNewAPI(brawlhallaId) {
     console.error(`[Brawlhalla] Failed to fetch player ${resolvedId}`);
     console.error(err);
 
-    const stale = getCached(key, true);
+    const stale = cacheVencido(key, err);
 
     if (stale) {
       console.warn(`[Brawlhalla] Returning stale cache for ${resolvedId}`);
@@ -839,7 +858,7 @@ export async function fetchPlayerGuildStatsNewAPI(brawlhallaId) {
   } catch (err) {
     console.error(`[Brawlhalla] Failed to fetch player guild stats for ${brawlhallaId}`);
     console.error(err);
-    const stale = getCached(key, true);
+    const stale = cacheVencido(key, err);
 
     if (stale) {
       console.warn(`[Brawlhalla] Returning stale cache for player guild ${brawlhallaId}`);
@@ -882,7 +901,7 @@ export async function fetchGuildStatsNewAPI(guildId) {
   } catch (err) {
     console.error(`[Brawlhalla] Failed to fetch guild ${guildId}`);
     console.error(err);
-    const stale = getCached(key, true);
+    const stale = cacheVencido(key, err);
 
     if (stale) {
       console.warn(`[Brawlhalla] Returning stale cache for guild ${guildId}`);
@@ -935,7 +954,7 @@ export async function fetchGuildMembersNewAPI(guildId = process.env.BRAWLHALLA_C
     console.error(`[Brawlhalla] Failed to fetch guild members ${guildId}`);
     console.error(err);
 
-    const stale = getCached(key, true);
+    const stale = cacheVencido(key, err);
 
     if (stale) {
       console.warn(`[Brawlhalla] Returning stale cache for guild members ${guildId}`);

@@ -1,7 +1,7 @@
 // admin.js - Comandos apenas para administradores
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, ComponentType, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 import { createClient, runSync, runEloSync } from './discord.js';
-import { fetchPlayerStats, getUserBrawlhallaId, fetchPlayerGuildStatsNewAPI } from './brawlhalla.js';
+import { fetchPlayerStats, getUserBrawlhallaId, fetchPlayerGuildStatsNewAPI, MENSAGEM_API_FORA_DO_AR } from './brawlhalla.js';
 import { calculateGames, calculateGamesFromClosedWeek } from './handlers/publicHandlers.js';
 import { addWarning, getUserWarnings, removeWarning, removeLastWarning, editWarning, deleteExpiredWarnings, parseTime, formatTime as formatModTime } from './moderation.js';
 import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getMissionWeekStart, getActiveUser, getMemberJustifications, formatDateBR, getMembershipHistory, getPreviousMissionWeekStart, getWeeklyInitial, getMissionWeekStartDateTime, formatCreatedAtBR, loadAliases, resolveBrawlhallaId, getLastWednesdayReference } from './db.js';
@@ -2555,15 +2555,19 @@ export const handleScan = adminOnly(async (message, args, client) => {
 
     // API externa não pode derrubar o comando: sem ela as abas mostram o que dá
     // Resolve alt igual ao `.games` - as partidas descrevem a conta principal
+    let apiForaDoAr = false;
     const stats = await fetchPlayerStats(idJogo).catch((err) => {
       console.warn(`[SCAN] Stats indisponiveis para ${idJogo}:`, err.message);
+      if (err.apiForaDoAr) apiForaDoAr = true;
       return null;
     });
 
     const guildStats = await fetchPlayerGuildStatsNewAPI(brawlhallaId).catch((err) => {
       console.warn(`[SCAN] Guild points indisponiveis para ${brawlhallaId}:`, err.message);
+      if (err.apiForaDoAr) apiForaDoAr = true;
       return null;
     });
+    const semApi = apiForaDoAr ? 'API do Brawlhalla fora do ar' : 'Indisponivel no momento';
 
     // ─── Cálculos ──────────────────────────────────────────────────────────────
     const entradas = history.filter((h) => h.action === 'entrou');
@@ -2616,7 +2620,7 @@ export const handleScan = adminOnly(async (message, args, client) => {
     let motivoSemanaAtual = 'Sem base gravada';
 
     if (pontosTotais == null) {
-      motivoSemanaAtual = 'Indisponivel (API fora do ar)';
+      motivoSemanaAtual = semApi;
     } else if (semanaAtual) {
       const base = semanaAtual.guild_points;
       const baseZeradaIndevida = Number(base) === 0 && pontosTotais > 0 && !entrouNestaSemana;
@@ -2705,6 +2709,8 @@ export const handleScan = adminOnly(async (message, args, client) => {
         .setColor(0x57f287)
         .setTitle(`🎮 Jogos - ${nomeJogo}`);
 
+      if (apiForaDoAr) embed.setDescription(`⚠️ ${MENSAGEM_API_FORA_DO_AR}`);
+
       if (jogosAtual) {
         embed.addFields({
           name: `📅 Esta semana (desde ${formatDateBR(weekStart)})`,
@@ -2716,7 +2722,7 @@ export const handleScan = adminOnly(async (message, args, client) => {
       } else {
         embed.addFields({
           name: '📅 Esta semana',
-          value: stats ? 'Sem registro semanal para esta semana.' : 'Estatisticas indisponiveis (API fora do ar).',
+          value: stats ? 'Sem registro semanal para esta semana.' : semApi,
           inline: false
         });
       }
@@ -2744,10 +2750,11 @@ export const handleScan = adminOnly(async (message, args, client) => {
       const embed = new EmbedBuilder()
         .setColor(0xfaa61a)
         .setTitle(`⭐ Guild Points - ${nomeJogo}`)
+        .setDescription(apiForaDoAr ? `⚠️ ${MENSAGEM_API_FORA_DO_AR}` : null)
         .addFields(
           {
             name: '🏆 Total acumulado',
-            value: pontosTotais != null ? `\`${pontosTotais.toLocaleString('pt-BR')}\`` : 'Indisponivel (API fora do ar)',
+            value: pontosTotais != null ? `\`${pontosTotais.toLocaleString('pt-BR')}\`` : semApi,
             inline: true
           },
           {
@@ -2936,7 +2943,9 @@ export const handleScan = adminOnly(async (message, args, client) => {
 
   } catch (err) {
     console.error('[SCAN]', err);
-    const errorEmbed = createErrorEmbed('Erro no scan', err.message);
+    const errorEmbed = err.apiForaDoAr
+      ? createWarningEmbed('API do Brawlhalla fora do ar', err.message)
+      : createErrorEmbed('Erro no scan', err.message);
 
     if (loadingMsg) await sendCleanMessage(loadingMsg, { embeds: [errorEmbed] });
     else await message.reply({ embeds: [errorEmbed] });
