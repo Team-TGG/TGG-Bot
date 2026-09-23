@@ -117,6 +117,9 @@ export const tickets = {
   filaDeEsperaRoleId: '1466815420630565069',
   entrarNaGuildaChannelId: '1484570233124421692',
   filaGuildaChannelId: '1473760891676786801',
+  // Quem atende ticket. É marcado no próprio ticket a cada 2h enquanto ninguém assume
+  // (ver src/services/ticketSemResponsavel.js). Sem ele essa cobrança fica desligada.
+  auxiliarRoleId: '1527468795894042685',
 };
 
 // Filtro de inatividade dentro da fila, todo dia 07:00

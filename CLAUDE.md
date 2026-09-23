@@ -375,7 +375,8 @@ recuperado do passado** — só existe do dia em que ligou.
 
 **O ciclo de 1 min** ([ticketActivity.js](src/services/ticketActivity.js)) faz, nessa ordem:
 reconcilia a tabela com a categoria, credita quem está em call agora, grava os contadores, grava o
-estado das conversas, cobra os pendentes, tira do filtro de inatividade quem respondeu no
+estado das conversas, cobra os pendentes, cobra o `@auxiliar` nos tickets sem responsável, tira do
+filtro de inatividade quem respondeu no
 próprio ticket e, por último, recalcula a ordem se algum ticket foi encerrado. Nada vai ao banco no momento do evento; tudo acumula em
 memória. O preço é perder até um ciclo se o processo cair, e é aceito porque a pontuação é
 comparativa. `TICKET_CYCLE_SECONDS` calibra sem editar código.
@@ -393,16 +394,43 @@ consulta só. Sem isso, rodar de 1 em 1 min mandaria as ~60 linhas ao banco para
 recém-cadastrado** — é por isso que `inserirTicketsNovos` devolve os IDs inseridos e não a
 contagem. Exige helper+ e o `update` é condicionado a `responsavel_discord_id is null`, então dois
 cliques não se atropelam. Trocar depois é edição manual no Supabase; não existe "largar".
+O card puxa `tickets.auxiliarRoleId` com um **ping seco no `content`**, sem repetir nada do embed;
+sem o ID de cargo ele sai sem ping, porque é o card que faz o ticket andar.
+
+Junto do card sai um **segundo** embed, com a print modelo de nome + ID
+(`assets/tickets/nome-e-id.png`), pedindo que o candidato mande a dele. Mensagem separada porque o
+público é outro — o card é para a staff, o pedido é para quem abriu o ticket — e bilíngue como
+tudo o que fica no canal do ticket. Falhar o pedido não cancela o card; o inverso cancelaria o
+ticket inteiro, porque sem o card ninguém assume.
+
+**Ticket que ninguém assume é cobrado a cada 2h** ([ticketSemResponsavel.js](src/services/ticketSemResponsavel.js)):
+ping em `tickets.auxiliarRoleId` no próprio ticket, com o botão de assumir junto — em ticket com
+dias de conversa o card original fica longe demais para a staff rolar até ele, e botão antigo
+continua valendo porque o `update` é condicionado a `responsavel_discord_id is null`. Roda no ciclo
+de 1 min e não em cron próprio: a consulta já filtra quem passou das 2h, então a resolução sai de
+graça. Repete enquanto ninguém assumir, mas respeita a janela de silêncio das 20h às 08h (decisão
+do usuário, 23/09/2026). O estado é `ticket_queue.aviso_sem_responsavel_em`, e **sem a coluna a
+rotina não começa** (`42703` → loga o SQL que falta): o ping sairia, o carimbo falharia e o cargo
+inteiro seria marcado de minuto em minuto. Em modo dev é só logado — o canal é o de produção.
 
 **As DMs são assimétricas de propósito** ([ticketNudge.js](src/services/ticketNudge.js)):
 
-- **staff** — cobrança por tempo, quando o autor falou por último e não foi respondido. Repete a
-  cada `LIMITE_SEM_RESPOSTA_MS`. Resposta de **qualquer** staff zera a pendência, e o botão
+- **staff** — cobrança por tempo, quando o autor falou por último e não foi respondido. **São dois
+  prazos, não um**: a primeira DM sai `PRIMEIRO_AVISO_MS` depois da mensagem do autor (15 min) e as
+  seguintes de `REPETICAO_AVISO_MS` em `REPETICAO_AVISO_MS` (1h). Eles respondem a perguntas
+  diferentes — quanto o autor pode esperar × de quanto em quanto tempo vale insistir com a mesma
+  pessoa — e por isso `getTicketsPendentes` recebe os dois: com um número só, baixar a primeira
+  cobrança para 15 min baixaria junto a repetição. Decisão do usuário (23/09/2026); antes os dois
+  eram 1h. **DM fechada vira ping no próprio ticket**, com o responsável marcado — é a única forma
+  de a cobrança chegar, e de quebra torna visível quem está com o bot silenciado. Resposta de
+  **qualquer** staff zera a pendência, e o botão
   **"mensagem lida"** da própria DM também: nem todo gif ou emoji do autor pede resposta, e sem
   essa saída o bot cobrava de hora em hora por algo já resolvido. Ele grava
   `ultima_msg_lado = 'responsavel'` em vez de coluna nova — o campo já significa "quem deu o
   último passo", e ler é um passo. O id da mensagem vai no `customId` para o botão valer só para
-  aquela mensagem: clique atrasado não pode silenciar uma que chegou depois.
+  aquela mensagem: clique atrasado não pode silenciar uma que chegou depois. A confirmação do
+  clique diz **qual** ticket foi silenciado (`<#canal>`): a DM some do topo ao ser editada, e sem
+  isso o responsável fica com um "pronto" sem saber de qual dos tickets dele.
 - **autor** — só quando é mencionado no próprio ticket, um ping = uma DM, na hora. Se a DM não
   entrar, o bot **responde no ticket** dizendo que o autor não foi avisado. Sem isso a menção
   falha em silêncio: quem chamou acha que avisou, o autor nunca soube, e o ticket fica parado
@@ -415,9 +443,10 @@ A primeira versão cobrava os dois lados por tempo e nunca silenciava: como semp
 mesmo ciclo, senão quem respondeu há segundos levaria DM pela resposta que já deu — e responder
 zera `ultimo_aviso_em`, senão o outro lado herdaria a janela de silêncio do aviso anterior.
 
-**Janela de silêncio das 20h às 08h**: nenhuma DM de ticket sai, nem para staff nem para autor.
+**Janela de silêncio das 20h às 08h**: nenhuma DM de ticket sai, nem para staff nem para autor, e
+o ping do `@auxiliar` também não.
 Ping na janela é **descartado**, não guardado; a cobrança por tempo se resolve sozinha, porque é
-recalculada a cada ciclo e sai às 08h. Vale só para as DMs de ticket — aplicar global silenciaria
+recalculada a cada ciclo e sai às 08h. Vale só para os avisos de ticket — aplicar global silenciaria
 a inativação da quarta, que manda DM às 06:10.
 
 **Filtro de inatividade (07:00 todo dia)** —
@@ -896,8 +925,8 @@ Sem migrations no repo — o schema vive no Supabase. Domínios principais:
   `_purchases`, `_inventory`, `_service_providers`, `_coach_prices`, `_daily_streak`, `_achievements`,
   `_achievements_alts`, `_achievements_finished`, view `vw_tgg_coins_wallet_total`.
   A variante `tgg_coins_event_*` é a carteira paralela de eventos/tickets — mesma lógica, tabelas separadas.
-- **Fila por tickets**: `ticket_queue`, `ticket_activity`, view `vw_ticket_pontos`, função
-  `incrementar_atividade_ticket`.
+- **Fila por tickets**: `ticket_queue` (inclui `aviso_sem_responsavel_em`, o carimbo da cobrança do
+  `@auxiliar`), `ticket_activity`, view `vw_ticket_pontos`, função `incrementar_atividade_ticket`.
 - **Moderação/diversos**: `warnings`, `mutes`, `motd`, `birthdays`, `tgg_quiz_completed`, `contador_crz`.
 - **Insígnias do `.profile`**: `profile_badges`, `profile_badge_tiers`, `profiles`, `weekly_mvp_history`,
   `player_activity` — SQL em [docs/sql/insignias.sql](docs/sql/insignias.sql).

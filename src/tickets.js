@@ -153,14 +153,19 @@ export async function definirResponsavel(channelId, discordId) {
 }
 
 /**
- * Tickets em que **o autor** falou por último há mais de `limiteISO` e o responsável ainda não
- * respondeu nem foi avisado desde então.
+ * Tickets em que **o autor** falou por último há mais de `limiteMensagemISO` e o responsável ainda
+ * não respondeu nem foi avisado desde `limiteAvisoISO`.
+ *
+ * Os dois limites são separados porque medem coisas diferentes: o da mensagem é a espera do autor
+ * (15 min), o do aviso é o intervalo entre duas cobranças à mesma pessoa (1h). Com um número só,
+ * baixar a primeira cobrança para 15 min baixaria junto a repetição, e o responsável levaria DM a
+ * cada 15 min enquanto o ticket não andasse.
  *
  * Os quatro filtros ficam no Postgres de propósito. `ultima_msg_lado = 'autor'` é o mais
  * importante: como sempre existe um último lado, sem ele a consulta devolvia todo ticket parado
  * e a cobrança virava um relógio perpétuo. Staff falou por último = ninguém está devendo nada.
  */
-export async function getTicketsPendentes(limiteISO) {
+export async function getTicketsPendentes(limiteMensagemISO, limiteAvisoISO) {
   const supabase = getClient();
 
   const { data, error } = await supabase
@@ -169,9 +174,32 @@ export async function getTicketsPendentes(limiteISO) {
     .is('fechado_em', null)
     .eq('ultima_msg_lado', 'autor')
     .not('responsavel_discord_id', 'is', null)
-    .lt('ultima_msg_em', limiteISO)
-    .or(`ultimo_aviso_em.is.null,ultimo_aviso_em.lt.${limiteISO}`);
+    .lt('ultima_msg_em', limiteMensagemISO)
+    .or(`ultimo_aviso_em.is.null,ultimo_aviso_em.lt.${limiteAvisoISO}`);
 
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
+ * Tickets abertos que ninguém assumiu e cuja última cobrança do `@auxiliar` é mais velha que
+ * `limiteISO` (ou nunca aconteceu).
+ *
+ * Devolve `null`, e não lista vazia, quando a coluna `aviso_sem_responsavel_em` não existe
+ * (`42703`): "ninguém para cobrar" e "não sei cobrar" são coisas diferentes, e quem chama precisa
+ * poder dizer qual SQL falta em vez de ficar calado a cada minuto.
+ */
+export async function getTicketsSemResponsavel(limiteISO) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('ticket_queue')
+    .select('channel_id, opener_discord_id, aviso_sem_responsavel_em')
+    .is('fechado_em', null)
+    .is('responsavel_discord_id', null)
+    .or(`aviso_sem_responsavel_em.is.null,aviso_sem_responsavel_em.lt.${limiteISO}`);
+
+  if (error?.code === '42703') return null;
   if (error) throw error;
   return data ?? [];
 }

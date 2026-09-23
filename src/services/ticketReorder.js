@@ -25,13 +25,16 @@ function montarAvisoDeMudanca(anterior, nova) {
   const subiu = anterior !== null && nova < anterior;
   const seta = anterior === null ? '📍' : subiu ? '⬆️' : '⬇️';
 
+  // O sufixo vai separado por idioma: a primeira versão reaproveitava o mesmo `(antes: N)` nos
+  // dois blocos, e metade do aviso em inglês saía em português.
   const de = anterior === null ? '' : ` (antes: ${anterior})`;
+  const before = anterior === null ? '' : ` (before: ${anterior})`;
 
   return (
     `${seta} **Sua posição na fila agora é ${nova}**${de}\n` +
-    'A ordem é recalculada todo dia, conforme sua interação no servidor — mensagens e tempo em call.\n\n' +
-    `${seta} **Your position in the queue is now ${nova}**${de}\n` +
-    'The order is recalculated every day, based on your interaction in the server — messages and voice time.'
+    'A ordem é recalculada todo dia, para subir a sua posição na fila de espera, basta interagir nas calls e chats.\n\n' +
+    `${seta} **Your position in the queue is now ${nova}**${before}\n` +
+    'The order is recalculated every day — to move up the waiting queue, just interact in the calls and chats.'
   );
 }
 
