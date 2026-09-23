@@ -659,6 +659,21 @@ O aviso anota o estado no cadastro do bot, que é o que gera trabalho para a sta
 continua `active` segue contando em sync, missões e inatividade; quem entrou e não tem cadastro ainda
 precisa do `.entrou`. **Não existe comando de saída** — a desativação é feita fora do bot.
 
+**Saída abre vaga, e vaga chama a fila.** Quando a leva tem pelo menos um `saiu`, o mesmo aviso sai
+com ping em `tickets.auxiliarRoleId` e um campo listando os próximos tickets a chamar — **uma vaga,
+um ticket**: saíram três, entram os três primeiros. É o único ping deste aviso; o resto continua
+sendo log, e as menções de membro existem só para a staff saber de quem se trata.
+
+A lista sai de `getProximosDaFila` ([ticketQueue.js](src/services/ticketQueue.js)), pela **ordem
+viva** e não pela coluna `posicao`, que é foto do último recálculo — chamar o próximo pela posição
+de ontem chamaria a pessoa errada. **Ticket com "entrou" no nome fica de fora**: é de quem já foi
+aceito e não fechou o canal, continua na categoria e continua pontuando, e sem o filtro a vaga
+mandaria a staff chamar quem já está dentro. A marca é o nome do canal, e não uma coluna, porque
+quem renomeia é a staff — o bot não fica sabendo da aceitação por nenhum outro caminho.
+
+Falha ao ler a fila devolve lista vazia e o aviso sai como sempre saiu: a movimentação é o assunto
+principal e não pode ser perdida porque o Supabase tossiu.
+
 ### Duelo semanal de guildas
 
 O jogo pareia 1º×2º, 3º×4º, 5º×6º pela classificação corrente. **O campo `rank` de

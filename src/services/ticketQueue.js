@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OverwriteType, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } from 'discord.js';
 import { STAFF_ROLE_IDS, tickets as ticketsConfig } from '../../config/index.js';
-import { inserirTicketsNovos, garantirAtividade, fecharTickets, reabrirTickets, getTicketsAbertosBasico } from '../tickets.js';
+import { inserirTicketsNovos, garantirAtividade, fecharTickets, reabrirTickets, getTicketsAbertosBasico, getTicketsAbertos } from '../tickets.js';
 
 export const CATEGORIA_TICKETS_ID = '1460768037518180352';
 
@@ -199,6 +199,46 @@ export async function getMembrosPresentes(guild, discordIds) {
   }
 
   return presentes;
+}
+
+/** Ticket de quem já foi aceito e não fechou o canal — a staff marca isso renomeando. */
+export function jaEntrouNaGuilda(nomeDoCanal) {
+  return /entrou/i.test(nomeDoCanal);
+}
+
+/**
+ * Os `quantidade` primeiros da fila que ainda **não** entraram na guilda.
+ *
+ * O filtro do "entrou" existe porque esse ticket continua na categoria e continua pontuando: sem
+ * ele, a vaga que abriu mandaria a staff chamar quem já está dentro. A marca é o nome do canal, e
+ * não uma coluna, porque quem renomeia é a staff — o bot não fica sabendo da aceitação por nenhum
+ * outro caminho.
+ *
+ * A ordem sai do cálculo vivo (`getTicketsAbertos`), não da coluna `posicao`, que é foto do último
+ * recálculo: chamar o próximo pela posição de ontem chamaria a pessoa errada.
+ */
+export async function getProximosDaFila(guild, quantidade) {
+  if (quantidade <= 0) return [];
+
+  const tickets = await getTicketsAbertos();
+  const proximos = [];
+
+  for (const ticket of tickets) {
+    const canal = guild.channels.cache.get(ticket.channel_id);
+    if (!canal) continue;
+    if (jaEntrouNaGuilda(canal.name)) continue;
+
+    proximos.push({
+      channelId: canal.id,
+      nome: canal.name,
+      openerId: ticket.opener_discord_id,
+      responsavelId: ticket.responsavel_discord_id,
+    });
+
+    if (proximos.length >= quantidade) break;
+  }
+
+  return proximos;
 }
 
 /**
