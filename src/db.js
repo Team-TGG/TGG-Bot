@@ -452,6 +452,36 @@ export async function getPeakElo(contas) {
   return peak;
 }
 
+/**
+ * `getContasVinculadas` para várias contas da guilda de uma vez — uma consulta por tabela em vez
+ * de duas por membro. Devolve `Map<idDaGuilda, [idDaGuilda, ...vinculadas]>`, com a própria conta
+ * sempre na lista e sem repetição.
+ *
+ * As duas tabelas guardam a relação em sentidos opostos (ver a nota de `getContasDoMembro`), por
+ * isso uma filtra por `alt_id` e a outra por `main_id` partindo do mesmo ID.
+ */
+export async function getContasVinculadasEmLote(guildBrawlhallaIds) {
+  const ids = [...new Set(guildBrawlhallaIds.map(String))];
+  if (!ids.length) return new Map();
+
+  const supabase = getClient();
+
+  const [principais, alternativas] = await Promise.all([
+    supabase.from('alt_ids').select('alt_id, main_id').in('alt_id', ids),
+    supabase.from('tgg_coins_achievements_alts').select('main_id, alt_id').in('main_id', ids),
+  ]);
+
+  if (principais.error) throw principais.error;
+  if (alternativas.error) throw alternativas.error;
+
+  const mapa = new Map(ids.map(id => [id, new Set([id])]));
+
+  for (const r of principais.data ?? []) mapa.get(String(r.alt_id))?.add(String(r.main_id));
+  for (const r of alternativas.data ?? []) mapa.get(String(r.main_id))?.add(String(r.alt_id));
+
+  return new Map([...mapa].map(([id, contas]) => [id, [...contas]]));
+}
+
 export async function getContasVinculadas(guildBrawlhallaId) {
   const supabase = getClient();
   const id = String(guildBrawlhallaId);

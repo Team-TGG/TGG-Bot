@@ -315,6 +315,77 @@ canal que talvez nem abra e o aviso de verdade nunca chega; dizer isso passa o t
 staff, que chama no privado do jeito que um bot não consegue, e evita remover alguém por um
 silêncio que nunca foi escolha dele.
 
+### Faixa baixa de contribuição (quarta 06:20)
+
+[contribuicaoNaFaixa.js](src/services/contribuicaoNaFaixa.js) é **o outro lado da régua**: a
+inativação pega quem ficou abaixo de 1.000 numa semana, isto pega quem fica entre
+`contribuicaoNaFaixa.minimo` e `.maximo` (1.000 e 2.000) por `.semanas` (3) seguidas e por isso
+nunca é pego. Sozinha, cada uma dessas semanas é um número que ninguém questiona; juntas, são o
+padrão que a staff precisa ver. O alerta não pune nada — marca `@Officer` para **conversar**, e diz
+que o ticket é aberto em suporte (`.suporteChannelId`).
+
+Por isso o embed traz **jogos e contribuição de cada semana**: quem jogou muito e pontuou pouco é
+conversa diferente de quem mal apareceu, e sem os dois o officer teria que rodar `.scan` em cada um
+antes de saber qual dos dois está olhando.
+
+**As três semanas não são medidas do mesmo jeito**, e não dá para uniformizar:
+
+- A que **acabou de fechar** sai de `calcularContribuicaoSemanal()` — leitura viva, porque a base
+  da semana seguinte só existe na quinta. É o que fixa o horário: dentro da janela quarta 06:00 →
+  quinta 06:00, a mesma de `semanaFechada()`.
+- As anteriores saem de `player_weekly_info`: contribuição é a base da semana seguinte menos a
+  dela, e jogos é `final_games - games` **na mesma linha** (`final_games > 0` é o que diz que a
+  semana chegou a fechar — mesma guarda do `.scan`).
+
+**Semana que não pôde ser medida desclassifica o membro**, nunca conta como 0: acusar alguém de um
+padrão de três semanas com uma em branco é acusar por falta de dado. Quem entrou há menos de três
+semanas cai fora por consequência, que é o certo.
+
+Duas armadilhas já tratadas:
+
+- **`week_start` chega do Postgres como `2026-09-03T06:00:00`** e `getMissionWeekStart()` monta
+  `2026-09-03 06:00:00`. A consulta casa os dois sem reclamar; quem não casa é o `Map` em memória,
+  e o sintoma é um alerta que nunca acha ninguém, sem erro no log. `chaveDaSemana()` normaliza os
+  dois lados. As outras rotinas escaparam porque filtram a semana no SQL e indexam só por conta.
+- **`games` em 0 é base não registrada**, como o `guild_points` zerado: quem está na guilda há
+  semanas tem milhares de partidas, então subtrair de 0 lê a carreira inteira como a semana —
+  medido em 23/09/2026, um membro saiu com 19.250 jogos numa semana.
+
+**Contribuição é só da conta da guilda, jogos somam todas as contas vinculadas** — as duas
+tabelas, `alt_ids` (`.corrigir-id`) e `tgg_coins_achievements_alts` (`.add-account`), por
+`getContasVinculadasEmLote`. Não é inconsistência: quem pontua é a conta que está na guilda, mas
+jogo é jogo em qualquer conta, e quem passou pelo `.corrigir-id` joga numa e pontua em outra.
+Medido em 23/09/2026: ST4RKINHO- e DABLIUU_NickzZz apareciam com **0 jogos** em três semanas
+seguidas ganhando 1.000+ pontos, porque o `games` da conta da guilda está congelado; somando a
+vinculada viram 6/52 e 190/111. Decisão do usuário. Conta sem base utilizável na semana **não
+entra na soma** em vez de contar 0 — alt vinculada depois simplesmente não tem linha.
+
+Jogos são medidos **depois** do filtro e só para quem entra no embed (`maxLinhas`): levantar as
+contas e ler a API de 197 membros para usar as de uma dúzia é trabalho jogado fora, e a rota por
+conta falha calado em rajada. **A semana corrente é tudo ou nada** — se qualquer conta com base
+utilizável não puder ser lida, a semana vira `—`, porque somar só as que responderam mostraria
+menos jogos do que a pessoa fez, e "jogou pouco" é a leitura que o officer não pode tirar errada.
+A rodada **não** é abortada: contribuição já está medida e o alerta sem jogos ainda serve. O
+`[FAIXA]` loga quantos membros ficaram sem leitura, senão não dá para distinguir "ninguém jogou"
+de "a API estava fora" (medido em 23/09/2026: 16 de 17 em `503`).
+
+São **dois membros por linha**, e isso exige um truque: campo `inline` sozinho empacota **três**
+por linha, não dois. Um campo de largura zero (`​`, não-inline) fecha a linha depois de cada
+par, e é o único jeito de fixar duas — o Discord não tem controle de colunas. Ele vai **entre** os
+pares, nunca no fim, senão sobra uma faixa vazia embaixo. Consequência no teto: cada membro gasta
+1,5 dos 25 campos do embed, daí `maxPorEmbed` (10).
+
+A lista é **quebrada em vários embeds na mesma mensagem**, nunca cortada: lista que cabe num embed
+só é coincidência, não regra. O teto de `maxLinhas` (30) sai dos **6.000 caracteres somando todos
+os embeds**, com ~160 por membro. A menção vai na primeira linha do campo porque é por ela que o
+officer chega na pessoa; o apelido do jogo sozinho não dá para clicar.
+
+O alerta **fica calado quando não há ninguém** — ao contrário do resumo da inativação, aqui a
+semana normal é a vazia, e um embed toda quarta treinaria a staff a não abrir o canal.
+`montarAlerta` ainda sabe montar a lista vazia e aceita `comPing: false`: é por onde uma prévia
+entra, se um dia fizer falta. Existiu um `.faixa-baixa` para conferir o embed com dados reais antes
+do primeiro cron, e ele foi removido depois do teste (23/09/2026) — não é comando esquecido.
+
 **Chamada da staff (domingo 06:00)** — `avisarRemocaoDeInativos`
 ([avisoRemocaoInativos.js](src/services/avisoRemocaoInativos.js)) posta no **canal dos inativos**
 quem continua marcado, com quantos avisos cada um já ignorou, pingando **só** `@Officer`
@@ -875,6 +946,10 @@ Todos registrados no `ClientReady`:
   ([src/services/weeklyMvpService.js](src/services/weeklyMvpService.js)). Ver abaixo.
 - Cron `10 6 * * 3` — inativa quem ficou abaixo do limiar (1.000 menos a tolerância) de contribuição
   ([src/services/weeklyInactiveService.js](src/services/weeklyInactiveService.js)). Ver abaixo.
+- Cron `20 6 * * 3` — alerta quem está na faixa 1.000–2.000 há 3 semanas
+  ([src/services/contribuicaoNaFaixa.js](src/services/contribuicaoNaFaixa.js)). Agendamento próprio
+  e não um passo da inativação: são decisões diferentes (uma marca, a outra chama para conversar) e
+  a inativação não pode ser adiada pela leitura de três semanas. Ver acima.
 - Cron `0 6 * * 4` — cadastra o duelo da semana que começa, com guild points e XP das duas
   guildas na mesma leitura ([src/services/guildDuelService.js](src/services/guildDuelService.js)).
   Agendamento próprio, e não um terceiro passo do bloco das missões: assunto diferente e, sobretudo,

@@ -12,6 +12,7 @@ import { avisarRemocaoDeInativos } from '../services/avisoRemocaoInativos.js';
 import { cobrarInativosDaFila } from '../services/ticketInatividade.js';
 import { avisarTicketsOrfaos } from '../services/ticketOrfaos.js';
 import { avisarMovimentacao } from '../services/guildHistoryService.js';
+import { alertarContribuicaoNaFaixa } from '../services/contribuicaoNaFaixa.js';
 import { recalcularOrdemDaFila } from '../services/ticketReorder.js';
 import { recalcularInsignias } from '../services/insigniasMotor.js';
 
@@ -151,6 +152,20 @@ export function startCronJobs(client, services) {
       await inativarSemana(client);
     } catch (err) {
       console.error('[CRON ERROR - Inativos]', err);
+    }
+  }, {
+    timezone: 'America/Sao_Paulo'
+  });
+
+  // Faixa baixa de contribuição - quarta 06:20, depois da inativação. Agendamento próprio e não
+  // um passo dela: são decisões diferentes (uma marca, a outra chama para conversar) e a
+  // inativação não pode ser adiada pela leitura de três semanas. O horário fica dentro da janela
+  // quarta 06:00 -> quinta 06:00, a única em que a semana que fechou pode ser medida.
+  cron.schedule('20 6 * * 3', async () => {
+    try {
+      await alertarContribuicaoNaFaixa(client);
+    } catch (err) {
+      console.error('[CRON ERROR - Faixa baixa]', err);
     }
   }, {
     timezone: 'America/Sao_Paulo'
