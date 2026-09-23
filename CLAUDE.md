@@ -102,8 +102,14 @@ Isso é intencional, não sujeira — não "limpe" sem pedir.
 
 Quem tem o cargo **EU** ou **NA** recebe o bot em inglês; o resto, em português (pedido do usuário,
 14/09/2026). Os IDs ficam em `idiomas` na [config](config/index.js). É por cargo e não pelo idioma do
-app do Discord porque a mensagem de prefixo não traz idioma nenhum. Por enquanto só o `.profile` (e o
-`.limpar-perfil`) passam por aqui; a intenção é levar para todos os comandos, um de cada vez.
+app do Discord porque a mensagem de prefixo não traz idioma nenhum. Por enquanto passam por aqui o
+`.profile` (e o `.limpar-perfil`) e as **duas DMs de inatividade** — a da marcação da quarta 06:10
+([weeklyInactiveService.js](src/services/weeklyInactiveService.js)) e o lembrete de 3h
+([inactivePlayers.js](src/services/inactivePlayers.js)), em `en/inatividade.js` (decisão do
+usuário, 23/09/2026). As duas juntas de propósito: traduzir só a marcação faria a pessoa ser
+marcada em inglês e cobrada em português três horas depois. O **aviso no canal dos inativos
+continua em português** — é uma mensagem só para a lista inteira, e mensagem de canal não tem como
+seguir o cargo de cada um. A intenção é levar o resto dos comandos, um de cada vez.
 
 **A chave é a própria frase em português.** O código continua legível e português não tem dicionário:
 

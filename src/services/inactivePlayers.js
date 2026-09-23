@@ -4,6 +4,7 @@ import { getTentativasDeAviso, registrarTentativasDeAviso } from '../inactivity.
 import { calcularContribuicaoSemanal } from './contribuicaoSemanal.js';
 import { CONTRIBUICAO_MINIMA } from './weeklyInactiveService.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../../config/index.js';
+import { tradutor } from '../i18n/index.js';
 
 /** Justificativa gravada em `weekly_inactive_players.note` - é o que a staff lê no histórico. */
 const NOTA_AUTOMATICA = 'pegou 1k+ de contribuição e saiu da lista automaticamente';
@@ -116,6 +117,51 @@ async function enviarDm(client, discordId, embed) {
 }
 
 /**
+ * Os membros da lista, em lote, só para saber em que idioma cada DM sai.
+ *
+ * O fetch pelo gateway resolve 100 IDs por requisição e devolve só quem existe — um `fetch` por
+ * pessoa estouraria 10007 para quem saiu do servidor, um a um. Quem não voltar fica de fora do
+ * mapa e cai no português, que é o padrão de `idiomaDoMembro` para quem não tem cargo legível.
+ *
+ * Falha de lote é engolida: o lembrete tem que sair mesmo sem saber o idioma de ninguém.
+ */
+async function buscarMembros(guild, discordIds) {
+  const ids = [...new Set(discordIds.filter(Boolean))];
+  const membros = new Map();
+
+  for (let i = 0; i < ids.length; i += 100) {
+    const lote = await guild.members.fetch({ user: ids.slice(i, i + 100) }).catch(err => {
+      console.warn(`[Inactive Reminder] Idioma não conferido neste lote: ${err.message}`);
+      return null;
+    });
+
+    if (!lote) continue;
+    for (const [id, membro] of lote) membros.set(id, membro);
+  }
+
+  return membros;
+}
+
+/**
+ * DM do lembrete, no idioma de **quem recebe** — EU e NA em inglês (decisão do usuário,
+ * 23/09/2026). A mensagem do canal continua em português: ela é uma só para a lista inteira, e não
+ * tem como seguir o cargo de cada um.
+ */
+function embedDaDm(t) {
+  return new EmbedBuilder()
+    .setColor(0xed4245)
+    .setTitle(`⚠️ ${t('Aviso de Inatividade')}`)
+    .setDescription(
+      t('Você fez menos de {minimo} de contribuição e ficou inativo. Vá até <#{canal}> e leia o lembrete do TGG-Bot para saber mais, e evite ser removido da guilda.', {
+        minimo: t.numero(CONTRIBUICAO_MINIMA),
+        // Canal dos inativos, onde o lembrete acabou de ser postado — não a log-guilda.
+        canal: inactivePlayersConfig.channelId,
+      })
+    )
+    .setTimestamp();
+}
+
+/**
  * Diz, no próprio canal dos inativos, com quem o bot não conseguiu falar por DM.
  *
  * É o caso em que o lembrete automático não serve para nada: a pessoa é pingada num canal que
@@ -212,12 +258,9 @@ export async function sendInactivePlayersReminder(client) {
         }
       });
 
-      // DM
-      const dmEmbed = new EmbedBuilder()
-        .setColor(0xed4245)
-        .setTitle('⚠️ Aviso de Inatividade')
-        .setDescription(`Você fez menos de 1.000 de contribuição e ficou inativo. Por favor, vá para o canal <#1468600851290521692> e leia o lembrete do TGG-Bot para mais informações, evite ser removido da guilda.`)
-        .setTimestamp();
+      // Uma consulta para a lista inteira, antes do laço: o idioma de cada DM sai do cargo, e um
+      // fetch por pessoa dentro do envio seria uma requisição a mais por membro a cada 3h.
+      const membros = await buscarMembros(channel.guild, inactivePlayers.map(p => p.discord_id));
 
       // `null` = sem as colunas de contador. O lembrete sai do mesmo jeito: deixar de avisar
       // a lista inteira por causa de um contador seria trocar o problema pelo pior.
@@ -230,7 +273,8 @@ export async function sendInactivePlayersReminder(client) {
       for (const player of inactivePlayers) {
         if (!player.discord_id) continue;
 
-        const entregue = await enviarDm(client, player.discord_id, dmEmbed);
+        const t = tradutor(membros.get(String(player.discord_id)));
+        const entregue = await enviarDm(client, player.discord_id, embedDaDm(t));
 
         resultados.push({ brawlhallaId: player.brawlhalla_id, dmEntregue: entregue });
         if (!entregue) semDm.push(player);

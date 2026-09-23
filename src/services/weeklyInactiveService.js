@@ -4,6 +4,7 @@ import { getLastWednesdayReference, getMissionWeekEnd } from '../db.js';
 import { calcularContribuicaoSemanal } from './contribuicaoSemanal.js';
 import { getBlindadosNaSemana, getBlindagensPendentes, getInativosDaSemana, inserirInativos } from '../inactivity.js';
 import { inactivePlayers as config, discord as discordConfig } from '../../config/index.js';
+import { tradutor } from '../i18n/index.js';
 
 /**
  * Inativação semanal — o que antes era feito à mão na página `relatorio_inativar.php` do site.
@@ -138,17 +139,21 @@ export async function calcularInativosDaSemana() {
   return { weekReference, weekStart, inativos, poupados, blindados, pendentes, fechada: semanaFechada() };
 }
 
-function embedAviso() {
+/**
+ * DM da marcação, no idioma de **quem recebe** — EU e NA em inglês (decisão do usuário,
+ * 23/09/2026). É a mesma regra da DM do `.limpar-perfil`: DM tem um destinatário só, então não há
+ * o dilema da mensagem de canal, que serve uma lista inteira e fica no idioma de quem pediu.
+ *
+ * Montada por membro, e não uma vez fora do laço: o idioma sai do cargo de cada um.
+ */
+function embedAviso(t) {
   return new EmbedBuilder()
     .setColor(0xed4245)
-    .setTitle('⚠️ Aviso de Inatividade')
+    .setTitle(`⚠️ ${t('Aviso de Inatividade')}`)
     .setDescription(
-      `Você fez menos de **${CONTRIBUICAO_MINIMA.toLocaleString('pt-BR')} de contribuição** na semana ` +
-      `e foi marcado como inativo.\n\n` +
-      `Veja o lembrete do TGG-Bot em <#${config.channelId}> para saber como sair da lista e evitar ` +
-      `ser removido da guilda.\n\n` +
-      `Se teve um motivo para não jogar, use \`.active <justificativa>\`. Se já sabe que vai ficar ` +
-      `sem jogar nas próximas semanas, use \`.justificativa <motivo> <semanas>\`.`
+      t('Você fez menos de **{minimo} de contribuição** na semana e foi marcado como inativo.', { minimo: t.numero(CONTRIBUICAO_MINIMA) }) + '\n\n' +
+      t('Veja o lembrete do TGG-Bot em <#{canal}> para saber como sair da lista e evitar ser removido da guilda.', { canal: config.channelId }) + '\n\n' +
+      t('Se teve um motivo para não jogar, use `.active <justificativa>`. Se já sabe que vai ficar sem jogar nas próximas semanas, use `.justificativa <motivo> <semanas>`.')
     )
     .setTimestamp();
 }
@@ -161,7 +166,6 @@ export async function aplicarCargoEAvisar(client, inativos) {
   const guild = await client.guilds.fetch(discordConfig.guildId);
   await guild.members.fetch();
 
-  const aviso = embedAviso();
   const limit = pLimit(5);
 
   let cargoAplicado = 0;
@@ -188,7 +192,7 @@ export async function aplicarCargoEAvisar(client, inativos) {
     }
 
     // DM fechada é comum e não é falha da rotina — o aviso no canal ainda alcança a pessoa
-    await membro.send({ embeds: [aviso] })
+    await membro.send({ embeds: [embedAviso(tradutor(membro))] })
       .then(() => { dmEnviada++; })
       .catch(() => console.log(`[INATIVOS] DM bloqueada: ${inativo.nome} (${inativo.discordId})`));
   })));
