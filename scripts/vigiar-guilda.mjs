@@ -12,7 +12,7 @@
 // Só lê: API do Brawlhalla e Supabase. Nada de Discord, e tudo o que grava fica em
 // vigia/<guild_id>/ (fora do git): estado.json, eventos.jsonl, relatorio.md, tgg.json,
 // semana.json (base de guild points da semana), de-olho.jsonl (atividade das contas vigiadas) e
-// pontos.jsonl (quanto a guilda e cada membro ganharam de uma leitura para a outra).
+// pontos.jsonl (quanto a guilda e cada membro ganharam, em pontos e XP, de uma leitura para a outra).
 import 'dotenv/config';
 import 'win-ca';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -608,18 +608,21 @@ async function passada() {
   };
   gravarJson(ARQ_ESTADO, estado);
 
-  // O total da guilda só anda em tier de missão e em guild battle, e a API não diz qual foi. O que
-  // dá para cruzar é quem pontuou na mesma janela — por isso o ganho de todos, não só dos vigiados.
-  // Negativo entra: é quem saiu e voltou, e os pontos zeram.
+  // A API não diz se o total da guilda andou por tier de missão ou por guild battle; o que dá para
+  // cruzar é quem pontuou na mesma janela. O XP vai junto porque sobe até em derrota: é só por ele
+  // que aparece o lado que perde num farm de guild battle. Negativo é quem saiu e voltou.
   if (anterior) {
     const membros = {};
+    const xp = {};
     for (const [id, m] of Object.entries(plantel)) {
       const g = ganho(anterior.membros[id]?.guild_points, m.guild_points);
       if (g) membros[id] = g;
+      const x = ganho(anterior.membros[id]?.xp, m.xp);
+      if (x) xp[id] = x;
     }
     const guilda = ganho(anterior.guilda?.guild_points, estado.guilda?.guild_points);
-    if (guilda || Object.keys(membros).length) {
-      appendFileSync(ARQ_PONTOS, `${JSON.stringify({ quando: agora, guilda, membros })}\n`, 'utf8');
+    if (guilda || Object.keys(membros).length || Object.keys(xp).length) {
+      appendFileSync(ARQ_PONTOS, `${JSON.stringify({ quando: agora, guilda, membros, xp })}\n`, 'utf8');
     }
   }
 
