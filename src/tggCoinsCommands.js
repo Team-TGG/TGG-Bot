@@ -1560,12 +1560,15 @@ export async function handleAddAccount(message, args) {
 
     const altId = args[0];
 
-    if (!altId) {
+    // Só dígitos, como no `.corrigir-id`. Sem isso uma menção (`<@123>`) ou qualquer texto virava
+    // um id que seguia para o cache em disco e para a URL da API, e o erro voltava como "conta
+    // inválida" — que é outro problema, e manda a pessoa procurar o id certo em vez de o formato.
+    if (!altId || !/^\d+$/.test(altId)) {
       return loading.edit({
         embeds: [
           createErrorEmbed(
-            'Entrada inválida',
-            'Informe o ID da conta que deseja adicionar.'
+            'ID inválido',
+            'O ID do Brawlhalla é só números, sem `<>` nem menção. Use: `.add-account 123456`'
           )
         ]
       });

@@ -117,6 +117,31 @@ export const tickets = {
   filaDeEsperaRoleId: '1466815420630565069',
   entrarNaGuildaChannelId: '1484570233124421692',
   filaGuildaChannelId: '1473760891676786801',
+  // Quem atende ticket. É marcado no próprio ticket a cada 2h enquanto ninguém assume
+  // (ver src/services/ticketSemResponsavel.js). Sem ele essa cobrança fica desligada.
+  auxiliarRoleId: '1527468795894042685',
+};
+
+// Alerta de quem fica na faixa baixa de contribuição por várias semanas seguidas — quarta 06:20,
+// logo depois da inativação (ver src/services/contribuicaoNaFaixa.js). É o outro lado da régua:
+// a inativação pega quem ficou abaixo de 1.000, isto pega quem passa raspando toda semana e
+// ninguém nota. Sem channelId o alerta é pulado; sem officerRoleId ele sai sem ping.
+export const contribuicaoNaFaixa = {
+  minimo: 1000,
+  maximo: 2000,
+  semanas: 3,
+  channelId: '1536704688689516624', // log-guilda
+  officerRoleId: '1437427655950467242', // @Officer - único ping da mensagem
+  suporteChannelId: '1461132037908856964', // suporte - onde a conversa com o membro é aberta
+  // A lista é quebrada em vários embeds na mesma mensagem. O teto de um embed são 25 campos, e
+  // cada membro gasta 1,5 deles (o separador que fecha a linha a cada par), então 10 por embed
+  // dão 15 campos e sobra folga.
+  maxPorEmbed: 10,
+  // Teto de segurança da mensagem inteira: os **6.000 caracteres somando todos os embeds**. Com
+  // ~160 por membro, acima de ~35 o Discord recusa a mensagem inteira. Cada membro listado também
+  // custa uma chamada de API para os jogos da semana corrente. O que passar daqui sai contado no
+  // rodapé, nunca cortado em silêncio.
+  maxLinhas: 30,
 };
 
 // Filtro de inatividade dentro da fila, todo dia 07:00

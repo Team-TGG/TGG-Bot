@@ -15,7 +15,12 @@ import { getTicketsPendentes, atualizarTicket, getTicket } from '../tickets.js';
 import { createErrorEmbed, createWarningEmbed } from '../../utils/discordUtils.js';
 import { discord as discordConfig } from '../../config/index.js';
 
-export const LIMITE_SEM_RESPOSTA_MS = 60 * 60 * 1000;
+// Dois prazos, porque respondem a perguntas diferentes: o primeiro é quanto tempo o autor pode
+// ficar esperando antes de alguém ser cutucado, o segundo é de quanto em quanto tempo vale
+// insistir com a mesma pessoa. Decisão do usuário (23/09/2026) — antes os dois eram 1h, e a
+// primeira cobrança demorava tanto quanto a décima.
+export const PRIMEIRO_AVISO_MS = 15 * 60 * 1000;
+export const REPETICAO_AVISO_MS = 60 * 60 * 1000;
 
 // Janela de silêncio: das 20h às 08h nenhuma DM de ticket sai, nem para staff nem para autor.
 // Usa o fuso local do processo, como o resto dos cálculos de data do bot — se a VM não estiver
@@ -100,6 +105,36 @@ function formatarEspera(ms) {
 }
 
 /**
+ * Chama o responsável dentro do próprio ticket quando a DM dele não entrou.
+ *
+ * Com ping, ao contrário do aviso equivalente do lado do autor (`avisarDmFechada`): lá a mensagem
+ * informa a staff de que o autor não soube da menção, aqui ela **é** a cobrança que a DM deveria
+ * ter feito. Sem o ping, a DM fechada silenciaria a cobrança inteira e o ticket ficaria parado
+ * sem ninguém saber por quê.
+ *
+ * Segue a mesma cadência da DM, porque é a mesma cobrança por outro caminho: 15 min para a
+ * primeira, de hora em hora daí em diante — o carimbo de `ultimo_aviso_em` é o mesmo.
+ */
+async function cobrarNoTicket(client, ticket, espera) {
+  const canal = await client.channels.fetch(ticket.channel_id).catch(() => null);
+  if (!canal) return;
+
+  const embed = createWarningEmbed(
+    'Não consegui avisar por DM',
+    `<@${ticket.opener_discord_id}> está esperando resposta há **${espera}** e a DM do responsável ` +
+    'está fechada para o bot, então o aviso automático **não chegou**.'
+  );
+
+  await canal.send({
+    content: `<@${ticket.responsavel_discord_id}>`,
+    embeds: [embed],
+    allowedMentions: { users: [ticket.responsavel_discord_id] },
+  }).catch(err => {
+    console.warn(`[TICKET AVISO] falha ao cobrar no canal ${ticket.channel_id}: ${err.message}`);
+  });
+}
+
+/**
  * Avisa a staff responsável de ticket parado. Roda junto do ciclo dos contadores.
  *
  * Só cobra a staff: decisão do usuário (14/08/2026). O autor do ticket é avisado por outro
@@ -108,11 +143,13 @@ function formatarEspera(ms) {
 export async function avisarPendentes(client) {
   if (emHorarioDeSilencio()) return;
 
-  const limite = new Date(Date.now() - LIMITE_SEM_RESPOSTA_MS).toISOString();
+  const agora = Date.now();
+  const limiteMensagem = new Date(agora - PRIMEIRO_AVISO_MS).toISOString();
+  const limiteAviso = new Date(agora - REPETICAO_AVISO_MS).toISOString();
 
   let tickets;
   try {
-    tickets = await getTicketsPendentes(limite);
+    tickets = await getTicketsPendentes(limiteMensagem, limiteAviso);
   } catch (err) {
     console.error(`[TICKET AVISO] falha ao buscar pendentes: ${err.message}`);
     return;
@@ -131,7 +168,7 @@ export async function avisarPendentes(client) {
       .setTitle('⏳ Ticket esperando resposta')
       .setDescription(
         `<@${ticket.opener_discord_id}> escreveu no ticket dele há **${espera}** e ainda não foi ` +
-        `respondido.\n\nVocê é o responsável por esse ticket.\n\n` +
+        `respondido.\n\nVocê é o responsável por <#${ticket.channel_id}>.\n\n` +
         `[Ir para a mensagem](${linkDaMensagem(ticket.channel_id, ticket.ultima_msg_id)})`
       )
       .setTimestamp();
@@ -154,6 +191,11 @@ export async function avisarPendentes(client) {
         console.log(`[TICKET AVISO] DM bloqueada: ${ticket.responsavel_discord_id}`);
         return false;
       });
+
+    // DM fechada é o caso em que a cobrança automática não serve para nada: o responsável nunca
+    // fica sabendo e o ticket continua parado. Chamar no canal é o único caminho que resta, e de
+    // quebra deixa visível quem está com o bot silenciado.
+    if (!entregue) await cobrarNoTicket(client, ticket, espera);
 
     // Carimba mesmo se a DM não entrou. Sem isso, quem tem DM fechada seria reprocessado a cada
     // ciclo para sempre — uma tentativa falha por hora é o mesmo efeito prático, sem o ruído.
@@ -250,8 +292,8 @@ export async function handleTicketLido(interaction) {
     return interaction.editReply({
       embeds: [createWarningEmbed(
         'Chegou mensagem nova',
-        'O autor escreveu de novo depois deste aviso, então não marquei nada. ' +
-        'Veja o ticket — o próximo aviso vai apontar para a mensagem mais recente.'
+        `O autor escreveu de novo depois deste aviso, então não marquei nada. ` +
+        `Veja <#${channelId}> — o próximo aviso vai apontar para a mensagem mais recente.`
       )],
       components: [],
     }).catch(() => {});
@@ -263,6 +305,9 @@ export async function handleTicketLido(interaction) {
     .setColor(0x57f287)
     .setTitle('✅ Marcado como lido')
     .setDescription(
+      // O canal vai dito aqui porque a DM some do topo assim que o botão é clicado: sem isso o
+      // responsável fica com um "pronto" sem saber qual dos tickets dele acabou de silenciar.
+      `Ticket: <#${channelId}>\n\n` +
       'Não vou mais cobrar resposta para essa mensagem.\n\n' +
       'Se o autor escrever de novo, a contagem recomeça.'
     )

@@ -1,6 +1,7 @@
 import { EmbedBuilder } from 'discord.js';
 import { getEventosNaoAvisados, marcarEventosAvisados, getCadastroPorBrawlhallaIds } from '../db.js';
-import { guildHistory as config } from '../../config/index.js';
+import { getProximosDaFila } from './ticketQueue.js';
+import { discord as discordConfig, guildHistory as config, tickets as ticketsConfig } from '../../config/index.js';
 
 /**
  * Aviso de movimentação na guilda do jogo: quem entrou, saiu, foi promovido ou rebaixado.
@@ -67,8 +68,13 @@ function linha(evento, cadastro) {
   return `${partes.join(' ')} - ${cauda.join(' · ')}`;
 }
 
-/** Payload do aviso. Exportado para dar pra conferir sem enviar nada. */
-export function montarAnuncio(eventos, cadastro) {
+/**
+ * Payload do aviso. Exportado para dar pra conferir sem enviar nada.
+ *
+ * `proximos` é a lista de tickets a chamar, uma por saída desta leva. Quando ela vem vazia o
+ * aviso sai como sempre saiu, sem ping nenhum — ninguém saiu, ou a fila não pôde ser lida.
+ */
+export function montarAnuncio(eventos, cadastro, proximos = []) {
   const embed = new EmbedBuilder()
     .setTitle('📋 Movimentação da guilda')
     .setTimestamp();
@@ -97,11 +103,47 @@ export function montarAnuncio(eventos, cadastro) {
     });
   }
 
+  if (proximos.length) {
+    embed.addFields({
+      name: `🎫 Chamar os próximos da fila (${proximos.length})`,
+      value: proximos
+        .map((p, i) => `**${i + 1}.** <#${p.channelId}> · <@${p.openerId}>` +
+          (p.responsavelId ? ` · responsável <@${p.responsavelId}>` : ' · **sem responsável**'))
+        .join('\n')
+        .slice(0, 1024),
+      inline: false,
+    });
+  }
+
+  const cargo = proximos.length ? ticketsConfig.auxiliarRoleId : null;
+
   return {
+    // O ping do cargo é a única menção que vale: o resto do aviso é log, e as menções de membro
+    // existem só para a staff saber de quem se trata.
+    ...(cargo ? { content: `<@&${cargo}> vaga aberta na guilda — chamem os próximos da fila.` } : {}),
     embeds: [embed],
-    // Aviso de log não pinga: a menção é só para a staff saber de quem se trata
-    allowedMentions: { parse: [] },
+    allowedMentions: cargo ? { roles: [cargo] } : { parse: [] },
   };
+}
+
+/**
+ * Uma vaga aberta, um ticket a chamar: saíram três, saem os três primeiros da fila.
+ *
+ * Falha na leitura da fila devolve lista vazia, não estoura: o aviso de movimentação é o assunto
+ * principal e não pode ser perdido porque o Supabase tossiu — sem a lista ele sai como saía antes.
+ */
+async function proximosParaAsVagas(client, eventos) {
+  const vagas = eventos.filter(e => e.action === 'saiu').length;
+  if (vagas === 0) return [];
+  if (!ticketsConfig.auxiliarRoleId) return [];
+
+  const guild = client.guilds.cache.get(discordConfig.guildId);
+  if (!guild) return [];
+
+  return getProximosDaFila(guild, vagas).catch(err => {
+    console.warn(`[HISTORICO] falha ao ler os próximos da fila: ${err.message}`);
+    return [];
+  });
 }
 
 async function anunciar(client, payload) {
@@ -151,8 +193,9 @@ export async function avisarMovimentacao(client) {
 
   if (conhecidos.length) {
     const cadastro = await getCadastroPorBrawlhallaIds(conhecidos.map(e => e.brawlhalla_id));
+    const proximos = await proximosParaAsVagas(client, conhecidos);
 
-    const anunciado = await anunciar(client, montarAnuncio(conhecidos, cadastro));
+    const anunciado = await anunciar(client, montarAnuncio(conhecidos, cadastro, proximos));
     if (!anunciado) return { novos: conhecidos.length, anunciado: false };
   }
 

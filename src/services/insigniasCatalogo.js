@@ -36,16 +36,16 @@ const { JOGO, GUILDA, DISCORD, ECONOMIA } = CATEGORIAS;
 export const INSIGNIAS = [
   // ─── Jogo: acumulado (quem você é) ──────────────────────────────────────────
   {
-    chave: 'vitorias_total', nome: 'Conquistador', categoria: JOGO, unidade: 'vitórias',
+    chave: 'vitorias_total', nome: 'Vitorioso', categoria: JOGO, unidade: 'vitórias',
     descricao: 'Vitórias em qualquer modo, desde sempre, somando todas as suas contas',
-    en: { nome: 'Conqueror', descricao: 'Wins in any mode, all-time, across all your accounts' },
+    en: { nome: 'Victorious', descricao: 'Wins in any mode, all-time, across all your accounts' },
     tiers: [5000, 11000, 21000, 36000, 48000], acumulacao: 'recorde',
     medir: (c) => c.jogo?.vitorias,
   },
   {
-    chave: 'vitorias_ranked', nome: 'Competidor', categoria: JOGO, unidade: 'vitórias',
+    chave: 'vitorias_ranked', nome: 'Tryhard', categoria: JOGO, unidade: 'vitórias',
     descricao: 'Vitórias ranqueadas de 1v1, 2v2 e 3v3 somadas, na sua melhor temporada',
-    en: { nome: 'Competitor', descricao: 'Ranked 1v1, 2v2 and 3v3 wins combined, in your best season' },
+    en: { nome: 'Tryhard', descricao: 'Ranked 1v1, 2v2 and 3v3 wins combined, in your best season' },
     tiers: [170, 350, 550, 750, 950], acumulacao: 'recorde',
     medir: (c) => c.jogo?.ranked.total,
   },
@@ -59,62 +59,62 @@ export const INSIGNIAS = [
   {
     // A v1 só devolve dupla com 10+ jogos, então quem joga 2v2 avulso aparece com menos
     // vitórias do que tem. Aceito pelo usuário em 03/09/2026.
-    chave: 'vitorias_ranked_2v2', nome: 'Parceiro', categoria: JOGO, unidade: 'vitórias',
+    chave: 'vitorias_ranked_2v2', nome: 'Melhores amigos', categoria: JOGO, unidade: 'vitórias',
     descricao: 'Vitórias ranqueadas de 2v2 na sua melhor temporada (só duplas com 10+ partidas)',
-    en: { nome: 'Partner', descricao: 'Ranked 2v2 wins in your best season (only teams with 10+ matches)' },
+    en: { nome: 'Best Friends', descricao: 'Ranked 2v2 wins in your best season (only teams with 10+ matches)' },
     tiers: [70, 200, 400, 550, 750], acumulacao: 'recorde',
     medir: (c) => c.jogo?.ranked.v2,
   },
   {
-    chave: 'vitorias_ranked_3v3', nome: 'Tático', categoria: JOGO, unidade: 'vitórias',
+    chave: 'vitorias_ranked_3v3', nome: 'Dupla de três', categoria: JOGO, unidade: 'vitórias',
     descricao: 'Vitórias ranqueadas de 3v3 na sua melhor temporada',
-    en: { nome: 'Tactician', descricao: 'Ranked 3v3 wins in your best season' },
+    en: { nome: 'Three Players duo', descricao: 'Ranked 3v3 wins in your best season' },
     tiers: [15, 25, 50, 130, 200], acumulacao: 'recorde',
     medir: (c) => c.jogo?.ranked.v3,
   },
 
   // ─── Jogo: recorde de uma semana (o que você fez) ───────────────────────────
   {
-    chave: 'recorde_semana_ranked', nome: 'Arrancada', categoria: JOGO, unidade: 'vitórias numa semana',
+    chave: 'recorde_semana_ranked', nome: 'Dono da queue', categoria: JOGO, unidade: 'vitórias numa semana',
     descricao: 'Vitórias ranqueadas de 1v1, 2v2 e 3v3 somadas, na sua melhor semana',
-    en: { nome: 'Sprint', descricao: 'Ranked 1v1, 2v2 and 3v3 wins combined, in your best week' },
+    en: { nome: 'Queue Owner', descricao: 'Ranked 1v1, 2v2 and 3v3 wins combined, in your best week' },
     tiers: [60, 90, 130, 190, 300], acumulacao: 'atual',
     medir: (c) => c.semanal.vitorias?.total ?? null,
   },
   {
-    chave: 'recorde_semana_1v1', nome: 'Rajada', categoria: JOGO, unidade: 'vitórias numa semana',
+    chave: 'recorde_semana_1v1', nome: 'Leão da ranked', categoria: JOGO, unidade: 'vitórias numa semana',
     descricao: 'Vitórias ranqueadas de 1v1 na sua melhor semana',
-    en: { nome: 'Barrage', descricao: 'Ranked 1v1 wins in your best week' },
+    en: { nome: 'Ranked Demon', descricao: 'Ranked 1v1 wins in your best week' },
     tiers: [10, 25, 45, 70, 110], acumulacao: 'atual',
     medir: (c) => c.semanal.vitorias?.v1 ?? null,
   },
   {
-    chave: 'recorde_semana_2v2', nome: 'Sincronia', categoria: JOGO, unidade: 'vitórias numa semana',
+    chave: 'recorde_semana_2v2', nome: 'Sinergia', categoria: JOGO, unidade: 'vitórias numa semana',
     descricao: 'Vitórias ranqueadas de 2v2 na sua melhor semana',
     en: { nome: 'Synergy', descricao: 'Ranked 2v2 wins in your best week' },
     tiers: [40, 70, 120, 160, 250], acumulacao: 'atual',
     medir: (c) => c.semanal.vitorias?.v2 ?? null,
   },
   {
-    chave: 'recorde_semana_3v3', nome: 'Ofensiva', categoria: JOGO, unidade: 'vitórias numa semana',
+    chave: 'recorde_semana_3v3', nome: 'Semi Capiata', categoria: JOGO, unidade: 'vitórias numa semana',
     descricao: 'Vitórias ranqueadas de 3v3 na sua melhor semana',
-    en: { nome: 'Onslaught', descricao: 'Ranked 3v3 wins in your best week' },
+    en: { nome: 'Semi Capiata', descricao: 'Ranked 3v3 wins in your best week' },
     tiers: [7, 15, 40, 80, 200], acumulacao: 'atual',
     medir: (c) => c.semanal.vitorias?.v3 ?? null,
   },
 
   // ─── Jogo: volume ───────────────────────────────────────────────────────────
   {
-    chave: 'dano', nome: 'Devastador', categoria: JOGO, unidade: 'de dano',
+    chave: 'dano', nome: 'Danudo', categoria: JOGO, unidade: 'de dano',
     descricao: 'Dano causado em todas as partidas, desde sempre, somando todas as suas contas',
-    en: { nome: 'Devastator', descricao: 'Damage dealt in all matches, all-time, across all your accounts' },
+    en: { nome: 'Damage Dealer', descricao: 'Damage dealt in all matches, all-time, across all your accounts' },
     tiers: [4_200_000, 9_900_000, 17_000_000, 31_000_000, 48_000_000], acumulacao: 'recorde',
     medir: (c) => c.jogo?.dano,
   },
   {
-    chave: 'horas_jogo', nome: 'Incansável', categoria: JOGO, unidade: 'horas',
+    chave: 'horas_jogo', nome: 'Viciado', categoria: JOGO, unidade: 'horas',
     descricao: 'Horas em partida, desde sempre, somando todas as suas contas',
-    en: { nome: 'Tireless', descricao: 'Hours in matches, all-time, across all your accounts' },
+    en: { nome: 'Addicted', descricao: 'Hours in matches, all-time, across all your accounts' },
     tiers: [500, 1000, 2000, 2800, 4300], acumulacao: 'recorde',
     medir: (c) => c.jogo?.horasDeJogo,
   },
@@ -141,7 +141,7 @@ export const INSIGNIAS = [
   },
   {
     // 60 e não 70 no topo: só existem 70 lendas, e o maior medido em 09/2026 foi 67.
-    chave: 'lendas_nivel_25', nome: 'Polivalente', categoria: JOGO, unidade: 'lendas',
+    chave: 'lendas_nivel_25', nome: 'Versátil', categoria: JOGO, unidade: 'lendas',
     descricao: 'Lendas diferentes no level 25 ou mais',
     en: { nome: 'Versatile', descricao: 'Different legends at level 25 or higher' },
     tiers: [4, 9, 25, 40, 60], acumulacao: 'recorde',
@@ -151,46 +151,46 @@ export const INSIGNIAS = [
   // ─── Guilda ─────────────────────────────────────────────────────────────────
   {
     // Conta a entrada mais recente (decisão do usuário): quem saiu e voltou recomeça.
-    chave: 'tempo_guilda', nome: 'Raiz', categoria: GUILDA, unidade: 'semanas',
+    chave: 'tempo_guilda', nome: 'Esqueceu de Sair', categoria: GUILDA, unidade: 'semanas',
     descricao: 'Semanas desde a sua entrada na guilda (vale a entrada mais recente)',
-    en: { nome: 'Rooted', descricao: 'Weeks since you joined the guild (your most recent join counts)' },
+    en: { nome: 'Forgot to Leave', descricao: 'Weeks since you joined the guild (your most recent join counts)' },
     tiers: [4, 12, 26, 40, 52], acumulacao: 'atual',
     medir: (c) => (c.guilda ? c.guilda.semanas : null),
   },
   {
-    chave: 'contribuicao_total', nome: 'Pilar', categoria: GUILDA, unidade: 'guild points',
+    chave: 'contribuicao_total', nome: 'Segundo Emprego', categoria: GUILDA, unidade: 'guild points',
     descricao: 'Guild points acumulados na guilda',
-    en: { nome: 'Pillar', descricao: 'Guild points earned in the guild' },
+    en: { nome: 'Second Job', descricao: 'Guild points earned in the guild' },
     tiers: [40_000, 100_000, 200_000, 300_000, 500_000], acumulacao: 'atual',
     medir: (c) => (!c.guilda ? null : c.guilda.presente ? c.guilda.pontos : 0),
   },
   {
     // Só conta de 08/2026 em diante: antes disso a API devolvia guild points errados.
-    chave: 'recorde_contribuicao', nome: 'Pico', categoria: GUILDA, unidade: 'guild points numa semana',
+    chave: 'recorde_contribuicao', nome: 'Pobre Coitado', categoria: GUILDA, unidade: 'guild points numa semana',
     descricao: 'Guild points ganhos na sua melhor semana (conta de agosto/2026 em diante)',
-    en: { nome: 'Peak', descricao: 'Guild points earned in your best week (counted from August 2026 on)' },
+    en: { nome: 'Poor Soul', descricao: 'Guild points earned in your best week (counted from August 2026 on)' },
     tiers: [5000, 10_000, 20_000, 30_000, 40_000], acumulacao: 'atual',
     medir: (c) => c.semanal.contribuicao,
   },
   {
-    chave: 'semanas_sem_inativar', nome: 'Constante', categoria: GUILDA, unidade: 'semanas seguidas',
+    chave: 'semanas_sem_inativar', nome: 'Acima da média', categoria: GUILDA, unidade: 'semanas seguidas',
     descricao: 'Semanas seguidas, até hoje, sem cair na inativação de quarta-feira',
-    en: { nome: 'Steadfast', descricao: 'Consecutive weeks, up to today, without being marked inactive on Wednesday' },
+    en: { nome: 'Above Average', descricao: 'Consecutive weeks, up to today, without being marked inactive on Wednesday' },
     tiers: [4, 8, 16, 26, 52], acumulacao: 'atual',
     medir: (c) => c.semanasSemInativar,
   },
   {
-    chave: 'mvp_total', nome: 'Destaque', categoria: GUILDA, unidade: 'semanas como MVP',
+    chave: 'mvp_total', nome: 'Dono do MVP', categoria: GUILDA, unidade: 'semanas como MVP',
     descricao: 'Semanas em que você foi MVP da guilda',
-    en: { nome: 'Standout', descricao: 'Weeks you were the guild MVP' },
+    en: { nome: 'MVP Owner', descricao: 'Weeks you were the guild MVP' },
     tiers: [2, 6, 12, 18, 26], acumulacao: 'atual',
     medir: (c) => c.mvp?.total ?? null,
   },
   {
     // Staff conta pela regra do cargo: recebe sem ocupar vaga, mas só se estiver acima do corte.
-    chave: 'mvp_streak', nome: 'Dinastia', categoria: GUILDA, unidade: 'semanas seguidas',
+    chave: 'mvp_streak', nome: 'Estrelinha', categoria: GUILDA, unidade: 'semanas seguidas',
     descricao: 'Sua maior sequência de semanas seguidas como MVP',
-    en: { nome: 'Dynasty', descricao: 'Your longest streak of consecutive weeks as MVP' },
+    en: { nome: 'Starlet', descricao: 'Your longest streak of consecutive weeks as MVP' },
     tiers: [2, 4, 6, 8, 10], acumulacao: 'atual',
     medir: (c) => c.mvp?.maiorSequencia ?? null,
   },
@@ -206,23 +206,23 @@ export const INSIGNIAS = [
   {
     chave: 'mensagens', nome: 'Tagarela', categoria: DISCORD, unidade: 'mensagens',
     descricao: 'Mensagens enviadas no servidor do Discord',
-    en: { nome: 'Chatterbox', descricao: 'Messages sent on the Discord server' },
+    en: { nome: 'Yapper', descricao: 'Messages sent on the Discord server' },
     // Cortes do usuário em 14/09/2026: com 1k..10k o Diamante era o tier mais cheio depois do Bronze.
     tiers: [500, 3000, 10_000, 25_000, 50_000], acumulacao: 'atual',
     medir: (c) => c.atividade?.mensagens ?? null,
   },
   {
-    chave: 'horas_call', nome: 'Voz Ativa', categoria: DISCORD, unidade: 'horas',
+    chave: 'horas_call', nome: 'Cala a boca!', categoria: DISCORD, unidade: 'horas',
     descricao: 'Horas em call no servidor do Discord (canal AFK não conta)',
-    en: { nome: 'Voice Regular', descricao: 'Hours in voice chat on the Discord server (the AFK channel does not count)' },
+    en: { nome: 'Shut Up!', descricao: 'Hours in voice chat on the Discord server (the AFK channel does not count)' },
     // Cortes do usuário em 14/09/2026, pelo mesmo motivo do Tagarela.
     tiers: [20, 50, 100, 175, 300], acumulacao: 'atual',
     medir: (c) => c.atividade?.horasCall ?? null,
   },
   {
-    chave: 'motd', nome: 'Locutor', categoria: DISCORD, unidade: 'MOTDs',
+    chave: 'motd', nome: 'Jornalista', categoria: DISCORD, unidade: 'MOTDs',
     descricao: 'Mensagens do dia enviadas com o .motd',
-    en: { nome: 'Announcer', descricao: 'Messages of the day sent with .motd' },
+    en: { nome: 'Journalist', descricao: 'Messages of the day sent with .motd' },
     tiers: [1, 2, 4, 6, 10], acumulacao: 'atual',
     medir: (c) => c.discord.motds,
   },
@@ -235,9 +235,9 @@ export const INSIGNIAS = [
     medir: (c) => c.discord.contasVinculadas,
   },
   {
-    chave: 'sem_marcar_topson', nome: 'Trégua', categoria: DISCORD, unidade: 'dias',
+    chave: 'sem_marcar_topson', nome: 'Independente', categoria: DISCORD, unidade: 'dias',
     descricao: 'Sua maior sequência de dias inteiros sem marcar o Topson nem o @Leader',
-    en: { nome: 'Truce', descricao: 'Your longest streak of full days without pinging Topson or @Leader' },
+    en: { nome: 'Independent', descricao: 'Your longest streak of full days without pinging Topson or @Leader' },
     // Maior sequência e vale para todos, inclusive quem nunca marcou (decisões do usuário, 14/09/2026).
     tiers: [1, 2, 3, 4, 5], acumulacao: 'recorde',
     medir: (c) => c.discord.diasSemMarcarTopson,
@@ -264,18 +264,18 @@ export const INSIGNIAS = [
     medir: (c) => c.discord.aniversario,
   },
   {
-    chave: 'quiz', nome: 'Gênio', categoria: DISCORD,
+    chave: 'quiz', nome: 'Jênio', categoria: DISCORD,
     descricao: 'Acertar o .quiz',
-    en: { nome: 'Genius', descricao: 'Pass the .quiz' },
+    en: { nome: 'Jenious', descricao: 'Pass the .quiz' },
     tiers: null, acumulacao: 'atual',
     medir: (c) => c.discord.quiz,
   },
   {
     // Perde ao tomar warn e volta com .unwarn ou quando o warn expira. Fora do Completista por
     // decisão do usuário (08/09/2026): um warn antigo trancaria a insígnia lendária para sempre.
-    chave: 'ficha_limpa', nome: 'Ficha Limpa', categoria: DISCORD,
+    chave: 'ficha_limpa', nome: 'Inocente', categoria: DISCORD,
     descricao: 'Não ter nenhum warn ativo',
-    en: { nome: 'Clean Record', descricao: 'Have no active warns' },
+    en: { nome: 'Innocent', descricao: 'Have no active warns' },
     tiers: null, acumulacao: 'atual', completista: false,
     medir: (c) => c.discord.warnsAtivos === 0,
   },
@@ -290,17 +290,17 @@ export const INSIGNIAS = [
   // ─── Economia ───────────────────────────────────────────────────────────────
   {
     // Total ganho, não saldo: gastar na loja não tira a insígnia (decisão do usuário, 14/09/2026).
-    chave: 'tgg_coins', nome: 'Cofre', categoria: ECONOMIA, unidade: 'TGG Coins',
+    chave: 'tgg_coins', nome: 'Tio Patinhas', categoria: ECONOMIA, unidade: 'TGG Coins',
     descricao: 'TGG Coins ganhos no total, de qualquer forma (gastar não desconta)',
-    en: { nome: 'Vault', descricao: 'TGG Coins earned in total, from any source (spending does not reduce it)' },
+    en: { nome: 'Jeff Bezos', descricao: 'TGG Coins earned in total, from any source (spending does not reduce it)' },
     tiers: [300, 2100, 8000, 17_500, 28_000], acumulacao: 'atual',
     medir: (c) => c.economia.coinsGanhos,
   },
   {
     // A maior sequência, não a atual, como a Dinastia (decisão do usuário, 14/09/2026).
-    chave: 'streak_daily', nome: 'Assíduo', categoria: ECONOMIA, unidade: 'dias seguidos',
+    chave: 'streak_daily', nome: 'Bate-ponto', categoria: ECONOMIA, unidade: 'dias seguidos',
     descricao: 'Sua maior sequência de dias seguidos no .daily',
-    en: { nome: 'Devoted', descricao: 'Your longest streak of consecutive days using .daily' },
+    en: { nome: 'Streaker', descricao: 'Your longest streak of consecutive days using .daily' },
     tiers: [3, 7, 30, 60, 100], acumulacao: 'recorde',
     medir: (c) => c.economia.streakDaily,
   },
@@ -312,16 +312,16 @@ export const INSIGNIAS = [
     medir: (c) => c.economia.conquistas,
   },
   {
-    chave: 'itens_loja', nome: 'Freguês', categoria: ECONOMIA, unidade: 'itens',
+    chave: 'itens_loja', nome: 'Capitalista', categoria: ECONOMIA, unidade: 'itens',
     descricao: 'Itens comprados na loja',
-    en: { nome: 'Regular', descricao: 'Items bought in the shop' },
+    en: { nome: 'Capitalist', descricao: 'Items bought in the shop' },
     tiers: [1, 3, 10, 25, 45], acumulacao: 'atual',
     medir: (c) => c.economia.itensComprados,
   },
   {
-    chave: 'cores_evento', nome: 'Camaleão', categoria: ECONOMIA, unidade: 'cores',
+    chave: 'cores_evento', nome: 'Guarda-roupa', categoria: ECONOMIA, unidade: 'cores',
     descricao: 'Cores de evento diferentes compradas na loja',
-    en: { nome: 'Chameleon', descricao: 'Different event colors bought in the shop' },
+    en: { nome: 'Wardrobe', descricao: 'Different event colors bought in the shop' },
     tiers: [1, 2, 3, 4, 5], acumulacao: 'atual',
     medir: (c) => c.economia.coresDeEvento,
   },

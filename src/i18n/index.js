@@ -4,12 +4,13 @@
 import { idiomas as cargosPorIdioma } from '../../config/index.js';
 import comum from './en/comum.js';
 import perfil from './en/perfil.js';
+import inatividade from './en/inatividade.js';
 
 export const PADRAO = 'pt';
 
 // A chave é a frase em português, então português não tem dicionário. Arquivo novo em en/ entra aqui.
 export const TRADUCOES = {
-  en: { ...comum, ...perfil },
+  en: { ...comum, ...perfil, ...inatividade },
 };
 
 const LOCALES = { pt: 'pt-BR', en: 'en-US' };

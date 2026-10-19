@@ -6,9 +6,11 @@
 // depende de como o Ticket Tool está configurado, e isso não dá para saber lendo código: por isso
 // `detectarAutor` devolve o que **cada** método achou, e o `.scan-tickets` mostra os três lado a
 // lado antes de a gente fixar um.
-import { OverwriteType, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { STAFF_ROLE_IDS } from '../../config/index.js';
-import { inserirTicketsNovos, garantirAtividade, fecharTickets, reabrirTickets, getTicketsAbertosBasico } from '../tickets.js';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { OverwriteType, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } from 'discord.js';
+import { STAFF_ROLE_IDS, tickets as ticketsConfig } from '../../config/index.js';
+import { inserirTicketsNovos, garantirAtividade, fecharTickets, reabrirTickets, getTicketsAbertosBasico, getTicketsAbertos } from '../tickets.js';
 
 export const CATEGORIA_TICKETS_ID = '1460768037518180352';
 
@@ -199,6 +201,46 @@ export async function getMembrosPresentes(guild, discordIds) {
   return presentes;
 }
 
+/** Ticket de quem já foi aceito e não fechou o canal — a staff marca isso renomeando. */
+export function jaEntrouNaGuilda(nomeDoCanal) {
+  return /entrou/i.test(nomeDoCanal);
+}
+
+/**
+ * Os `quantidade` primeiros da fila que ainda **não** entraram na guilda.
+ *
+ * O filtro do "entrou" existe porque esse ticket continua na categoria e continua pontuando: sem
+ * ele, a vaga que abriu mandaria a staff chamar quem já está dentro. A marca é o nome do canal, e
+ * não uma coluna, porque quem renomeia é a staff — o bot não fica sabendo da aceitação por nenhum
+ * outro caminho.
+ *
+ * A ordem sai do cálculo vivo (`getTicketsAbertos`), não da coluna `posicao`, que é foto do último
+ * recálculo: chamar o próximo pela posição de ontem chamaria a pessoa errada.
+ */
+export async function getProximosDaFila(guild, quantidade) {
+  if (quantidade <= 0) return [];
+
+  const tickets = await getTicketsAbertos();
+  const proximos = [];
+
+  for (const ticket of tickets) {
+    const canal = guild.channels.cache.get(ticket.channel_id);
+    if (!canal) continue;
+    if (jaEntrouNaGuilda(canal.name)) continue;
+
+    proximos.push({
+      channelId: canal.id,
+      nome: canal.name,
+      openerId: ticket.opener_discord_id,
+      responsavelId: ticket.responsavel_discord_id,
+    });
+
+    if (proximos.length >= quantidade) break;
+  }
+
+  return proximos;
+}
+
 /**
  * Varre a categoria de tickets e devolve uma linha por canal, com o que cada método achou.
  * Só lê — não escreve no banco nem toca nos canais.
@@ -232,6 +274,39 @@ export async function escanearTickets(guild, { lerPrimeiraMensagem = 'se-preciso
   return linhas;
 }
 
+// Modelo da print que o candidato deve mandar. O arquivo é lido do disco a cada ticket novo em
+// vez de ficar em memória: são alguns tickets por dia, e assim trocar a imagem é trocar o arquivo.
+const ARQUIVO_PRINT = 'nome-e-id.png';
+const CAMINHO_PRINT = path.join(
+  path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'assets', 'tickets', ARQUIVO_PRINT
+);
+
+/**
+ * Pedido da print de nome + ID, postado logo abaixo do card de assumir.
+ *
+ * Mensagem separada do card de propósito: o card é para a staff (quem assume) e este pedido é
+ * para quem abriu o ticket. Juntar os dois num embed só faria a staff ler instrução de candidato
+ * e o candidato ler instrução de staff.
+ *
+ * Bilíngue como as outras mensagens que ficam no canal do ticket (posição na fila, cobrança de
+ * inatividade): metade da fila tem o cargo EU ou NA.
+ */
+export function montarPedidoDePrint() {
+  const embed = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle('📸 Adiante o seu processo')
+    .setDescription(
+      'Para adiantar o processo de entrar na guilda, envie uma print nesse formato:\n\n' +
+      'To speed up the process of joining the guild, send a screenshot in this format:'
+    )
+    .setImage(`attachment://${ARQUIVO_PRINT}`);
+
+  return {
+    embeds: [embed],
+    files: [new AttachmentBuilder(CAMINHO_PRINT, { name: ARQUIVO_PRINT })],
+  };
+}
+
 export function montarCardDeAssumir(openerDiscordId) {
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
@@ -250,7 +325,16 @@ export function montarCardDeAssumir(openerDiscordId) {
       .setEmoji('🙋')
   );
 
-  return { embeds: [embed], components: [row] };
+  // Ping seco no `content`, sem repetir no embed: a informação já está toda aí embaixo, e o
+  // cargo só precisa ser puxado para o canal. Sem o `auxiliarRoleId` o card sai como antes, sem
+  // ping — o card é o que faz o ticket andar e não pode depender de um ID de cargo.
+  const cargo = ticketsConfig.auxiliarRoleId;
+
+  return {
+    ...(cargo ? { content: `<@&${cargo}>`, allowedMentions: { roles: [cargo] } } : {}),
+    embeds: [embed],
+    components: [row],
+  };
 }
 
 /**
@@ -300,6 +384,11 @@ export async function reconciliarTickets(guild) {
 
     await canal.send(montarCardDeAssumir(linha.escolhido))
       .catch(err => console.warn(`[TICKETS] falha ao postar o card em ${linha.nome}: ${err.message}`));
+
+    // Falha aqui não cancela o card: quem precisa do ticket andando é a staff, e o pedido de
+    // print pode ser repetido à mão. O inverso não vale — sem o card ninguém assume.
+    await canal.send(montarPedidoDePrint())
+      .catch(err => console.warn(`[TICKETS] falha ao pedir a print em ${linha.nome}: ${err.message}`));
   }
 
   // Devolve o estado final já calculado: quem chamou precisa dele para os mapas em memória, e

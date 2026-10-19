@@ -903,6 +903,29 @@ export async function getPlayerMissionProgress(brawlhallaID, week_start) {
 }
 
 /**
+ * Linhas de `player_weekly_info` de várias contas e várias semanas numa consulta só.
+ *
+ * Existe para quem precisa comparar semanas entre si: o ganho de uma semana fechada é a base da
+ * seguinte menos a dela, então ler semana a semana seria uma ida ao banco por semana analisada.
+ * Só os campos usados nessa comparação — `select('*')` em 200 contas × 3 semanas traz dezenas de
+ * colunas de elo que ninguém lê.
+ */
+export async function getWeeklyInfoRows(brawlhallaIds, weekStarts) {
+  if (!brawlhallaIds.length || !weekStarts.length) return [];
+
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('player_weekly_info')
+    .select('brawlhalla_id, week_start, guild_points, games, final_games')
+    .in('brawlhalla_id', brawlhallaIds.map(String))
+    .in('week_start', weekStarts);
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
  * Cria o registro inicial da semana em player_weekly_info, caso ainda não exista.
  * O cron do site preenche essa tabela de 15 em 15 minutos. Quem entra na guilda (ou vincula uma alt)
  * entre duas execuções fica sem base de comparação: os valores iniciais viram 0 e o total de vitórias

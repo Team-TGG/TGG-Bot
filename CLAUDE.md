@@ -102,8 +102,14 @@ Isso é intencional, não sujeira — não "limpe" sem pedir.
 
 Quem tem o cargo **EU** ou **NA** recebe o bot em inglês; o resto, em português (pedido do usuário,
 14/09/2026). Os IDs ficam em `idiomas` na [config](config/index.js). É por cargo e não pelo idioma do
-app do Discord porque a mensagem de prefixo não traz idioma nenhum. Por enquanto só o `.profile` (e o
-`.limpar-perfil`) passam por aqui; a intenção é levar para todos os comandos, um de cada vez.
+app do Discord porque a mensagem de prefixo não traz idioma nenhum. Por enquanto passam por aqui o
+`.profile` (e o `.limpar-perfil`) e as **duas DMs de inatividade** — a da marcação da quarta 06:10
+([weeklyInactiveService.js](src/services/weeklyInactiveService.js)) e o lembrete de 3h
+([inactivePlayers.js](src/services/inactivePlayers.js)), em `en/inatividade.js` (decisão do
+usuário, 23/09/2026). As duas juntas de propósito: traduzir só a marcação faria a pessoa ser
+marcada em inglês e cobrada em português três horas depois. O **aviso no canal dos inativos
+continua em português** — é uma mensagem só para a lista inteira, e mensagem de canal não tem como
+seguir o cargo de cada um. A intenção é levar o resto dos comandos, um de cada vez.
 
 **A chave é a própria frase em português.** O código continua legível e português não tem dicionário:
 
@@ -315,6 +321,77 @@ canal que talvez nem abra e o aviso de verdade nunca chega; dizer isso passa o t
 staff, que chama no privado do jeito que um bot não consegue, e evita remover alguém por um
 silêncio que nunca foi escolha dele.
 
+### Faixa baixa de contribuição (quarta 06:20)
+
+[contribuicaoNaFaixa.js](src/services/contribuicaoNaFaixa.js) é **o outro lado da régua**: a
+inativação pega quem ficou abaixo de 1.000 numa semana, isto pega quem fica entre
+`contribuicaoNaFaixa.minimo` e `.maximo` (1.000 e 2.000) por `.semanas` (3) seguidas e por isso
+nunca é pego. Sozinha, cada uma dessas semanas é um número que ninguém questiona; juntas, são o
+padrão que a staff precisa ver. O alerta não pune nada — marca `@Officer` para **conversar**, e diz
+que o ticket é aberto em suporte (`.suporteChannelId`).
+
+Por isso o embed traz **jogos e contribuição de cada semana**: quem jogou muito e pontuou pouco é
+conversa diferente de quem mal apareceu, e sem os dois o officer teria que rodar `.scan` em cada um
+antes de saber qual dos dois está olhando.
+
+**As três semanas não são medidas do mesmo jeito**, e não dá para uniformizar:
+
+- A que **acabou de fechar** sai de `calcularContribuicaoSemanal()` — leitura viva, porque a base
+  da semana seguinte só existe na quinta. É o que fixa o horário: dentro da janela quarta 06:00 →
+  quinta 06:00, a mesma de `semanaFechada()`.
+- As anteriores saem de `player_weekly_info`: contribuição é a base da semana seguinte menos a
+  dela, e jogos é `final_games - games` **na mesma linha** (`final_games > 0` é o que diz que a
+  semana chegou a fechar — mesma guarda do `.scan`).
+
+**Semana que não pôde ser medida desclassifica o membro**, nunca conta como 0: acusar alguém de um
+padrão de três semanas com uma em branco é acusar por falta de dado. Quem entrou há menos de três
+semanas cai fora por consequência, que é o certo.
+
+Duas armadilhas já tratadas:
+
+- **`week_start` chega do Postgres como `2026-09-03T06:00:00`** e `getMissionWeekStart()` monta
+  `2026-09-03 06:00:00`. A consulta casa os dois sem reclamar; quem não casa é o `Map` em memória,
+  e o sintoma é um alerta que nunca acha ninguém, sem erro no log. `chaveDaSemana()` normaliza os
+  dois lados. As outras rotinas escaparam porque filtram a semana no SQL e indexam só por conta.
+- **`games` em 0 é base não registrada**, como o `guild_points` zerado: quem está na guilda há
+  semanas tem milhares de partidas, então subtrair de 0 lê a carreira inteira como a semana —
+  medido em 23/09/2026, um membro saiu com 19.250 jogos numa semana.
+
+**Contribuição é só da conta da guilda, jogos somam todas as contas vinculadas** — as duas
+tabelas, `alt_ids` (`.corrigir-id`) e `tgg_coins_achievements_alts` (`.add-account`), por
+`getContasVinculadasEmLote`. Não é inconsistência: quem pontua é a conta que está na guilda, mas
+jogo é jogo em qualquer conta, e quem passou pelo `.corrigir-id` joga numa e pontua em outra.
+Medido em 23/09/2026: ST4RKINHO- e DABLIUU_NickzZz apareciam com **0 jogos** em três semanas
+seguidas ganhando 1.000+ pontos, porque o `games` da conta da guilda está congelado; somando a
+vinculada viram 6/52 e 190/111. Decisão do usuário. Conta sem base utilizável na semana **não
+entra na soma** em vez de contar 0 — alt vinculada depois simplesmente não tem linha.
+
+Jogos são medidos **depois** do filtro e só para quem entra no embed (`maxLinhas`): levantar as
+contas e ler a API de 197 membros para usar as de uma dúzia é trabalho jogado fora, e a rota por
+conta falha calado em rajada. **A semana corrente é tudo ou nada** — se qualquer conta com base
+utilizável não puder ser lida, a semana vira `—`, porque somar só as que responderam mostraria
+menos jogos do que a pessoa fez, e "jogou pouco" é a leitura que o officer não pode tirar errada.
+A rodada **não** é abortada: contribuição já está medida e o alerta sem jogos ainda serve. O
+`[FAIXA]` loga quantos membros ficaram sem leitura, senão não dá para distinguir "ninguém jogou"
+de "a API estava fora" (medido em 23/09/2026: 16 de 17 em `503`).
+
+São **dois membros por linha**, e isso exige um truque: campo `inline` sozinho empacota **três**
+por linha, não dois. Um campo de largura zero (`​`, não-inline) fecha a linha depois de cada
+par, e é o único jeito de fixar duas — o Discord não tem controle de colunas. Ele vai **entre** os
+pares, nunca no fim, senão sobra uma faixa vazia embaixo. Consequência no teto: cada membro gasta
+1,5 dos 25 campos do embed, daí `maxPorEmbed` (10).
+
+A lista é **quebrada em vários embeds na mesma mensagem**, nunca cortada: lista que cabe num embed
+só é coincidência, não regra. O teto de `maxLinhas` (30) sai dos **6.000 caracteres somando todos
+os embeds**, com ~160 por membro. A menção vai na primeira linha do campo porque é por ela que o
+officer chega na pessoa; o apelido do jogo sozinho não dá para clicar.
+
+O alerta **fica calado quando não há ninguém** — ao contrário do resumo da inativação, aqui a
+semana normal é a vazia, e um embed toda quarta treinaria a staff a não abrir o canal.
+`montarAlerta` ainda sabe montar a lista vazia e aceita `comPing: false`: é por onde uma prévia
+entra, se um dia fizer falta. Existiu um `.faixa-baixa` para conferir o embed com dados reais antes
+do primeiro cron, e ele foi removido depois do teste (23/09/2026) — não é comando esquecido.
+
 **Chamada da staff (domingo 06:00)** — `avisarRemocaoDeInativos`
 ([avisoRemocaoInativos.js](src/services/avisoRemocaoInativos.js)) posta no **canal dos inativos**
 quem continua marcado, com quantos avisos cada um já ignorou, pingando **só** `@Officer`
@@ -394,7 +471,8 @@ recuperado do passado** — só existe do dia em que ligou.
 
 **O ciclo de 1 min** ([ticketActivity.js](src/services/ticketActivity.js)) faz, nessa ordem:
 reconcilia a tabela com a categoria, credita quem está em call agora, grava os contadores, grava o
-estado das conversas, cobra os pendentes, tira do filtro de inatividade quem respondeu no
+estado das conversas, cobra os pendentes, cobra o `@auxiliar` nos tickets sem responsável, tira do
+filtro de inatividade quem respondeu no
 próprio ticket e, por último, recalcula a ordem se algum ticket foi encerrado. Nada vai ao banco no momento do evento; tudo acumula em
 memória. O preço é perder até um ciclo se o processo cair, e é aceito porque a pontuação é
 comparativa. `TICKET_CYCLE_SECONDS` calibra sem editar código.
@@ -412,16 +490,43 @@ consulta só. Sem isso, rodar de 1 em 1 min mandaria as ~60 linhas ao banco para
 recém-cadastrado** — é por isso que `inserirTicketsNovos` devolve os IDs inseridos e não a
 contagem. Exige helper+ e o `update` é condicionado a `responsavel_discord_id is null`, então dois
 cliques não se atropelam. Trocar depois é edição manual no Supabase; não existe "largar".
+O card puxa `tickets.auxiliarRoleId` com um **ping seco no `content`**, sem repetir nada do embed;
+sem o ID de cargo ele sai sem ping, porque é o card que faz o ticket andar.
+
+Junto do card sai um **segundo** embed, com a print modelo de nome + ID
+(`assets/tickets/nome-e-id.png`), pedindo que o candidato mande a dele. Mensagem separada porque o
+público é outro — o card é para a staff, o pedido é para quem abriu o ticket — e bilíngue como
+tudo o que fica no canal do ticket. Falhar o pedido não cancela o card; o inverso cancelaria o
+ticket inteiro, porque sem o card ninguém assume.
+
+**Ticket que ninguém assume é cobrado a cada 2h** ([ticketSemResponsavel.js](src/services/ticketSemResponsavel.js)):
+ping em `tickets.auxiliarRoleId` no próprio ticket, com o botão de assumir junto — em ticket com
+dias de conversa o card original fica longe demais para a staff rolar até ele, e botão antigo
+continua valendo porque o `update` é condicionado a `responsavel_discord_id is null`. Roda no ciclo
+de 1 min e não em cron próprio: a consulta já filtra quem passou das 2h, então a resolução sai de
+graça. Repete enquanto ninguém assumir, mas respeita a janela de silêncio das 20h às 08h (decisão
+do usuário, 23/09/2026). O estado é `ticket_queue.aviso_sem_responsavel_em`, e **sem a coluna a
+rotina não começa** (`42703` → loga o SQL que falta): o ping sairia, o carimbo falharia e o cargo
+inteiro seria marcado de minuto em minuto. Em modo dev é só logado — o canal é o de produção.
 
 **As DMs são assimétricas de propósito** ([ticketNudge.js](src/services/ticketNudge.js)):
 
-- **staff** — cobrança por tempo, quando o autor falou por último e não foi respondido. Repete a
-  cada `LIMITE_SEM_RESPOSTA_MS`. Resposta de **qualquer** staff zera a pendência, e o botão
+- **staff** — cobrança por tempo, quando o autor falou por último e não foi respondido. **São dois
+  prazos, não um**: a primeira DM sai `PRIMEIRO_AVISO_MS` depois da mensagem do autor (15 min) e as
+  seguintes de `REPETICAO_AVISO_MS` em `REPETICAO_AVISO_MS` (1h). Eles respondem a perguntas
+  diferentes — quanto o autor pode esperar × de quanto em quanto tempo vale insistir com a mesma
+  pessoa — e por isso `getTicketsPendentes` recebe os dois: com um número só, baixar a primeira
+  cobrança para 15 min baixaria junto a repetição. Decisão do usuário (23/09/2026); antes os dois
+  eram 1h. **DM fechada vira ping no próprio ticket**, com o responsável marcado — é a única forma
+  de a cobrança chegar, e de quebra torna visível quem está com o bot silenciado. Resposta de
+  **qualquer** staff zera a pendência, e o botão
   **"mensagem lida"** da própria DM também: nem todo gif ou emoji do autor pede resposta, e sem
   essa saída o bot cobrava de hora em hora por algo já resolvido. Ele grava
   `ultima_msg_lado = 'responsavel'` em vez de coluna nova — o campo já significa "quem deu o
   último passo", e ler é um passo. O id da mensagem vai no `customId` para o botão valer só para
-  aquela mensagem: clique atrasado não pode silenciar uma que chegou depois.
+  aquela mensagem: clique atrasado não pode silenciar uma que chegou depois. A confirmação do
+  clique diz **qual** ticket foi silenciado (`<#canal>`): a DM some do topo ao ser editada, e sem
+  isso o responsável fica com um "pronto" sem saber de qual dos tickets dele.
 - **autor** — só quando é mencionado no próprio ticket, um ping = uma DM, na hora. Se a DM não
   entrar, o bot **responde no ticket** dizendo que o autor não foi avisado. Sem isso a menção
   falha em silêncio: quem chamou acha que avisou, o autor nunca soube, e o ticket fica parado
@@ -434,9 +539,10 @@ A primeira versão cobrava os dois lados por tempo e nunca silenciava: como semp
 mesmo ciclo, senão quem respondeu há segundos levaria DM pela resposta que já deu — e responder
 zera `ultimo_aviso_em`, senão o outro lado herdaria a janela de silêncio do aviso anterior.
 
-**Janela de silêncio das 20h às 08h**: nenhuma DM de ticket sai, nem para staff nem para autor.
+**Janela de silêncio das 20h às 08h**: nenhuma DM de ticket sai, nem para staff nem para autor, e
+o ping do `@auxiliar` também não.
 Ping na janela é **descartado**, não guardado; a cobrança por tempo se resolve sozinha, porque é
-recalculada a cada ciclo e sai às 08h. Vale só para as DMs de ticket — aplicar global silenciaria
+recalculada a cada ciclo e sai às 08h. Vale só para os avisos de ticket — aplicar global silenciaria
 a inativação da quarta, que manda DM às 06:10.
 
 **Filtro de inatividade (07:00 todo dia)** —
@@ -577,6 +683,21 @@ vez de estourar a cada 15 min.
 O aviso anota o estado no cadastro do bot, que é o que gera trabalho para a staff: quem saiu do jogo e
 continua `active` segue contando em sync, missões e inatividade; quem entrou e não tem cadastro ainda
 precisa do `.entrou`. **Não existe comando de saída** — a desativação é feita fora do bot.
+
+**Saída abre vaga, e vaga chama a fila.** Quando a leva tem pelo menos um `saiu`, o mesmo aviso sai
+com ping em `tickets.auxiliarRoleId` e um campo listando os próximos tickets a chamar — **uma vaga,
+um ticket**: saíram três, entram os três primeiros. É o único ping deste aviso; o resto continua
+sendo log, e as menções de membro existem só para a staff saber de quem se trata.
+
+A lista sai de `getProximosDaFila` ([ticketQueue.js](src/services/ticketQueue.js)), pela **ordem
+viva** e não pela coluna `posicao`, que é foto do último recálculo — chamar o próximo pela posição
+de ontem chamaria a pessoa errada. **Ticket com "entrou" no nome fica de fora**: é de quem já foi
+aceito e não fechou o canal, continua na categoria e continua pontuando, e sem o filtro a vaga
+mandaria a staff chamar quem já está dentro. A marca é o nome do canal, e não uma coluna, porque
+quem renomeia é a staff — o bot não fica sabendo da aceitação por nenhum outro caminho.
+
+Falha ao ler a fila devolve lista vazia e o aviso sai como sempre saiu: a movimentação é o assunto
+principal e não pode ser perdida porque o Supabase tossiu.
 
 ### Duelo semanal de guildas
 
@@ -865,6 +986,10 @@ Todos registrados no `ClientReady`:
   ([src/services/weeklyMvpService.js](src/services/weeklyMvpService.js)). Ver abaixo.
 - Cron `10 6 * * 3` — inativa quem ficou abaixo do limiar (1.000 menos a tolerância) de contribuição
   ([src/services/weeklyInactiveService.js](src/services/weeklyInactiveService.js)). Ver abaixo.
+- Cron `20 6 * * 3` — alerta quem está na faixa 1.000–2.000 há 3 semanas
+  ([src/services/contribuicaoNaFaixa.js](src/services/contribuicaoNaFaixa.js)). Agendamento próprio
+  e não um passo da inativação: são decisões diferentes (uma marca, a outra chama para conversar) e
+  a inativação não pode ser adiada pela leitura de três semanas. Ver acima.
 - Cron `0 6 * * 4` — cadastra o duelo da semana que começa, com guild points e XP das duas
   guildas na mesma leitura ([src/services/guildDuelService.js](src/services/guildDuelService.js)).
   Agendamento próprio, e não um terceiro passo do bloco das missões: assunto diferente e, sobretudo,
@@ -915,8 +1040,8 @@ Sem migrations no repo — o schema vive no Supabase. Domínios principais:
   `_purchases`, `_inventory`, `_service_providers`, `_coach_prices`, `_daily_streak`, `_achievements`,
   `_achievements_alts`, `_achievements_finished`, view `vw_tgg_coins_wallet_total`.
   A variante `tgg_coins_event_*` é a carteira paralela de eventos/tickets — mesma lógica, tabelas separadas.
-- **Fila por tickets**: `ticket_queue`, `ticket_activity`, view `vw_ticket_pontos`, função
-  `incrementar_atividade_ticket`.
+- **Fila por tickets**: `ticket_queue` (inclui `aviso_sem_responsavel_em`, o carimbo da cobrança do
+  `@auxiliar`), `ticket_activity`, view `vw_ticket_pontos`, função `incrementar_atividade_ticket`.
 - **Moderação/diversos**: `warnings`, `mutes`, `motd`, `birthdays`, `tgg_quiz_completed`, `contador_crz`.
 - **Insígnias do `.profile`**: `profile_badges`, `profile_badge_tiers`, `profiles`, `weekly_mvp_history`,
   `player_activity` — SQL em [docs/sql/insignias.sql](docs/sql/insignias.sql).

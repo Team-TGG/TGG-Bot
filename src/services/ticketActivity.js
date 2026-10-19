@@ -10,6 +10,7 @@
 import { getTicketsAbertosBasico, incrementarAtividade } from '../tickets.js';
 import { reconciliarTickets } from './ticketQueue.js';
 import { registrarMensagemDeTicket, gravarConversas, avisarPendentes, avisarPingDoAutor } from './ticketNudge.js';
+import { cobrarTicketsSemResponsavel } from './ticketSemResponsavel.js';
 import { recalcularOrdemDaFila } from './ticketReorder.js';
 import { limparAvisoSeAutorFalou } from './ticketInatividade.js';
 import { discord as discordConfig, runtime, STAFF_ROLE_IDS } from '../../config/index.js';
@@ -232,6 +233,11 @@ async function flush(client) {
   // pendentes antes de ela ser consultada, senão leva DM por uma resposta que já deu.
   const autoresQueFalaram = await gravarConversas();
   await avisarPendentes(client);
+
+  // Cobra o `@auxiliar` nos tickets que ninguém assumiu. Depois da cobrança por resposta e com
+  // try/catch próprio: são duas cobranças independentes, e uma falhar não pode cancelar a outra.
+  await cobrarTicketsSemResponsavel(client)
+    .catch(err => console.error(`[TICKET SEM DONO] passada falhou: ${err.message}`));
 
   // Escrever no próprio ticket é o que tira o autor do filtro de inatividade, e é aqui que isso
   // se sabe: `ultima_msg_lado` guarda só o último lado, então a fala dele sumiria se a staff
