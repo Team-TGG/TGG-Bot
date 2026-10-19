@@ -1,7 +1,7 @@
 import { EmbedBuilder } from 'discord.js';
 import { getActiveMutes, removePersistentMute, getPersistentMute } from '../db.js';
 import { safeSetTimeout } from '../moderation.js';
-import { discord as discordConfig } from '../../config/index.js';
+import { discord as discordConfig, mutes as mutesConfig } from '../../config/index.js';
 
 const MAX_DISCORD_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000;
 
@@ -9,6 +9,12 @@ const MAX_DISCORD_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000;
  * Aplica timeout (limite 28 dias do Discord) e renova automaticamente.
  */
 export async function scheduleMuteRenewal(guild, userId, expiresAtISO, notifyChannel = null) {
+    // O timer só vale para o mute que o criou: sumiu a linha (.unmute) ou mudou o fim (.mute de novo
+    // no mesmo membro), ele sai calado. Sem isso anunciava "desmutado" de quem já tinha sido
+    // desmutado na mão, e o timer do primeiro mute apagava o segundo antes da hora.
+    const atual = await getPersistentMute(userId);
+    if (!atual || new Date(atual.expires_at).getTime() !== new Date(expiresAtISO).getTime()) return;
+
     const remainingMs = new Date(expiresAtISO) - Date.now();
 
     if (remainingMs <= 0) {
@@ -26,9 +32,6 @@ export async function scheduleMuteRenewal(guild, userId, expiresAtISO, notifyCha
         return;
     }
 
-    // Se foi removido manualmente via .unmute, não renova
-    if (!(await getPersistentMute(userId))) return;
-
     const timeoutMs = Math.min(remainingMs, MAX_DISCORD_TIMEOUT_MS);
     const member = await guild.members.fetch(userId).catch(() => null);
     if (member) await member.timeout(timeoutMs).catch(() => { });
@@ -44,7 +47,10 @@ export async function restoreMutes(client) {
         const guild = client.guilds.cache.get(discordConfig.guildId);
         if (!guild) return;
 
-        const notifyChannel = guild.channels.cache.find(c => c.name === 'staff-logs' || c.isTextBased());
+        // Antes era "o primeiro canal de texto do cache", e o aviso caía em qualquer lugar, ticket incluído
+        const notifyChannel = mutesConfig.logChannelId
+            ? await guild.channels.fetch(mutesConfig.logChannelId).catch(() => null)
+            : null;
 
         for (const mute of activeMutes) {
             scheduleMuteRenewal(guild, mute.user_id, mute.expires_at, notifyChannel);

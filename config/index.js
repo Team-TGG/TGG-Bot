@@ -224,6 +224,12 @@ export const hallDaVergonha = {
   channelId: '1522264218311852252', // 🔕｜hall-da-vergonha
 };
 
+// Fim de mute reagendado depois de restart (ver src/services/muteManager.js). O canal onde o
+// .mute foi dado não é gravado, então o aviso vai para cá.
+export const mutes = {
+  logChannelId: '1536704688689516624', // log-guilda
+};
+
 // Boas-vindas com imagem a quem entra no servidor (ver src/services/boasVindas.js), no lugar do Apolo.
 export const boasVindas = {
   channelId: '1437416576189202484', // joins
