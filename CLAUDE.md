@@ -353,6 +353,16 @@ warn postam também, cada um como a punição que é. Ficam de fora o mute da lo
 não punição) e os desfazeres (`.unmute`, `.unwarn`, `.edit-warn`): o canal é vitrine, não log. Post que
 falha só loga; a punição já foi aplicada.
 
+### Boas-vindas no #joins
+
+`guildMemberAdd` → [boasVindas.js](src/services/boasVindas.js) manda `Bem-vindo(a), @membro!` com a
+imagem que o Apolo fazia: fundo em `assets/boasvindas/fundo.png`, título, avatar e username. As medidas
+foram tiradas da imagem do Apolo (800×500) e conferidas sobrepondo as duas. A única diferença pedida é a
+faixa do nick, que acompanha a largura dele em vez de ser fixa. As fontes são Liberation Sans e Serif,
+que têm as medidas de Arial e Times (as do Apolo) e vêm no repo porque a VM pode não ter fonte nenhuma. O
+listener roda **também em dev**: com a VM parada, quem entra ainda precisa ser recebido. Se o desenho
+falhar, a mensagem sai sem imagem.
+
 ### Fila de espera por tickets
 
 Os canais são criados pelo **Ticket Tool** (bot de terceiros) na categoria `cards`

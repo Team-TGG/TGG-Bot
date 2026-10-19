@@ -199,6 +199,11 @@ export const hallDaVergonha = {
   channelId: '1522264218311852252', // 🔕｜hall-da-vergonha
 };
 
+// Boas-vindas com imagem a quem entra no servidor (ver src/services/boasVindas.js), no lugar do Apolo.
+export const boasVindas = {
+  channelId: '1437416576189202484', // joins
+};
+
 // Duelo semanal de guildas, cadastrado sozinho na quinta 06:00 (ver src/services/guildDuelService.js).
 export const guildDuel = {
   ourGuildId: '396943',

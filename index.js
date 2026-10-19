@@ -19,6 +19,7 @@ import { startInactiveReminder } from './src/services/inactivePlayers.js';
 import { iniciarContadores, registrarMensagem, registrarVoz } from './src/services/ticketActivity.js';
 import { iniciarContadorDeAtividade, registrarMensagemParaInsignias, registrarVozParaInsignias } from './src/services/insigniasAtividade.js';
 import { avisarModoDaSemana } from './src/services/avisoModoDaSemana.js';
+import { darBoasVindas } from './src/services/boasVindas.js';
 import { restoreMutes } from './src/services/muteManager.js';
 import { restoreTemporaryWarnings } from './src/services/warningManager.js';
 // Commands
@@ -88,6 +89,9 @@ async function main() {
     client.on(Events.VoiceStateUpdate, registrarVoz);
     client.on(Events.VoiceStateUpdate, registrarVozParaInsignias);
     await iniciarContadores(client);
+
+    // Nos dois modos: quem entra com o bot da VM parado ainda precisa ser recebido
+    client.on(Events.GuildMemberAdd, darBoasVindas);
 
     // Daqui pra baixo é tudo efeito no servidor real: cron mexe em cargo e apelido,
     // o lembrete pinga e manda DM, e restaurar mutes/warns reagenda expiracoes.
