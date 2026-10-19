@@ -110,6 +110,12 @@ export const COMMAND_ALIASES = {
   'vai-com-deus': 'daily', // Lucas
   'panela': 'daily', // Korch
   'bill': 'daily', // Wamaala
+  'pontape': 'daily', // Sky
+  'pontapé': 'daily', // Sky
+  'ôelevadô': 'daily', // Gappy
+  'ôelevado': 'daily', // Gappy
+  'oelevadô': 'daily', // Gappy
+  'oelevado': 'daily', // Gappy
   'balance': 'balance',
   'bal': 'balance',
   'baal': 'balance',

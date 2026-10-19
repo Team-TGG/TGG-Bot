@@ -140,14 +140,38 @@ export async function handleBuyService(ctx) {
   return;
 }
 
+// O cooldown lê tgg_coins_purchases, que só ganha a linha depois de marcar o alvo: sem esta
+// trava, vários .buy seguidos passavam todos pela checagem e furavam o bloqueio de 1h.
+const mutesEmAndamento = new Set();
+
 // Para itens de MUTE, precisa escolher o usuário a ser mutado antes de finalizar a compra
 export async function handleBuyMute(ctx) {
   const { message, item, discordId, finalPrice } = ctx;
 
-  const canUse = await tggCoins.canUseItem(discordId, item.id);
-  
+  // Marcado antes do primeiro await, senão dois .buy simultâneos ainda passariam juntos
+  if (mutesEmAndamento.has(discordId)) {
+    return message.reply({
+      embeds: [
+        createErrorEmbed(
+          'Mute em andamento',
+          'Você já tem uma compra de mute esperando o alvo. Marque o usuário ou aguarde 30s.'
+        )
+      ]
+    });
+  }
+  mutesEmAndamento.add(discordId);
+
+  let canUse;
+  try {
+    canUse = await tggCoins.canUseItem(discordId, item.id);
+  } catch (err) {
+    mutesEmAndamento.delete(discordId);
+    throw err;
+  }
+
   // Verifica se já passou 1 hora desde o último mute comprado
   if (!canUse) {
+    mutesEmAndamento.delete(discordId);
     return message.reply({
       embeds: [
         createErrorEmbed(
@@ -162,7 +186,8 @@ export async function handleBuyMute(ctx) {
     content: 'Marque o usuário que você deseja mutar (30s):'
   });
 
-  const filter = (m) => m.author.id === discordId;
+  // Ignora comandos: um segundo .buy seria lido como "alvo inválido" e encerraria esta compra
+  const filter = (m) => m.author.id === discordId && !m.content.startsWith('.');
 
   const collector = message.channel.createMessageCollector({
     filter,
@@ -170,67 +195,19 @@ export async function handleBuyMute(ctx) {
     max: 1
   });
 
+  // Com max: 1 o 'end' dispara antes de o collect terminar seus awaits, então a trava
+  // só sai no finally do collect — senão abriria de novo antes de a compra ser gravada
   collector.on('collect', async (msgResponse) => {
-    const target = msgResponse.mentions.members.first();
-
-    // Se não existir o usuário
-    if (!target) {
-      return message.reply({
-        embeds: [createErrorEmbed('Erro', 'Você precisa marcar um usuário válido.')]
-      });
-    }
-
-    // Não pode se mutar
-    if (target.id === discordId) {
-      return message.reply({
-        embeds: [createErrorEmbed('Erro', 'Você não pode mutar a si mesmo.')]
-      });
-    }
-
-    // Não pode mutar nenhum bot
-    if (target.user.bot) {
-      return message.reply({
-        embeds: [createErrorEmbed('Erro', 'Você não pode mutar bots.')]
-      });
-    }
-
     try {
-      // Verifica se o bot consegue mutar (hierarquia de cargos)
-      if (!target.moderatable) {
-        return message.reply({embeds: [createErrorEmbed('Erro ao mutar', 'Eu não tenho permissão para mutar esse usuário.')]});
-      }
-
-      // Aplica timeout de 30s
-      await target.timeout(30 * 1000, `Mutado por ${message.author.username}`);
-
-      // Desconta saldo
-      await tggCoins.addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Mute: ${target.user.username}`);
-      const newBalance = await tggCoins.updateBalance(discordId, -finalPrice);
-
-      // Registra compra
-      await tggCoins.createPurchase(discordId, item);
-
-      // Diminui estoque (se tiver)
-      await tggCoins.decreaseStock(item.id, item.stock);
-
-      return message.reply({
-        embeds: [
-          createSuccessEmbed(
-            'Mutado com sucesso!',
-            `🔇 ${target.user.username} foi mutado por 30 segundos.\nSaldo atual: **${newBalance}**`
-          )
-        ]
-      });
-
-      } catch (err) {
-        return message.reply({
-          embeds: [createErrorEmbed('Erro ao mutar', err.message)]
-        });
-      }
+      await finalizarMute(ctx, msgResponse);
+    } finally {
+      mutesEmAndamento.delete(discordId);
+    }
   });
 
   collector.on('end', (collected) => {
     if (!collected.size) {
+      mutesEmAndamento.delete(discordId);
       message.reply({
         embeds: [createErrorEmbed('Tempo esgotado', 'Você não escolheu ninguém.')]
       });
@@ -238,6 +215,74 @@ export async function handleBuyMute(ctx) {
   });
 
   return;
+}
+
+async function finalizarMute(ctx, msgResponse) {
+  const { message, item, discordId, finalPrice } = ctx;
+  const target = msgResponse.mentions.members.first();
+
+  // Se não existir o usuário
+  if (!target) {
+    return message.reply({
+      embeds: [createErrorEmbed('Erro', 'Você precisa marcar um usuário válido.')]
+    });
+  }
+
+  // Não pode se mutar
+  if (target.id === discordId) {
+    return message.reply({
+      embeds: [createErrorEmbed('Erro', 'Você não pode mutar a si mesmo.')]
+    });
+  }
+
+  // Não pode mutar nenhum bot
+  if (target.user.bot) {
+    return message.reply({
+      embeds: [createErrorEmbed('Erro', 'Você não pode mutar bots.')]
+    });
+  }
+
+  try {
+    // Verifica se o bot consegue mutar (hierarquia de cargos)
+    if (!target.moderatable) {
+      return message.reply({embeds: [createErrorEmbed('Erro ao mutar', 'Eu não tenho permissão para mutar esse usuário.')]});
+    }
+
+    // A trava em memória não sobrevive a restart nem a dois processos com o mesmo token;
+    // o banco é a palavra final antes de cobrar
+    if (!(await tggCoins.canUseItem(discordId, item.id))) {
+      return message.reply({
+        embeds: [createErrorEmbed('Cooldown ativo', 'Você já usou o mute recentemente. Aguarde 1 hora.')]
+      });
+    }
+
+    // Aplica timeout de 30s
+    await target.timeout(30 * 1000, `Mutado por ${message.author.username}`);
+
+    // Desconta saldo
+    await tggCoins.addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Mute: ${target.user.username}`);
+    const newBalance = await tggCoins.updateBalance(discordId, -finalPrice);
+
+    // Registra compra
+    await tggCoins.createPurchase(discordId, item);
+
+    // Diminui estoque (se tiver)
+    await tggCoins.decreaseStock(item.id, item.stock);
+
+    return message.reply({
+      embeds: [
+        createSuccessEmbed(
+          'Mutado com sucesso!',
+          `🔇 ${target.user.username} foi mutado por 30 segundos.\nSaldo atual: **${newBalance}**`
+        )
+      ]
+    });
+
+  } catch (err) {
+    return message.reply({
+      embeds: [createErrorEmbed('Erro ao mutar', err.message)]
+    });
+  }
 }
 
 // Para itens tipo SERVER
