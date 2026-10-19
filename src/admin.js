@@ -13,6 +13,7 @@ import { isAdmin, adminOnly, hasPermission, getMemberLevel} from '../utils/permi
 import { EMOJIS } from '../config/emojis.js';
 import { scheduleTemporaryWarningRemoval } from './services/warningManager.js';
 import { scheduleMuteRenewal } from './services/muteManager.js';
+import { postarPunicao } from './services/hallDaVergonha.js';
 import { ensurePlayerWeeklyInfo } from './tggCoins.js';
 import { getBlindagensAprovadas, getBlindagensPendentes, cobreSemana, ehPermanente, fimDaBlindagem } from './inactivity.js';
 import { calcularInativosDaSemana, inativarSemana, CONTRIBUICAO_MINIMA, LIMIAR_INATIVACAO, TOLERANCIA_INATIVACAO } from './services/weeklyInactiveService.js';
@@ -184,13 +185,22 @@ export const handleWarn = adminOnly(async (message, args, client) => {
     }
 
     await message.reply({ embeds: [createSuccessEmbed('Aviso Adicionado', `${member.user.tag} recebeu um aviso.\n**Motivo:** ${reason}${durationLine}${expiresLine}\n**Total de avisos:** ${warningCount}/3`)] });
+    await postarPunicao(guild, {
+      tipo: 'warn',
+      alvo: member.user,
+      motivo: reason,
+      duracao: expiresAt ? formatModTime(durationMs) : null,
+      extras: [`**Total de avisos:** ${warningCount}/3`]
+    });
 
     if (warningCount === 2) {
-      await member.timeout(15 * 60 * 1000, '2 avisos acumulados').catch(() => { });
+      const mutou = await member.timeout(15 * 60 * 1000, '2 avisos acumulados').then(() => true).catch(() => false);
       await message.channel.send({ embeds: [createWarningEmbed('Mute Automático', `${member.user.tag} foi silenciado por 15 minutos (2 avisos).`)] });
+      if (mutou) await postarPunicao(guild, { tipo: 'mute', alvo: member.user, motivo: '2 avisos acumulados', duracao: '15 minutos' });
     } else if (warningCount >= 3) {
       await member.ban({ reason: '3 avisos acumulados' });
       await message.channel.send({ embeds: [new EmbedBuilder().setColor(0xed4245).setTitle('🔨 Ban Automático').setDescription(`${member.user.tag} foi banido por 3 avisos acumulados.`)] });
+      await postarPunicao(guild, { tipo: 'ban', alvo: member.user, motivo: '3 avisos acumulados' });
     }
   } catch (err) {
     await message.reply({ embeds: [createErrorEmbed('Erro ao Adicionar Aviso', err.message)] });
@@ -656,6 +666,7 @@ export const handleMute = adminOnly(async (message, args, client) => {
     await scheduleMuteRenewal(guild, targetId, expiresAt, message.channel);
 
     await message.reply({ embeds: [createSuccessEmbed('Silenciado', `${member.user.tag} silenciado por ${formatModTime(durationMs)}.\n**Motivo:** ${reason}`)] });
+    await postarPunicao(guild, { tipo: 'mute', alvo: member.user, motivo: reason, duracao: formatModTime(durationMs) });
   } catch (err) {
     await message.reply({ embeds: [createErrorEmbed('Erro ao Silenciar', err.message)] });
   }
@@ -742,6 +753,7 @@ export const handleKick = adminOnly(async (message, args, client) => {
     await member.kick(reason);
 
     await message.reply({ embeds: [createSuccessEmbed('Usuário Expulso', `${member.user.tag} foi kickado.\n**Motivo:** ${reason}`)] });
+    await postarPunicao(guild, { tipo: 'kick', alvo: member.user, motivo: reason });
   } catch (err) {
     await message.reply({ embeds: [createErrorEmbed('Erro ao Kickar', err.message)] });
   }
@@ -821,6 +833,7 @@ export const handleBan = adminOnly(async (message, args, client) => {
       embeds: [createSuccessEmbed('Usuário Banido', `${member.user.tag} foi banido.\n**Motivo:** ${reason}`)],
       components: []
     });
+    await postarPunicao(guild, { tipo: 'ban', alvo: member.user, motivo: reason });
 
   } catch (err) {
     await message.reply({ embeds: [createErrorEmbed('Erro ao Banir', err.message)] });

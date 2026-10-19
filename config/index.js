@@ -193,6 +193,12 @@ export const perfil = {
   syncCooldownMs: 15 * 60 * 1000,
 };
 
+// Warn, mute, kick e ban da staff postados em público (ver src/services/hallDaVergonha.js).
+// Sem channelId a punição continua sendo aplicada - só o post é pulado.
+export const hallDaVergonha = {
+  channelId: '1522264218311852252', // 🔕｜hall-da-vergonha
+};
+
 // Duelo semanal de guildas, cadastrado sozinho na quinta 06:00 (ver src/services/guildDuelService.js).
 export const guildDuel = {
   ourGuildId: '396943',

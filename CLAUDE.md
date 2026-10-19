@@ -344,6 +344,15 @@ log-guilda continua existindo do mesmo jeito, com o link de correção; o post �
 o pedido de canal não quebra a aprovação. O canal dos inativos (`inactivePlayers.channelId`)
 continua sendo outro — é onde o lembrete de 3h é postado e o único lugar onde `.active` funciona.
 
+### Hall da vergonha
+
+`.warn`, `.mute`, `.kick` e `.ban` postam a punição no 🔕｜hall-da-vergonha (`hallDaVergonha.channelId`)
+por [hallDaVergonha.js](src/services/hallDaVergonha.js), no lugar do Apolo. O post mostra **só quem
+tomou** — nunca quem aplicou (decisão do usuário, 19/10/2026). O mute e o ban automáticos do 2º e do 3º
+warn postam também, cada um como a punição que é. Ficam de fora o mute da loja e o `.crz` (brincadeira,
+não punição) e os desfazeres (`.unmute`, `.unwarn`, `.edit-warn`): o canal é vitrine, não log. Post que
+falha só loga; a punição já foi aplicada.
+
 ### Fila de espera por tickets
 
 Os canais são criados pelo **Ticket Tool** (bot de terceiros) na categoria `cards`
