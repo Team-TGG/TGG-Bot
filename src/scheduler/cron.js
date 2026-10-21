@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { discord as discordConfig } from '../../config/index.js';
+import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../../config/index.js';
 import { processBirthdays, removeBirthdayRole } from '../services/birthdayService.js';
 import { publishMotd } from '../services/motdService.js';
 import { registrarMissoesDaSemana } from '../services/weeklyMissionsService.js';
@@ -7,6 +7,7 @@ import { registrarConquistasDaSemana } from '../services/weeklyAchievementsServi
 import { registrarDueloDaSemana } from '../services/guildDuelService.js';
 import { trocarMvpsDaSemana } from '../services/weeklyMvpService.js';
 import { inativarSemana } from '../services/weeklyInactiveService.js';
+import { sendInactivePlayersReminder } from '../services/inactivePlayers.js';
 import { lembrarContribuicao } from '../services/contributionReminderService.js';
 import { avisarRemocaoDeInativos } from '../services/avisoRemocaoInativos.js';
 import { cobrarInativosDaFila } from '../services/ticketInatividade.js';
@@ -142,6 +143,15 @@ export function startCronJobs(client, services) {
     } catch (err) {
       console.error('[CRON ERROR - Remocao Inativos]', err);
     }
+  }, {
+    timezone: 'America/Sao_Paulo'
+  });
+
+  // Lembrete no canal dos inativos - todo dia 12:00, só ping (a DM sai uma vez, na marcação).
+  // Horário fixo e não intervalo: com intervalo, cada restart pingava a lista de novo.
+  cron.schedule('0 12 * * *', async () => {
+    if (!inactivePlayersConfig.messageEnabled) return;
+    await sendInactivePlayersReminder(client);
   }, {
     timezone: 'America/Sao_Paulo'
   });

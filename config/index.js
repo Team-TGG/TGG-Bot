@@ -78,13 +78,12 @@ export const ia = {
 
 export const inactivePlayers = {
   inactiveRoleId: '1468593277363290304',
-  // Canal dos inativos: onde o lembrete de 3h é postado e o único lugar onde `.active` funciona.
+  // Canal dos inativos: onde o lembrete diário é postado e o único lugar onde `.active` funciona.
   // Não confundir com `avisoChannelId` — este aqui é o canal em que o inativo interage.
   channelId: '1468600851290521692',
   // Anúncio da inativação semanal (quarta 06:10, src/services/weeklyInactiveService.js).
   avisoChannelId: '1536704688689516624', // log-guilda
   messageEnabled: true,
-  messageInterval: process.env.INACTIVE_MESSAGE_INTERVAL,
   // Chamada da staff, domingo 06:00, no próprio `channelId`
   // (ver src/services/avisoRemocaoInativos.js). Vai no canal dos inativos e não na log-guilda
   // de propósito: é onde a conversa com essas pessoas acontece, e o membro ler que a staff está
@@ -156,13 +155,13 @@ export const ticketInatividade = {
   horasParaEscalar: 24,
   channelId: '1536704688689516624', // log-guilda - resumo para a staff
 };
+
 // Ticket apagado quando quem abriu não escreve nada nas primeiras `horas`, de hora em hora
 // (ver src/services/ticketSemResposta.js). O prazo também sai no aviso postado no ticket novo.
 export const ticketSemResposta = {
   horas: 24,
   channelId: '1536704688689516624', // log-guilda - registro do que foi apagado
 };
-
 
 export const birthdays = {
   roleId: '1478478167961370845',

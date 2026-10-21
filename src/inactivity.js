@@ -264,16 +264,15 @@ export async function getTentativasDeAviso(weekReference) {
 /**
  * Soma mais uma tentativa para cada um, e mais uma falha para quem não recebeu a DM.
  *
- * `resultados` é `[{ brawlhallaId, dmEntregue }]`, e `atuais` é o Map devolvido por
+ * `resultados` é `[{ brawlhallaId, dmEntregue? }]`, e `atuais` é o Map devolvido por
  * `getTentativasDeAviso()` — pedir os valores de quem chama evita reler o que o lembrete acabou
- * de ler.
+ * de ler. Sem `dmEntregue` não houve DM (o lembrete diário só pinga), e a falha não muda.
  *
  * Ler-somar-gravar aqui é seguro, ao contrário da pontuação dos tickets: ninguém digita esses
- * dois números no Supabase, só o lembrete escreve, e ele roda de 3 em 3h num processo só.
+ * dois números no Supabase, só o bot escreve, e o lembrete roda uma vez por dia num processo só.
  *
  * O agrupamento pelo valor final é o que segura o custo: como a lista inteira é incrementada
- * junta, quase todo mundo cai em uma de duas combinações (DM entregue / DM falhou), então ~50
- * pessoas viram ~2 updates em vez de ~50.
+ * junta, quase todo mundo cai em uma de duas combinações, então ~50 pessoas viram ~2 updates.
  */
 export async function registrarTentativasDeAviso(atuais, resultados) {
   if (!resultados.length) return 0;
@@ -286,7 +285,7 @@ export async function registrarTentativasDeAviso(atuais, resultados) {
     if (!atual) continue;
 
     const avisos = atual.avisos_enviados + 1;
-    const falhas = atual.dms_falhadas + (dmEntregue ? 0 : 1);
+    const falhas = atual.dms_falhadas + (dmEntregue === false ? 1 : 0);
     const chave = `${avisos}|${falhas}`;
 
     if (!grupos.has(chave)) grupos.set(chave, { avisos, falhas, ids: [] });
@@ -306,4 +305,31 @@ export async function registrarTentativasDeAviso(atuais, resultados) {
   }
 
   return atualizados;
+}
+
+/**
+ * Marca `dms_falhadas = 1` em quem não recebeu a DM da marcação. É a única DM da semana, então
+ * esse 1 é o que o domingo lê como "nunca foi avisado no privado".
+ *
+ * Sem as colunas (`42703`) só loga: a marcação já foi gravada e não pode falhar por um contador.
+ */
+export async function registrarDmsNaoEntregues(weekReference, brawlhallaIds) {
+  if (!brawlhallaIds.length) return 0;
+
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('weekly_inactive_players')
+    .update({ dms_falhadas: 1 })
+    .eq('week_reference', weekReference)
+    .in('brawlhalla_id', brawlhallaIds.map(String))
+    .select('id');
+
+  if (error?.code === '42703') {
+    console.error('[Inatividade] weekly_inactive_players não tem a coluna dms_falhadas (int, default 0) — DM falhada não registrada.');
+    return 0;
+  }
+
+  if (error) throw error;
+  return data?.length ?? 0;
 }

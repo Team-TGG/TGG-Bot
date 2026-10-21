@@ -4,20 +4,19 @@ import { getTentativasDeAviso, registrarTentativasDeAviso } from '../inactivity.
 import { calcularContribuicaoSemanal } from './contribuicaoSemanal.js';
 import { CONTRIBUICAO_MINIMA } from './weeklyInactiveService.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../../config/index.js';
-import { tradutor } from '../i18n/index.js';
 
 /** Justificativa gravada em `weekly_inactive_players.note` - é o que a staff lê no histórico. */
-const NOTA_AUTOMATICA = 'pegou 1k+ de contribuição e saiu da lista automaticamente';
+export const NOTA_AUTOMATICA = 'pegou 1k+ de contribuição e saiu da lista automaticamente';
 
 /** Teto de linhas do anúncio. Lista cortada tem que dizer que foi cortada. */
 const MAX_LINHAS_ANUNCIO = 25;
 
 /**
- * Tira da lista quem já bateu o mínimo na semana corrente, antes de o lembrete sair.
+ * Tira da lista quem já bateu o mínimo na semana corrente — de 3 em 3h e antes de cada lembrete.
  *
- * A lista é da semana passada e o lembrete roda de 3 em 3h durante a semana inteira: sem isso,
- * quem já se recuperou seguiria sendo pingado e recebendo DM até a quarta seguinte, cobrando uma
- * contribuição que ele já fez. Faz o mesmo que o `.active` - grava a nota e tira o cargo.
+ * A lista é da semana passada e o lembrete pinga todo dia durante a semana inteira: sem isso,
+ * quem já se recuperou seguiria sendo pingado até a quarta seguinte, cobrando uma contribuição
+ * que ele já fez. Faz o mesmo que o `.active` - grava a nota e tira o cargo.
  *
  * O número vem de `calcularContribuicaoSemanal()`, o mesmo que decide MVP e inativação: ler de
  * outra fonte faria alguém sair da lista com um valor que a quarta-feira não reconhece.
@@ -108,102 +107,13 @@ async function anunciarLiberados(client, liberados) {
   });
 }
 
-/** A DM chegou? Conta apagada e DM fechada dão no mesmo: não falamos com a pessoa. */
-async function enviarDm(client, discordId, embed) {
-  const user = await client.users.fetch(discordId).catch(() => null);
-  if (!user) return false;
-
-  return user.send({ embeds: [embed] }).then(() => true).catch(() => false);
-}
-
 /**
- * Os membros da lista, em lote, só para saber em que idioma cada DM sai.
+ * Lembrete diário no canal dos inativos — ping na lista inteira, sem DM.
  *
- * O fetch pelo gateway resolve 100 IDs por requisição e devolve só quem existe — um `fetch` por
- * pessoa estouraria 10007 para quem saiu do servidor, um a um. Quem não voltar fica de fora do
- * mapa e cai no português, que é o padrão de `idiomaDoMembro` para quem não tem cargo legível.
- *
- * Falha de lote é engolida: o lembrete tem que sair mesmo sem saber o idioma de ninguém.
+ * A DM sai uma vez só, na marcação da quarta 06:10 ([weeklyInactiveService.js](./weeklyInactiveService.js)).
+ * Repetir a DM a cada lembrete fazia a mesma pessoa ser cobrada no privado várias vezes por dia
+ * pela mesma semana (decisão do usuário, 21/10/2026: DM só na marcação, ping no canal a cada 24h).
  */
-async function buscarMembros(guild, discordIds) {
-  const ids = [...new Set(discordIds.filter(Boolean))];
-  const membros = new Map();
-
-  for (let i = 0; i < ids.length; i += 100) {
-    const lote = await guild.members.fetch({ user: ids.slice(i, i + 100) }).catch(err => {
-      console.warn(`[Inactive Reminder] Idioma não conferido neste lote: ${err.message}`);
-      return null;
-    });
-
-    if (!lote) continue;
-    for (const [id, membro] of lote) membros.set(id, membro);
-  }
-
-  return membros;
-}
-
-/**
- * DM do lembrete, no idioma de **quem recebe** — EU e NA em inglês (decisão do usuário,
- * 23/09/2026). A mensagem do canal continua em português: ela é uma só para a lista inteira, e não
- * tem como seguir o cargo de cada um.
- */
-function embedDaDm(t) {
-  return new EmbedBuilder()
-    .setColor(0xed4245)
-    .setTitle(`⚠️ ${t('Aviso de Inatividade')}`)
-    .setDescription(
-      t('Você fez menos de {minimo} de contribuição e ficou inativo. Vá até <#{canal}> e leia o lembrete do TGG-Bot para saber mais, e evite ser removido da guilda.', {
-        minimo: t.numero(CONTRIBUICAO_MINIMA),
-        // Canal dos inativos, onde o lembrete acabou de ser postado — não a log-guilda.
-        canal: inactivePlayersConfig.channelId,
-      })
-    )
-    .setTimestamp();
-}
-
-/**
- * Diz, no próprio canal dos inativos, com quem o bot não conseguiu falar por DM.
- *
- * É o caso em que o lembrete automático não serve para nada: a pessoa é pingada num canal que
- * talvez nem abra e o aviso de verdade nunca chega. Falar isso em voz alta passa o trabalho para
- * a staff, que puxa conversa do jeito que um bot não consegue — e evita que alguém seja
- * removido da guilda por um silêncio que nunca foi escolha dele.
- *
- * Sem ping: quem está aqui já foi mencionado na mensagem de cima, e a informação é para quem
- * lê o canal, não para quem está listado.
- */
-async function avisarDmsNaoEntregues(channel, semDm, tentativas) {
-  if (!semDm.length) return;
-
-  const linhas = semDm.slice(0, MAX_LINHAS_ANUNCIO).map(player => {
-    // +1 porque os contadores só são gravados depois do envio: a tentativa de agora ainda não
-    // entrou na conta.
-    const falhas = (tentativas.get(String(player.brawlhalla_id))?.dms_falhadas ?? 0) + 1;
-    const vezes = falhas === 1 ? 'tentativa' : 'tentativas';
-
-    return `<@${player.discord_id}> — **${falhas}** ${vezes} sem entrega`;
-  });
-
-  const sobraram = semDm.length - linhas.length;
-  if (sobraram > 0) linhas.push(`… e mais ${sobraram}`);
-
-  const embed = new EmbedBuilder()
-    .setColor(0xed4245)
-    .setTitle('📪 Não consegui mandar DM para estes membros')
-    .setDescription(
-      'A DM destas pessoas está fechada para o bot, então elas provavelmente não sabem que ' +
-      'estão na lista de inativos.\n\n' +
-      `${linhas.join('\n')}\n\n` +
-      'Se alguém da staff puder chamar no privado ou marcar em outro canal, o aviso chega onde ' +
-      'o bot não alcança.'
-    )
-    .setTimestamp();
-
-  await channel.send({ embeds: [embed], allowedMentions: { parse: [] } }).catch(err => {
-    console.warn(`[Inactive Reminder] Falha ao avisar DMs não entregues: ${err.message}`);
-  });
-}
-
 export async function sendInactivePlayersReminder(client) {
     try {
       // Antes de cobrar: quem já bateu o mínimo sai da lista. Falha aqui não cancela o lembrete -
@@ -258,60 +168,40 @@ export async function sendInactivePlayersReminder(client) {
         }
       });
 
-      // Uma consulta para a lista inteira, antes do laço: o idioma de cada DM sai do cargo, e um
-      // fetch por pessoa dentro do envio seria uma requisição a mais por membro a cada 3h.
-      const membros = await buscarMembros(channel.guild, inactivePlayers.map(p => p.discord_id));
-
-      // `null` = sem as colunas de contador. O lembrete sai do mesmo jeito: deixar de avisar
-      // a lista inteira por causa de um contador seria trocar o problema pelo pior.
+      // `null` = sem as colunas de contador. O lembrete já saiu: o contador é o detalhe.
       const contadores = await getTentativasDeAviso(getLastWednesdayReference());
-      const tentativas = contadores ?? new Map();
-
-      const resultados = [];
-      const semDm = [];
-
-      for (const player of inactivePlayers) {
-        if (!player.discord_id) continue;
-
-        const t = tradutor(membros.get(String(player.discord_id)));
-        const entregue = await enviarDm(client, player.discord_id, embedDaDm(t));
-
-        resultados.push({ brawlhallaId: player.brawlhalla_id, dmEntregue: entregue });
-        if (!entregue) semDm.push(player);
-      }
-
-      await avisarDmsNaoEntregues(channel, semDm, tentativas);
 
       // Depois do envio, e engolindo o erro: a tentativa aconteceu de qualquer jeito, e o
       // contador atrasado é melhor do que a exceção que derruba o resto do ciclo.
       if (contadores) {
-        await registrarTentativasDeAviso(tentativas, resultados).catch(err => {
+        const resultados = inactivePlayers
+          .filter(p => p.discord_id)
+          .map(p => ({ brawlhallaId: p.brawlhalla_id }));
+
+        await registrarTentativasDeAviso(contadores, resultados).catch(err => {
           console.warn(`[Inactive Reminder] Tentativas não contadas: ${err.message}`);
         });
       }
 
-      console.log(
-        `[Inactive Reminder] Sent message and DMs with ${inactivePlayers.length} inactive players` +
-        (semDm.length ? ` (${semDm.length} sem DM)` : '')
-      );
+      console.log(`[Inactive Reminder] Sent message with ${inactivePlayers.length} inactive players`);
     } catch (err) {
       console.error('[Inactive Reminder Error]', err);
     }
 }
 
-export function startInactiveReminder(client) {
-    if (!inactivePlayersConfig.messageEnabled) {
-        console.log('[Inactive Reminder] Disabled in config');
-        return;
-    }
+/** Ritmo da liberação. É o antigo ritmo do lembrete, e não pinga ninguém. */
+const INTERVALO_LIBERACAO_MS = 3 * 60 * 60 * 1000;
 
-    const interval = Number(inactivePlayersConfig.messageInterval) || 10800000; // 3h
+/**
+ * Tira da lista, de 3 em 3h, quem já bateu o mínimo. O lembrete passou a ser diário, mas o cargo
+ * de inativo não pode ficar até 24h num membro que já se resolveu — a liberação não pinga ninguém,
+ * então manter o ritmo antigo não custa barulho.
+ */
+export function iniciarLiberacaoDeInativos(client) {
+  const liberar = () => liberarQuemContribuiu(client).catch(err => {
+    console.error('[Inactive Reminder] Falha ao liberar quem contribuiu:', err.message);
+  });
 
-    setInterval(() => {
-        sendInactivePlayersReminder(client);
-    }, interval);
-
-    setTimeout(() => {
-        sendInactivePlayersReminder(client);
-    }, 5000);
+  setInterval(liberar, INTERVALO_LIBERACAO_MS);
+  setTimeout(liberar, 5000);
 }

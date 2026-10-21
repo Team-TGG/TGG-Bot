@@ -15,7 +15,7 @@ Node >= 18 (usa `fetch` nativo), ESM (`"type": "module"` — todo import precisa
 
 `.env` obrigatório (não versionado): `DISCORD_TOKEN`, `DISCORD_GUILD_ID`, `SUPABASE_URL`,
 `SUPABASE_SERVICE_ROLE_KEY` (ou `SUPABASE_ANON_KEY`), `BRAWLHALLA_API_KEY`.
-Opcionais: `BRAWLHALLA_CLAN_ID` (default `'396943'` no código), `INACTIVE_MESSAGE_INTERVAL` (default 3h),
+Opcionais: `BRAWLHALLA_CLAN_ID` (default `'396943'` no código),
 `GEMINI_API_KEY` (sem ela só o `.ia` fica desligado), `GEMINI_MODEL` (default `gemini-3.5-flash-lite`),
 `IGNORE_SSL_ERRORS=true` para desligar verificação TLS (uso local), `TICKET_CYCLE_SECONDS` (default 60,
 piso 15) para o ciclo da fila por tickets. `win-ca` carrega os certificados do Windows.
@@ -23,7 +23,7 @@ O `.env` ainda tem `TGG_API_URL`, `TGG_API_KEY` e `GUILD_ACTIVITY_CHANNEL_ID` �
 nenhum código lê essas três.
 
 `npm start` **registra os slash commands na guild via PUT** ([src/slash/register.js](src/slash/register.js)),
-dispara `startInactiveReminder` 5s depois do ready (ping no canal + DM para cada inativo) e liga os crons.
+liga a liberação de inativos que já contribuíram 5s depois do ready (tira cargo, avisa em log-guilda) e liga os crons.
 Rodar isso localmente com o token de produção afeta o servidor real — use `npm run dev`, que pula os
 quatro efeitos e imprime um quadro no boot dizendo o que foi desligado.
 
@@ -103,12 +103,10 @@ Isso é intencional, não sujeira — não "limpe" sem pedir.
 Quem tem o cargo **EU** ou **NA** recebe o bot em inglês; o resto, em português (pedido do usuário,
 14/09/2026). Os IDs ficam em `idiomas` na [config](config/index.js). É por cargo e não pelo idioma do
 app do Discord porque a mensagem de prefixo não traz idioma nenhum. Por enquanto passam por aqui o
-`.profile` (e o `.limpar-perfil`) e as **duas DMs de inatividade** — a da marcação da quarta 06:10
-([weeklyInactiveService.js](src/services/weeklyInactiveService.js)) e o lembrete de 3h
-([inactivePlayers.js](src/services/inactivePlayers.js)), em `en/inatividade.js` (decisão do
-usuário, 23/09/2026). As duas juntas de propósito: traduzir só a marcação faria a pessoa ser
-marcada em inglês e cobrada em português três horas depois. O **aviso no canal dos inativos
-continua em português** — é uma mensagem só para a lista inteira, e mensagem de canal não tem como
+`.profile` (e o `.limpar-perfil`) e a **DM de inatividade** — a da marcação da quarta 06:10
+([weeklyInactiveService.js](src/services/weeklyInactiveService.js)), em `en/inatividade.js`
+(decisão do usuário, 23/09/2026). Era uma segunda DM, a do lembrete, até ele virar só ping no
+canal (21/10/2026). O **aviso no canal dos inativos continua em português** — é uma mensagem só para a lista inteira, e mensagem de canal não tem como
 seguir o cargo de cada um. A intenção é levar o resto dos comandos, um de cada vez.
 
 **A chave é a própria frase em português.** O código continua legível e português não tem dicionário:
@@ -313,13 +311,24 @@ de inatividade. Fonte que falha vira "indisponível" no campo, nunca erro no ped
 vive por horas, a página vai no `customId` (`justificativa_histpg_<pedido>_<página>`) e cada clique
 é consulta nova — **não use collector aqui**, ele morre no primeiro restart.
 
-**Depois de marcado, quem cobra é o lembrete de 3h**
-([inactivePlayers.js](src/services/inactivePlayers.js)): ping no canal dos inativos mais DM para
-cada um. **DM que não chegou é dita em voz alta**, no mesmo canal, num embed à parte e sem ping.
-DM fechada é o caso em que o lembrete automático não serve para nada — a pessoa é pingada num
-canal que talvez nem abra e o aviso de verdade nunca chega; dizer isso passa o trabalho para a
-staff, que chama no privado do jeito que um bot não consegue, e evita remover alguém por um
-silêncio que nunca foi escolha dele.
+**A DM sai uma vez só, na marcação da quarta 06:10.** Depois disso quem cobra é o **lembrete
+diário das 12:00** ([inactivePlayers.js](src/services/inactivePlayers.js)), só com ping no canal
+dos inativos — decisão do usuário (21/10/2026): eram ping e DM de 3 em 3h, e a mesma pessoa era
+cobrada no privado várias vezes por dia pela mesma semana. É cron e não intervalo porque o
+intervalo disparava no boot, e cada restart pingava a lista de novo. A **liberação** de quem já bateu
+o mínimo continua de 3 em 3h (e antes de cada lembrete): ela não pinga ninguém, e o cargo de
+inativo não pode ficar 24h em quem já se resolveu.
+
+**DM da marcação que não chegou é dita em voz alta**, num embed à parte em log-guilda, sem ping,
+e grava `dms_falhadas = 1`. DM fechada é o caso em que a cobrança automática não serve para nada
+— a pessoa é pingada num canal que talvez nem abra; dizer isso passa o trabalho para a staff, que
+chama no privado do jeito que um bot não consegue, e evita remover alguém por um silêncio que
+nunca foi escolha dele.
+
+**O `.active` mostra o histórico na própria resposta**: quantas justificativas a pessoa já deu e,
+a partir de 2, há quantas semanas seguidas (pedido do usuário, 21/10/2026). A saída automática
+por contribuição não conta como justificativa, e a sequência para na primeira semana em que ela
+não esteve na lista ou não justificou.
 
 ### Faixa baixa de contribuição (quarta 06:20)
 
@@ -395,13 +404,14 @@ do primeiro cron, e ele foi removido depois do teste (23/09/2026) — não é co
 **Chamada da staff (domingo 06:00)** — `avisarRemocaoDeInativos`
 ([avisoRemocaoInativos.js](src/services/avisoRemocaoInativos.js)) posta no **canal dos inativos**
 quem continua marcado, com quantos avisos cada um já ignorou, pingando **só** `@Officer`
-(`inactivePlayers.removalNotice.officerRoleId`). Os listados não são pingados: já levam ping a
-cada 3h e a mensagem é sobre eles, não para eles. Domingo e não quarta porque a semana ainda não
+(`inactivePlayers.removalNotice.officerRoleId`). Os listados não são pingados: já levam ping
+todo dia e a mensagem é sobre eles, não para eles. Domingo e não quarta porque a semana ainda não
 fechou — três dias de conversa ainda salvam a vaga. E no canal dos inativos, não na log-guilda,
 porque é onde a conversa com essas pessoas acontece.
 
 A contagem sai de `avisos_enviados` e `dms_falhadas`, duas colunas de `weekly_inactive_players`
-que **o bot escreve**, incrementadas pelo lembrete a cada ciclo.
+que **o bot escreve**: `avisos_enviados` sobe a cada lembrete diário, e `dms_falhadas` é gravada
+uma vez, na marcação, porque é a única DM da semana.
 
 São contadores de verdade, e não `(agora - created_at) / intervalo`, porque o número é a
 justificativa para tirar alguém da guilda: derivar do tempo contaria como tentativa todo ciclo em
@@ -409,8 +419,8 @@ que o bot esteve fora do ar, e mentiria a favor da remoção. Sem as colunas (`4
 loga o SQL que falta e devolve `null` — as duas rotinas seguem sem contar, porque deixar de
 avisar a lista inteira por causa de um contador seria pior. Ler-somar-gravar aqui é seguro, ao contrário da pontuação dos tickets:
 ninguém digita esses dois números no Supabase, e o update é agrupado pelo valor final, então a
-lista inteira vira ~2 requisições. `dms_falhadas >= avisos_enviados` é o que marca 📪 na
-lista de domingo: aí o silêncio não é resposta, é canal fechado.
+lista inteira vira ~2 requisições. `dms_falhadas > 0` é o que marca 📪 na lista de domingo:
+aí o silêncio não é resposta, é canal fechado.
 
 Os avisos automáticos de missões, MVP, inativação, duelo e pedido de blindagem vão todos para
 **log-guilda** (`1536704688689516624`), para não misturar log com chat. A única saída que também
@@ -419,7 +429,7 @@ log-guilda continua existindo do mesmo jeito, com o link de correção; o post �
 (a guilda, com ping do `@TGG`) e não substitui o aviso. Os botões de
 `justificativa_*` não passam pela allowlist de canal (só `isChatInputCommand` passa), então mover
 o pedido de canal não quebra a aprovação. O canal dos inativos (`inactivePlayers.channelId`)
-continua sendo outro — é onde o lembrete de 3h é postado e o único lugar onde `.active` funciona.
+continua sendo outro — é onde o lembrete diário é postado e o único lugar onde `.active` funciona.
 
 ### Hall da vergonha
 
@@ -1014,6 +1024,10 @@ Todos registrados no `ClientReady`:
   XP continua subindo enquanto ele roda. Ver abaixo.
 - Cron `5,20,35,50 * * * *` — avisa entradas, saídas, promoções e rebaixamentos na guilda do jogo
   ([src/services/guildHistoryService.js](src/services/guildHistoryService.js)). Ver abaixo.
+- Cron `0 12 * * *` — lembrete no canal dos inativos, só ping
+  ([src/services/inactivePlayers.js](src/services/inactivePlayers.js)). Ver acima.
+- Cron `30 * * * *` — apaga ticket sem resposta do autor em 24h
+  ([src/services/ticketSemResposta.js](src/services/ticketSemResposta.js)). Ver acima.
 - Cron `0 7 * * *` — cobra quem está parado na fila por tickets
   ([src/services/ticketInatividade.js](src/services/ticketInatividade.js)) e avisa ticket cujo
   autor saiu do servidor ([src/services/ticketOrfaos.js](src/services/ticketOrfaos.js)). Ver acima.
@@ -1028,7 +1042,7 @@ Todos registrados no `ClientReady`:
 - `setInterval` — contador de mensagens e call das insígnias (5 min,
   [src/services/insigniasAtividade.js](src/services/insigniasAtividade.js)). **Só em produção**, ao
   contrário do ciclo dos tickets: a contagem é permanente e dois processos contariam em dobro.
-- `setInterval` — lembrete de inativos (3h por padrão, `INACTIVE_MESSAGE_INTERVAL`).
+- `setInterval` — liberação de inativos que já bateram o mínimo (3h, e 5s depois do boot). Não pinga.
 - `restoreMutes` / `restoreTemporaryWarnings` — reagendam expirações persistidas em `mutes` / `warnings`
   depois de um restart.
 

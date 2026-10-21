@@ -8,13 +8,13 @@ import { inactivePlayers as config } from '../../config/index.js';
  * Chamada da staff, domingo 06:00 — quem continua na lista de inativos depois de uma semana de
  * lembretes, com quantas vezes o bot já tentou falar com cada um.
  *
- * O lembrete de 3h cobra o membro; este aviso cobra a **staff**. Ele existe porque a decisão de
+ * O lembrete diário cobra o membro; este aviso cobra a **staff**. Ele existe porque a decisão de
  * tirar alguém da guilda é de gente, não do bot: o que sai daqui é uma lista com a história de
  * cada caso para alguém olhar antes de puxar o gatilho — e domingo, não quarta, porque a semana
  * ainda não fechou e conversar com o membro nesses três dias ainda pode salvar a vaga dele.
  *
  * Quem já se resolveu não aparece: `liberarQuemContribuiu()`
- * ([inactivePlayers.js](./inactivePlayers.js)) roda a cada ciclo de 3h e tira da lista quem bateu
+ * ([inactivePlayers.js](./inactivePlayers.js)) roda de 3 em 3h e tira da lista quem bateu
  * o mínimo, então às 06:00 de domingo a lista está no máximo 3h desatualizada. Não vale a pena
  * refazer a conta de contribuição aqui só por isso.
  */
@@ -59,11 +59,12 @@ export async function montarListaDeRemocao() {
 }
 
 /**
- * Nunca alcançado por DM em nenhuma das tentativas. É a diferença entre ignorar o aviso e nunca
- * ter recebido um — e a segunda não é motivo para tirar ninguém da guilda sem falar antes.
+ * A DM da marcação não chegou — e ela é a única DM da semana, porque o lembrete diário só pinga.
+ * É a diferença entre ignorar o aviso e nunca ter recebido um, e a segunda não é motivo para
+ * tirar ninguém da guilda sem falar antes.
  */
 function nuncaRecebeuDm(linha) {
-  return linha.tentativas > 0 && linha.dmsFalhadas >= linha.tentativas;
+  return linha.dmsFalhadas > 0;
 }
 
 /** Pura de propósito: dá para conferir o texto sem banco nem Discord. */
@@ -71,7 +72,7 @@ export function montarEmbed(linhas, contadoresDisponiveis) {
   const texto = linhas.slice(0, MAX_LINHAS).map(linha => {
     const vezes = linha.tentativas === 1 ? 'aviso' : 'avisos';
     const contagem = contadoresDisponiveis ? ` — **${linha.tentativas}** ${vezes}` : '';
-    const marca = nuncaRecebeuDm(linha) ? ' · 📪 nunca recebeu DM' : '';
+    const marca = nuncaRecebeuDm(linha) ? ' · 📪 não recebeu a DM' : '';
 
     return `<@${linha.discordId}>${contagem}${marca}`;
   });
@@ -80,7 +81,7 @@ export function montarEmbed(linhas, contadoresDisponiveis) {
   if (sobraram > 0) texto.push(`… e mais ${sobraram}`);
 
   const rodape = linhas.some(nuncaRecebeuDm)
-    ? '📪 = o bot nunca conseguiu mandar DM. Antes de remover, vale chamar no privado.'
+    ? '📪 = a DM da marcação não chegou. Antes de remover, vale chamar no privado.'
     : `Sai da lista sozinho quem bater os ${CONTRIBUICAO_MINIMA.toLocaleString('pt-BR')} de contribuição na semana.`;
 
   return new EmbedBuilder()

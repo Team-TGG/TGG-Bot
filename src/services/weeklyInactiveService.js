@@ -2,7 +2,7 @@ import { EmbedBuilder } from 'discord.js';
 import pLimit from 'p-limit';
 import { getLastWednesdayReference, getMissionWeekEnd } from '../db.js';
 import { calcularContribuicaoSemanal } from './contribuicaoSemanal.js';
-import { getBlindadosNaSemana, getBlindagensPendentes, getInativosDaSemana, inserirInativos } from '../inactivity.js';
+import { getBlindadosNaSemana, getBlindagensPendentes, getInativosDaSemana, inserirInativos, registrarDmsNaoEntregues } from '../inactivity.js';
 import { inactivePlayers as config, discord as discordConfig } from '../../config/index.js';
 import { tradutor } from '../i18n/index.js';
 
@@ -171,6 +171,7 @@ export async function aplicarCargoEAvisar(client, inativos) {
   let cargoAplicado = 0;
   let dmEnviada = 0;
   const falhas = [];
+  const semDm = [];
 
   await Promise.all(inativos.map(inativo => limit(async () => {
     const membro = guild.members.cache.get(inativo.discordId)
@@ -191,13 +192,47 @@ export async function aplicarCargoEAvisar(client, inativos) {
       cargoAplicado++;
     }
 
-    // DM fechada é comum e não é falha da rotina — o aviso no canal ainda alcança a pessoa
+    // DM fechada é comum e não é falha da rotina — o ping diário no canal ainda alcança a pessoa.
+    // É a única DM da semana: o lembrete diário só pinga.
     await membro.send({ embeds: [embedAviso(tradutor(membro))] })
       .then(() => { dmEnviada++; })
-      .catch(() => console.log(`[INATIVOS] DM bloqueada: ${inativo.nome} (${inativo.discordId})`));
+      .catch(() => {
+        semDm.push(inativo);
+        console.log(`[INATIVOS] DM bloqueada: ${inativo.nome} (${inativo.discordId})`);
+      });
   })));
 
-  return { cargoAplicado, dmEnviada, falhas };
+  return { cargoAplicado, dmEnviada, falhas, semDm };
+}
+
+/** Teto de linhas do aviso de DM. Lista cortada tem que dizer que foi cortada. */
+const MAX_LINHAS_SEM_DM = 25;
+
+/**
+ * Diz à staff com quem a DM da marcação não chegou. Como ela é a única DM da semana, quem está
+ * aqui só fica sabendo pelo ping do canal dos inativos — que talvez nem abra. Falar isso passa o
+ * trabalho para a staff, que chama no privado do jeito que o bot não consegue.
+ *
+ * Sem ping: a informação é para quem lê a log-guilda, não para quem está listado.
+ */
+export function montarAvisoSemDm(semDm) {
+  const linhas = semDm.slice(0, MAX_LINHAS_SEM_DM).map(i => `<@${i.discordId}> (${i.nome})`);
+
+  const sobraram = semDm.length - linhas.length;
+  if (sobraram > 0) linhas.push(`… e mais ${sobraram}`);
+
+  const embed = new EmbedBuilder()
+    .setColor(0xed4245)
+    .setTitle('📪 Não consegui mandar DM para estes inativos')
+    .setDescription(
+      'A DM destas pessoas está fechada para o bot, e a da marcação é a única DM da semana — ' +
+      `daqui pra frente elas só são pingadas em <#${config.channelId}>.\n\n` +
+      `${linhas.join('\n')}\n\n` +
+      'Se alguém da staff puder chamar no privado, o aviso chega onde o bot não alcança.'
+    )
+    .setTimestamp();
+
+  return { embeds: [embed], allowedMentions: { parse: [] } };
 }
 
 /** Aviso com as menções no canal de inativos. */
@@ -269,13 +304,25 @@ export async function inativarSemana(client) {
 
   const cargos = await aplicarCargoEAvisar(client, inativos).catch(err => {
     console.error('[INATIVOS] falha ao aplicar cargo/DM:', err.message);
-    return { cargoAplicado: 0, dmEnviada: 0, falhas: [{ erro: err.message }] };
+    return { cargoAplicado: 0, dmEnviada: 0, falhas: [{ erro: err.message }], semDm: [] };
   });
 
   const anunciado = await anunciar(client, montarAnuncio(inativos)).catch(err => {
     console.error('[INATIVOS] falha ao anunciar:', err.message);
     return false;
   });
+
+  // Cada um com seu catch: o registro é o que o domingo lê para marcar 📪, e o aviso é para a
+  // staff agir hoje — um falhar não pode levar o outro junto.
+  if (cargos.semDm.length) {
+    await registrarDmsNaoEntregues(weekReference, cargos.semDm.map(i => i.brawlhallaId)).catch(err => {
+      console.warn(`[INATIVOS] DMs não entregues não registradas: ${err.message}`);
+    });
+
+    await anunciar(client, montarAvisoSemDm(cargos.semDm)).catch(err => {
+      console.warn(`[INATIVOS] falha ao avisar DMs não entregues: ${err.message}`);
+    });
+  }
 
   if (cargos.falhas.length) console.warn('[INATIVOS] falhas:', cargos.falhas);
 

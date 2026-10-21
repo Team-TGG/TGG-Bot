@@ -15,7 +15,7 @@ import { createErrorEmbed, createSuccessEmbed, createCommandErrorEmbed, sendClea
 import { checkChannelPermission } from './utils/permissions.js';
 
 // Services
-import { startInactiveReminder } from './src/services/inactivePlayers.js';
+import { iniciarLiberacaoDeInativos } from './src/services/inactivePlayers.js';
 import { iniciarContadores, registrarMensagem, registrarVoz } from './src/services/ticketActivity.js';
 import { iniciarContadorDeAtividade, registrarMensagemParaInsignias, registrarVozParaInsignias } from './src/services/insigniasAtividade.js';
 import { avisarModoDaSemana } from './src/services/avisoModoDaSemana.js';
@@ -40,8 +40,8 @@ function logRuntimeMode(registrouSlash) {
   console.log(`\n${linha}`);
   console.log('  MODO DEV - nada que afete o servidor real vai rodar');
   console.log(linha);
-  console.log('  pulado : lembrete de inativos (ping no canal + DM)');
-  console.log('  pulado : crons (cargos, ELO, apelidos, aniversarios, MOTD)');
+  console.log('  pulado : liberacao de inativos que ja contribuiram (cargo + log)');
+  console.log('  pulado : crons (cargos, ELO, apelidos, aniversarios, MOTD, lembrete de inativos, tickets sem resposta)');
   console.log('  pulado : restauracao de mutes e warns temporarios');
   console.log('  pulado : contador de mensagens e call das insignias');
   console.log('  ATIVO  : contadores de mensagem e call da fila por tickets - PARE A VM');
@@ -94,7 +94,7 @@ async function main() {
     client.on(Events.GuildMemberAdd, darBoasVindas);
 
     // Daqui pra baixo é tudo efeito no servidor real: cron mexe em cargo e apelido,
-    // o lembrete pinga e manda DM, e restaurar mutes/warns reagenda expiracoes.
+    // o lembrete pinga, e restaurar mutes/warns reagenda expiracoes.
     if (runtime.isDev) return;
 
     // Contador de mensagens e call das insígnias. Depois do retorno de dev, ao contrário do ciclo dos
@@ -112,8 +112,8 @@ async function main() {
       getAllUsersWithElo
     }); // Iniciar crons
 
-    // Aviso de inatividade e restauração de mutes
-    startInactiveReminder(client);
+    // Liberação de quem já contribuiu (o lembrete diário é cron) e restauração de mutes
+    iniciarLiberacaoDeInativos(client);
     await restoreMutes(client);
     await restoreTemporaryWarnings(client);
   });

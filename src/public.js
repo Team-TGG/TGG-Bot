@@ -1,6 +1,6 @@
 // public.js - Comandos públicos
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, PermissionFlagsBits, ChannelType } from 'discord.js';
-import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getMonthWeekStartDateTime, getCurrentSeason, getSeasonWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID, incrementCrz, getUserByDiscordId, getContasVinculadas, getMemberJustifications } from './db.js';
+import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getMonthWeekStartDateTime, getCurrentSeason, getSeasonWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID, incrementCrz, getUserByDiscordId, getContasVinculadas, getMemberJustifications, getLastWednesdayReference } from './db.js';
 import { getPlayerWeeklyGuildPoints } from './guild.js';
 import { calcularDueloDaSemana, SEM_DUELO } from './services/dueloSemanal.js';
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI, fetchPlayerGuildStatsNewAPI, fetchPlayerBasicNewAPI } from './brawlhalla.js';
@@ -9,6 +9,7 @@ import { criarPedidoDeBlindagem, decidirBlindagem, getBlindagem, getPedidoPenden
 import { calculateGames, calculateGamesFromClosedWeek, ORDENS_LB_GUILDA, POR_PAGINA_LB_GUILDA, ordenarLbGuilda, embedLbGuilda } from './handlers/publicHandlers.js';
 import { calcularContribuicaoSemanal, MOTIVOS } from './services/contribuicaoSemanal.js';
 import { CONTRIBUICAO_MINIMA } from './services/weeklyInactiveService.js';
+import { NOTA_AUTOMATICA } from './services/inactivePlayers.js';
 import { selecionarMvpsDasLinhas, faltaParaMvp } from './services/weeklyMvpService.js';
 import { QUIZ_REWARD } from './handlers/tggCoinsHandlers.js';
 import { addTransaction, updateBalance } from './tggCoins.js';
@@ -998,9 +999,16 @@ export const handleActive = channelOnly(inactivePlayersConfig.channelId, async (
     // Atualiza banco passando a justificativa
     await removeInactivePlayer(targetId, note);
 
+    // Depois de gravar, para a justificativa de agora entrar na conta. Falhar aqui não pode
+    // esconder que a ativação deu certo: a resposta sai sem o resumo.
+    const resumo = await resumirJustificativas(targetId).catch(err => {
+      console.warn(`[ACTIVE] resumo de justificativas indisponível para ${targetId}: ${err.message}`);
+      return '';
+    });
+
     const embed = createSuccessEmbed(
       'Ativado',
-      `${member.user.tag} foi marcado como ativo.\nMotivo: ${note}`
+      `${member.user.tag} foi marcado como ativo.\nMotivo: ${note}${resumo}`
     );
 
     await message.reply({ embeds: [embed] });
@@ -1038,6 +1046,42 @@ export const handleActive = channelOnly(inactivePlayersConfig.channelId, async (
     });
   }
 });
+
+const UM_DIA_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Quantas justificativas a pessoa já deu e há quantas semanas seguidas, para quem lê o canal ver
+ * o padrão na hora (pedido do usuário, 21/10/2026). Uma justificativa por semana, cada uma
+ * plausível sozinha, é exatamente o que ninguém nota.
+ *
+ * Saída automática por contribuição não conta: não foi justificativa, a pessoa jogou.
+ * A sequência para na primeira semana que falta — semana fora da lista, ou na lista sem nota.
+ */
+async function resumirJustificativas(discordId) {
+  const user = await getUserByDiscordId(discordId);
+  if (!user) return '';
+
+  const historico = await getMemberJustifications(String(user.brawlhalla_id));
+  const justificadas = new Set(
+    historico
+      .filter(j => j.note && j.note !== NOTA_AUTOMATICA)
+      .map(j => String(j.week_reference).slice(0, 10))
+  );
+
+  let seguidas = 0;
+  const [ano, mes, dia] = getLastWednesdayReference().split('-').map(Number);
+
+  // Date.UTC: a diferença entre quartas tem que ser 7 dias cravados, sem horário de verão no meio.
+  for (let semana = Date.UTC(ano, mes - 1, dia); ; semana -= 7 * UM_DIA_MS) {
+    if (!justificadas.has(new Date(semana).toISOString().slice(0, 10))) break;
+    seguidas++;
+  }
+
+  let texto = `\n\n📋 Justificativas: **${justificadas.size}** no total`;
+  if (seguidas >= 2) texto += `\n⚠️ **${seguidas} semanas seguidas** usando o \`.active\``;
+
+  return texto;
+}
 
 // Rótulos dos motivos de "não deu para medir", no mesmo vocabulário do cálculo semanal
 const MOTIVO_CONTRIBUICAO = {
