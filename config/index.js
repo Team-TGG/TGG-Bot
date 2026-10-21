@@ -156,6 +156,13 @@ export const ticketInatividade = {
   horasParaEscalar: 24,
   channelId: '1536704688689516624', // log-guilda - resumo para a staff
 };
+// Ticket apagado quando quem abriu não escreve nada nas primeiras `horas`, de hora em hora
+// (ver src/services/ticketSemResposta.js). O prazo também sai no aviso postado no ticket novo.
+export const ticketSemResposta = {
+  horas: 24,
+  channelId: '1536704688689516624', // log-guilda - registro do que foi apagado
+};
+
 
 export const birthdays = {
   roleId: '1478478167961370845',

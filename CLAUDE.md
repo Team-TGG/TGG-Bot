@@ -443,7 +443,8 @@ falhar, a mensagem sai sem imagem.
 ### Fila de espera por tickets
 
 Os canais são criados pelo **Ticket Tool** (bot de terceiros) na categoria `cards`
-(`1460768037518180352`). O bot não os cria nem os apaga — ele observa, pontua e ordena.
+(`1460768037518180352`). O bot não os cria e só apaga um caso, o ticket sem resposta do autor em
+24h (ver abaixo) — no resto ele observa, pontua e ordena.
 
 **Quem abriu o ticket** sai das *permission overwrites* do canal: o Ticket Tool dá acesso ao autor
 com uma overwrite individual, e tirando bots e staff sobra ele. Medido em 14/08/2026: resolveu
@@ -498,6 +499,22 @@ Junto do card sai um **segundo** embed, com a print modelo de nome + ID
 público é outro — o card é para a staff, o pedido é para quem abriu o ticket — e bilíngue como
 tudo o que fica no canal do ticket. Falhar o pedido não cancela o card; o inverso cancelaria o
 ticket inteiro, porque sem o card ninguém assume.
+
+Na mesma mensagem do pedido vai o **aviso do prazo**: ticket sem resposta de quem abriu nas
+primeiras 24h (`ticketSemResposta.horas`) é deletado. Quem apaga é
+[ticketSemResposta.js](src/services/ticketSemResposta.js), de hora em hora no `:30`, com registro
+em log-guilda sem ping (decisão do usuário, 21/10/2026). Três regras que parecem detalhe:
+
+- **Só a fala do autor salva o ticket** — staff escrevendo para um candidato que sumiu não conta.
+- **O prazo corre do aviso, não da criação do canal.** Ticket aberto com o bot fora do ar recebe
+  o aviso atrasado, e contar da criação daria menos tempo do que o aviso promete.
+- **Ticket sem o aviso nunca é apagado**: é de antes da regra, e ninguém leu o prazo nele. O aviso
+  é reconhecido pelo título (`TITULO_AVISO_PRAZO`), então mudar o título solta os tickets que já
+  receberam o antigo.
+
+Ticket com "entrou" no nome fica de fora, e quem já foi conferido não é relido (`Set` em memória;
+depois de um restart cada ticket aberto é lido uma vez). O canal apagado sai da fila pela
+reconciliação do ciclo seguinte, como qualquer ticket fechado pelo Ticket Tool.
 
 **Ticket que ninguém assume é cobrado a cada 2h** ([ticketSemResponsavel.js](src/services/ticketSemResponsavel.js)):
 ping em `tickets.auxiliarRoleId` no próprio ticket, com o botão de assumir junto — em ticket com

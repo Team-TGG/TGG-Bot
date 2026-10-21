@@ -9,7 +9,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OverwriteType, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } from 'discord.js';
-import { STAFF_ROLE_IDS, tickets as ticketsConfig } from '../../config/index.js';
+import { STAFF_ROLE_IDS, tickets as ticketsConfig, ticketSemResposta as ticketSemRespostaConfig } from '../../config/index.js';
 import { inserirTicketsNovos, garantirAtividade, fecharTickets, reabrirTickets, getTicketsAbertosBasico, getTicketsAbertos } from '../tickets.js';
 
 export const CATEGORIA_TICKETS_ID = '1460768037518180352';
@@ -301,11 +301,27 @@ export function montarPedidoDePrint() {
     )
     .setImage(`attachment://${ARQUIVO_PRINT}`);
 
+  const horas = ticketSemRespostaConfig.horas;
+
+  const prazo = new EmbedBuilder()
+    .setColor(0xfaa61a)
+    .setTitle(TITULO_AVISO_PRAZO)
+    .setDescription(
+      `Tickets sem resposta de quem abriu nas primeiras **${horas}h** após a criação são deletados automaticamente.\n\n` +
+      `Tickets with no reply from whoever opened them within **${horas}h** of creation are deleted automatically.`
+    );
+
   return {
-    embeds: [embed],
+    embeds: [embed, prazo],
     files: [new AttachmentBuilder(CAMINHO_PRINT, { name: ARQUIVO_PRINT })],
   };
 }
+
+/**
+ * Título do aviso de prazo. É por ele que `ticketSemResposta.js` reconhece que o ticket foi
+ * avisado — ticket de antes da regra nunca leu o prazo, e não pode ser apagado por ele.
+ */
+export const TITULO_AVISO_PRAZO = '⏳ Prazo de resposta / Reply deadline';
 
 export function montarCardDeAssumir(openerDiscordId) {
   const embed = new EmbedBuilder()

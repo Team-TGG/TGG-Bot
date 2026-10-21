@@ -11,6 +11,7 @@ import { lembrarContribuicao } from '../services/contributionReminderService.js'
 import { avisarRemocaoDeInativos } from '../services/avisoRemocaoInativos.js';
 import { cobrarInativosDaFila } from '../services/ticketInatividade.js';
 import { avisarTicketsOrfaos } from '../services/ticketOrfaos.js';
+import { apagarTicketsSemResposta } from '../services/ticketSemResposta.js';
 import { avisarMovimentacao } from '../services/guildHistoryService.js';
 import { alertarContribuicaoNaFaixa } from '../services/contribuicaoNaFaixa.js';
 import { recalcularOrdemDaFila } from '../services/ticketReorder.js';
@@ -199,6 +200,18 @@ export function startCronJobs(client, services) {
       await avisarTicketsOrfaos(client);
     } catch (err) {
       console.error('[CRON ERROR - Tickets orfaos]', err);
+    }
+  }, {
+    timezone: 'America/Sao_Paulo'
+  });
+
+  // Ticket sem resposta de quem abriu - de hora em hora, no :30. O prazo é de 24h, então uma
+  // hora de atraso não muda nada e poupa reler os canais de minuto em minuto.
+  cron.schedule('30 * * * *', async () => {
+    try {
+      await apagarTicketsSemResposta(client);
+    } catch (err) {
+      console.error('[CRON ERROR - Tickets sem resposta]', err);
     }
   }, {
     timezone: 'America/Sao_Paulo'
