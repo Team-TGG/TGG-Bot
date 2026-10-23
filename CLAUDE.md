@@ -68,6 +68,13 @@ comentários de contagem** nos arquivos de builder, eles desatualizam a cada com
 Os aliases incluem dezenas de typos e apelidos internos de membros (`.deiucu`, `.pizzolho` → `daily`).
 Isso é intencional, não sujeira — não "limpe" sem pedir.
 
+As aliases do `.daily` **compradas na loja** não ficam aqui: moram em `tgg_coins_daily_aliases`
+(alias + `discord_id` e nome de quem comprou), carregadas no boot por
+[src/dailyAliases.js](src/dailyAliases.js) e consultadas no `index.js` quando o `COMMAND_ALIASES` não
+acha. O item da loja é o de `type = 'DAILY_ALIAS'`: o bot pede a palavra, grava e só então cobra.
+As 25 que eram comentário `// Nome` em `commands.js` foram migradas para a tabela (23/10/2026);
+Brraga, Korch, Wamaala e Kay ficaram com `discord_id` vazio, sem cadastro que batesse.
+
 ### Camadas
 
 | Camada | Arquivos | Papel |
@@ -1069,7 +1076,7 @@ Sem migrations no repo — o schema vive no Supabase. Domínios principais:
   gravados juntos na quinta 06:00), `guild_duels` (idem, `guild_points` e `xp`), `season`.
 - **Economia (TGG Coins)**: `tgg_coins_wallet`, `_transactions`, `_shop`, `_shop_roles`, `_shop_exitlag`,
   `_purchases`, `_inventory`, `_service_providers`, `_coach_prices`, `_daily_streak`, `_achievements`,
-  `_achievements_alts`, `_achievements_finished`, view `vw_tgg_coins_wallet_total`.
+  `_achievements_alts`, `_achievements_finished`, `_daily_aliases`, view `vw_tgg_coins_wallet_total`.
   A variante `tgg_coins_event_*` é a carteira paralela de eventos/tickets — mesma lógica, tabelas separadas.
 - **Fila por tickets**: `ticket_queue` (inclui `aviso_sem_responsavel_em`, o carimbo da cobrança do
   `@auxiliar`), `ticket_activity`, view `vw_ticket_pontos`, função `incrementar_atividade_ticket`.

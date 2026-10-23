@@ -5,6 +5,7 @@ import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMess
 import { adminOnly, leaderOnly, ROLE_HIERARCHY } from '../../utils/permissions.js';
 import { STAFF_ROLE_IDS } from '../../config/index.js';
 import { EMOJIS } from '../../config/emojis.js';
+import { normalizarAlias, motivoAliasInvalida, registrarAliasDoDaily, ehComandoExistente } from '../dailyAliases.js';
 
 // Cargos relacionados às TGG-Coins (IDs dos cargos no Discord)
 export const TGG_COINS_ROLES = {
@@ -866,6 +867,102 @@ export async function handleBuyCoach(ctx) {
   return;
 }
 
+// Uma alias por vez por pessoa: dois .buy seguidos abririam dois collectors lendo as mesmas mensagens
+const aliasesEmAndamento = new Set();
+
+// Para itens DAILY_ALIAS: pede a palavra, grava em tgg_coins_daily_aliases com quem comprou e só então cobra
+export async function handleBuyDailyAlias(ctx) {
+  const { message, item, member, discordId, finalPrice } = ctx;
+
+  if (aliasesEmAndamento.has(discordId)) {
+    return message.reply({
+      embeds: [createErrorEmbed('Alias em andamento', 'Você já tem uma compra de alias esperando a palavra. Mande ela ou digite `cancelar`.')]
+    });
+  }
+  aliasesEmAndamento.add(discordId);
+
+  await message.reply({
+    embeds: [
+      createSuccessEmbed(
+        'Escreva sua alias do .daily',
+        'Mande a palavra que vai puxar o seu `.daily` (com ou sem o ponto). Sem espaço; pode ser longa.\n' +
+        'Você tem 2 minutos. Digite `cancelar` para desistir — nada é cobrado até a alias ser aceita.'
+      )
+    ]
+  });
+
+  // Comando de verdade (.buy, .daily...) passa direto; o resto é tentativa de alias, inclusive com ponto
+  const filter = (m) => {
+    if (m.author.id !== discordId) return false;
+    if (!m.content.startsWith('.')) return true;
+    return !ehComandoExistente(normalizarAlias(m.content).split(/\s+/)[0]);
+  };
+
+  const collector = message.channel.createMessageCollector({ filter, time: 120000 });
+  let processando = false;
+
+  collector.on('collect', async (msgResponse) => {
+    if (processando) return;
+    processando = true;
+
+    try {
+      if (msgResponse.content.trim().toLowerCase() === 'cancelar') {
+        collector.stop('cancelada');
+        return msgResponse.reply({ embeds: [createErrorEmbed('Compra cancelada', 'Nenhuma alias foi criada e nada foi cobrado.')] });
+      }
+
+      const alias = normalizarAlias(msgResponse.content);
+      const motivo = motivoAliasInvalida(alias);
+      if (motivo) {
+        return msgResponse.reply({ embeds: [createErrorEmbed('Alias inválida', `${motivo}\nTente de novo ou digite \`cancelar\`.`)] });
+      }
+
+      // O saldo foi conferido antes de pedir a palavra, mas houve até 2 minutos para gastar em outra coisa
+      const balanceNow = await tggCoins.getBalance(discordId);
+      if (balanceNow < finalPrice) {
+        collector.stop('sem_saldo');
+        return msgResponse.reply({ embeds: [createErrorEmbed('Saldo insuficiente', 'Você não tem mais saldo para essa compra.')] });
+      }
+
+      const nome = member?.displayName ?? msgResponse.author.username;
+      const resultado = await registrarAliasDoDaily(alias, discordId, nome);
+      if (resultado === 'JA_EXISTE') {
+        return msgResponse.reply({ embeds: [createErrorEmbed('Alias inválida', `\`.${alias}\` acabou de ser registrada por outra pessoa. Escolha outra.`)] });
+      }
+
+      collector.stop('comprada');
+
+      await tggCoins.addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Alias do daily: .${alias}`.slice(0, 255));
+      const newBalance = await tggCoins.updateBalance(discordId, -finalPrice);
+
+      await tggCoins.createPurchase(discordId, item);
+      await tggCoins.decreaseStock(item.id, item.stock);
+
+      return msgResponse.reply({
+        embeds: [
+          createSuccessEmbed(
+            'Alias criada!',
+            `Agora \`.${alias}\` também puxa o daily. Alias de <@${discordId}>.\nSaldo atual: **${newBalance.toLocaleString('pt-BR')} TGG-Coins**`
+          )
+        ]
+      });
+    } catch (err) {
+      console.error('[Daily Alias Buy]', err);
+      collector.stop('erro');
+      return msgResponse.reply({ embeds: [createErrorEmbed('Erro na compra', err.message)] }).catch(() => {});
+    } finally {
+      processando = false;
+    }
+  });
+
+  collector.on('end', (_collected, reason) => {
+    aliasesEmAndamento.delete(discordId);
+    if (reason === 'time') {
+      message.reply({ embeds: [createErrorEmbed('Tempo esgotado', 'Nenhuma alias foi criada e nada foi cobrado.')] }).catch(() => {});
+    }
+  });
+}
+
 // Mapa de handlers
 export const buyHandlers = {
     SERVICE: handleBuyService,
@@ -877,7 +974,8 @@ export const buyHandlers = {
     ROLE: handleBuyRole,
     EXITLAG: handleBuyExitlag,
     EVENT_ROLE: handleBuyEventRole,
-    COACH: handleBuyCoach
+    COACH: handleBuyCoach,
+    DAILY_ALIAS: handleBuyDailyAlias
 };
 
 

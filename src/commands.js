@@ -86,36 +86,11 @@ export const COMMAND_ALIASES = {
   'diaria': 'daily',
   'diária': 'daily',
   'diário': 'daily',
-  'deili': 'daily', // CrZ
   'deily': 'daily',
   'deyly': 'daily',
   'deyli': 'daily',
   'whatsapp': 'daily',
-  'deiucu': 'daily', // Gameru
   'deiocu': 'daily',
-  'dailhe': 'daily', // Violet
-  'daocu': 'daily', // Picturii
-  'pizzolho': 'daily', // ADM_Bart
-  'dekko': 'daily', // Dekkosun
-  'miguel-kyna-lopes-yüz-da-silva': 'daily', // Mig
-  'a-sol-falou-que-me-amava-e-eu-tenho-certeza-de-que-foi-tudo-coisa-da-minha-cabeça...': 'daily', // Kay
-  'resenha': 'daily', // Brraga
-  '121322313212321312213': 'daily', // Dekkosun
-  'porracaralhomerdabostacacetefilhodaputaarrombadodisgraçadofedorendoxexelentoseubostinhaboiolinhapipipopofodasepaunocu': 'daily', // Trinca Ferro
-  'pneumoultramicroscopicossilicovulcanoconiotico': 'daily', // Nacreous
-  'porra': 'daily', // GGhost_storm
-  'pneumoultramicroscópicosilicovulcanoconiótico': 'daily', // DRG
-  'pneumoultramicroscopicosilicovulcanoconiotico': 'daily', // DRG
-  'mirror': 'daily', // Vitor
-  'vai-com-deus': 'daily', // Lucas
-  'panela': 'daily', // Korch
-  'bill': 'daily', // Wamaala
-  'pontape': 'daily', // Sky
-  'pontapé': 'daily', // Sky
-  'ôelevadô': 'daily', // Gappy
-  'ôelevado': 'daily', // Gappy
-  'oelevadô': 'daily', // Gappy
-  'oelevado': 'daily', // Gappy
   'balance': 'balance',
   'bal': 'balance',
   'baal': 'balance',

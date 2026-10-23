@@ -24,6 +24,7 @@ import { restoreMutes } from './src/services/muteManager.js';
 import { restoreTemporaryWarnings } from './src/services/warningManager.js';
 // Commands
 import { COMMAND_ALIASES, commands } from './src/commands.js';
+import { carregarAliasesDoDaily, ehAliasDoDaily, definirComandosExistentes } from './src/dailyAliases.js';
 // Slash
 import { registerGuildCommands } from './src/slash/register.js';
 import { registerInteractionHandler } from './src/interactions.js';
@@ -62,6 +63,9 @@ async function main() {
 
   client.once(Events.ClientReady, async () => {
     console.log(`Logged in as ${client.user.tag}`);
+
+    definirComandosExistentes(COMMAND_ALIASES);
+    await carregarAliasesDoDaily();
 
     // O PUT reescreve os slash commands da guilda - em dev só com --register-commands
     const vaiRegistrarSlash = !runtime.isDev || runtime.registerCommandsInDev;
@@ -141,7 +145,7 @@ async function main() {
 
     const args = content.split(/\s+/);
     const rawCommand = args.shift().toLowerCase();
-    const command = COMMAND_ALIASES[rawCommand];
+    const command = COMMAND_ALIASES[rawCommand] ?? (ehAliasDoDaily(rawCommand) ? 'daily' : undefined);
 
     if (!command) return;
 
