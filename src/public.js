@@ -4,13 +4,14 @@ import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, ge
 import { getPlayerWeeklyGuildPoints } from './guild.js';
 import { calcularDueloDaSemana, SEM_DUELO } from './services/dueloSemanal.js';
 import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI, fetchPlayerGuildStatsNewAPI, fetchPlayerBasicNewAPI } from './brawlhalla.js';
-import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, videoGuilda as videoGuildaConfig, justificativas as justificativasConfig, weeklyMvp as weeklyMvpConfig, perfil as perfilConfig } from '../config/index.js';
+import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, justificativas as justificativasConfig, weeklyMvp as weeklyMvpConfig, perfil as perfilConfig } from '../config/index.js';
 import { criarPedidoDeBlindagem, decidirBlindagem, getBlindagem, getPedidoPendenteDoMembro, registrarMensagemDoPedido, MAX_SEMANAS, STATUS } from './inactivity.js';
 import { calculateGames, calculateGamesFromClosedWeek, ORDENS_LB_GUILDA, POR_PAGINA_LB_GUILDA, ordenarLbGuilda, embedLbGuilda } from './handlers/publicHandlers.js';
 import { calcularContribuicaoSemanal, MOTIVOS } from './services/contribuicaoSemanal.js';
 import { CONTRIBUICAO_MINIMA } from './services/weeklyInactiveService.js';
 import { NOTA_AUTOMATICA } from './services/inactivePlayers.js';
 import { selecionarMvpsDasLinhas, faltaParaMvp } from './services/weeklyMvpService.js';
+import { buscarVideoDaGuilda } from './services/filaDeEspera.js';
 import { QUIZ_REWARD } from './handlers/tggCoinsHandlers.js';
 import { addTransaction, updateBalance } from './tggCoins.js';
 import { registrarUsoDoHelp } from './insignias.js';
@@ -1798,37 +1799,15 @@ export async function handleRedes(message) {
 export async function handleVideoGuilda(message, args, client) {
   try {
     const titulo = `🎬 **Vídeo explicativo da guilda**`;
-    const { message: sourceMessage, url, file } = videoGuildaConfig;
+    const videoUrl = await buscarVideoDaGuilda(client ?? message.client);
 
-    if (sourceMessage?.channelId && sourceMessage?.messageId) {
-      const channel = await (client ?? message.client).channels
-        .fetch(sourceMessage.channelId)
-        .catch(() => null);
-
-      const videoMsg = channel?.isTextBased()
-        ? await channel.messages.fetch(sourceMessage.messageId).catch(() => null)
-        : null;
-
-      if (!videoMsg) {
-        return message.reply({
-          embeds: [createErrorEmbed('Vídeo Não Encontrado', 'Não consegui acessar a mensagem configurada em `videoGuilda.message`.')]
-        });
-      }
-
-      const videoUrl = videoMsg.attachments.first()?.url || videoMsg.content.trim();
-
-      if (!videoUrl) {
-        return message.reply({
-          embeds: [createErrorEmbed('Vídeo Não Encontrado', 'A mensagem configurada não tem nenhum vídeo anexado.')]
-        });
-      }
-
-      return message.reply({ content: `${titulo}\n${videoUrl}` });
+    if (!videoUrl) {
+      return message.reply({
+        embeds: [createErrorEmbed('Vídeo Não Encontrado', 'Não consegui ler o vídeo da mensagem configurada em `videoGuilda.message`.')]
+      });
     }
 
-    return message.reply({
-      embeds: [createErrorEmbed('Vídeo Não Configurado', 'Nenhuma fonte definida em `videoGuilda` (config/index.js).')]
-    });
+    return message.reply({ content: `${titulo}\n${videoUrl}` });
 
   } catch (err) {
     console.error('[VideoGuilda Error]', err);

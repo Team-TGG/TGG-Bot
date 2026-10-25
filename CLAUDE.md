@@ -457,6 +457,13 @@ que têm as medidas de Arial e Times (as do Apolo) e vêm no repo porque a VM po
 listener roda **também em dev**: com a VM parada, quem entra ainda precisa ser recebido. Se o desenho
 falhar, a mensagem sai sem imagem.
 
+**Cargo de fila de espera** (`tickets.filaDeEsperaRoleId`): quando alguém ganha o cargo,
+[filaDeEspera.js](src/services/filaDeEspera.js) faz ghost ping no entrar-na-guilda (manda a menção e
+apaga) e manda DM com o canal e o vídeo do `.video-guilda` — o link vai numa mensagem à parte para o
+Discord mostrar o player. DM fechada só loga: o ping já levou a pessoa ao canal. Roda nos dois modos,
+como as boas-vindas. O `members.fetch()` do boot existe por isso: sem o membro no cache o
+`GuildMemberUpdate` não é emitido.
+
 ### Fila de espera por tickets
 
 Os canais são criados pelo **Ticket Tool** (bot de terceiros) na categoria `cards`

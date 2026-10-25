@@ -20,6 +20,7 @@ import { iniciarContadores, registrarMensagem, registrarVoz } from './src/servic
 import { iniciarContadorDeAtividade, registrarMensagemParaInsignias, registrarVozParaInsignias } from './src/services/insigniasAtividade.js';
 import { avisarModoDaSemana } from './src/services/avisoModoDaSemana.js';
 import { darBoasVindas } from './src/services/boasVindas.js';
+import { avisarEntradaNaFila } from './src/services/filaDeEspera.js';
 import { restoreMutes } from './src/services/muteManager.js';
 import { restoreTemporaryWarnings } from './src/services/warningManager.js';
 // Commands
@@ -96,6 +97,11 @@ async function main() {
 
     // Nos dois modos: quem entra com o bot da VM parado ainda precisa ser recebido
     client.on(Events.GuildMemberAdd, darBoasVindas);
+    client.on(Events.GuildMemberUpdate, avisarEntradaNaFila);
+    // Sem o membro no cache o discord.js não emite GuildMemberUpdate, e o cargo de fila dado a
+    // quem entrou antes do último restart passaria calado. Uma vez no boot basta: depois o gateway mantém.
+    client.guilds.cache.get(discordConfig.guildId)?.members.fetch()
+      .catch(err => console.warn('[FILA] falha ao carregar membros:', err.message));
 
     // Daqui pra baixo é tudo efeito no servidor real: cron mexe em cargo e apelido,
     // o lembrete pinga, e restaurar mutes/warns reagenda expiracoes.
