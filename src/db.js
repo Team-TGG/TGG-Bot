@@ -1021,6 +1021,46 @@ export async function getCurrentSeason() {
   return data;
 }
 
+/** Jogos ranqueados 1v1 no início de cada semana pedida → [{ brawlhalla_id, week_start, initial_games_1v1 }]. */
+export async function getBasesDeJogos1v1(weekStarts) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('player_weekly_info')
+    .select('brawlhalla_id, week_start, initial_games_1v1')
+    .in('week_start', weekStarts)
+    .range(0, 9999);
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
+ * Registra uma season nova, a menos que já exista uma começando nessa data ou depois.
+ * Devolve a linha criada, ou null quando já havia — rodar de novo não duplica.
+ */
+export async function registrarSeason(numero, startedAt) {
+  const supabase = getClient();
+
+  const { data: existente, error: erroLeitura } = await supabase
+    .from('season')
+    .select('id')
+    .gte('started_at', startedAt)
+    .limit(1);
+
+  if (erroLeitura) throw erroLeitura;
+  if (existente?.length) return null;
+
+  const { data, error } = await supabase
+    .from('season')
+    .insert({ season: numero, started_at: startedAt })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 // Função para inserir o id correto na base de dados
 export async function corrigirID(discord_id, main_id) {
   const supabase = getClient();

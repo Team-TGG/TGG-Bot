@@ -17,6 +17,7 @@ import { avisarMovimentacao } from '../services/guildHistoryService.js';
 import { alertarContribuicaoNaFaixa } from '../services/contribuicaoNaFaixa.js';
 import { recalcularOrdemDaFila } from '../services/ticketReorder.js';
 import { recalcularInsignias } from '../services/insigniasMotor.js';
+import { verificarResetDeSeason } from '../services/detectorDeSeason.js';
 
 export function startCronJobs(client, services) {
   const {
@@ -152,6 +153,18 @@ export function startCronJobs(client, services) {
   cron.schedule('0 12 * * *', async () => {
     if (!inactivePlayersConfig.messageEnabled) return;
     await sendInactivePlayersReminder(client);
+  }, {
+    timezone: 'America/Sao_Paulo'
+  });
+
+  // Virada de season - todo dia 12:05. Diária porque a data da virada não é anunciada pela API;
+  // cinco minutos depois do lembrete para não disputar a mesma janela.
+  cron.schedule('5 12 * * *', async () => {
+    try {
+      await verificarResetDeSeason(client);
+    } catch (err) {
+      console.error('[CRON ERROR - Season]', err);
+    }
   }, {
     timezone: 'America/Sao_Paulo'
   });

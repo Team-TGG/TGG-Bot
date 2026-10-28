@@ -163,6 +163,21 @@ export const ticketSemResposta = {
   channelId: '1536704688689516624', // log-guilda - registro do que foi apagado
 };
 
+// Detecção de season nova, todo dia 12:00 (ver src/services/detectorDeSeason.js). Não há endpoint
+// que diga quando a season vira: o sinal é o contador de jogos ranqueados 1v1 voltar para trás. Só
+// conta como reset se TODAS as `amostra` contas lidas caírem (decisão do usuário, 28/10/2026).
+export const deteccaoDeSeason = {
+  amostra: 5,
+  // Conta com poucos jogos na base não diz nada: cair de 2 para 0 também acontece por leitura vazia.
+  minimoDeJogosNaBase: 10,
+  // Leitura que falha não conta como amostra; desiste depois de tantas tentativas.
+  maxTentativas: 15,
+  // Seasons duram ~13 semanas. Logo depois de uma virada a base da semana anterior ainda é da
+  // season velha e tudo "cai" de novo — esse intervalo impede registrar a mesma virada duas vezes.
+  diasMinimosEntreSeasons: 30,
+  channelId: '1536704688689516624', // log-guilda
+};
+
 export const birthdays = {
   roleId: '1478478167961370845',
   channelId: '1437416350183325727',

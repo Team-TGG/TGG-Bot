@@ -1040,6 +1040,15 @@ Todos registrados no `ClientReady`:
   ([src/services/guildHistoryService.js](src/services/guildHistoryService.js)). Ver abaixo.
 - Cron `0 12 * * *` — lembrete no canal dos inativos, só ping
   ([src/services/inactivePlayers.js](src/services/inactivePlayers.js)). Ver acima.
+- Cron `5 12 * * *` — detecta a virada de season e registra a nova em `season`
+  ([src/services/detectorDeSeason.js](src/services/detectorDeSeason.js)). A API não diz quando a
+  season vira; o sinal é o contador de jogos ranqueados 1v1 voltar para trás. Sorteia 5 membros com
+  10+ jogos na base (maior `initial_games_1v1` das duas últimas semanas — duas porque a season vira
+  na quarta e a base nasce na quinta, já da season nova) e só conta como virada se **os 5** caírem
+  (decisão do usuário, 28/10/2026). `started_at` é a quarta da virada, porque o `.games` soma um dia
+  e usa a base de quinta 06:00. Nos 30 dias depois de uma season a rotina nem roda: a base da semana
+  anterior ainda é da season velha e tudo "cairia" de novo. Leitura que falha não vira falso
+  positivo — o fetcher devolve o cache antigo, que nunca é menor que o valor real.
 - Cron `30 * * * *` — apaga ticket sem resposta do autor em 24h
   ([src/services/ticketSemResposta.js](src/services/ticketSemResposta.js)). Ver acima.
 - Cron `0 7 * * *` — cobra quem está parado na fila por tickets
