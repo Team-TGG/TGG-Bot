@@ -1085,6 +1085,11 @@ Sem migrations no repo — o schema vive no Supabase. Domínios principais:
   `_purchases`, `_inventory`, `_service_providers`, `_coach_prices`, `_daily_streak`, `_achievements`,
   `_achievements_alts`, `_achievements_finished`, `_daily_aliases`, view `vw_tgg_coins_wallet_total`.
   A variante `tgg_coins_event_*` é a carteira paralela de eventos/tickets — mesma lógica, tabelas separadas.
+  O `tipo` do `.addcoins` é o **rótulo** da transação (GIFT, CHAMPIONSHIP…), não a moeda — o
+  comando só dá TGG-Coins. No slash ele tem autocomplete (`AUTOCOMPLETES` em
+  [src/interactions.js](src/interactions.js)) com os tipos manuais já usados, para "GIFT" e "Gift"
+  não virarem dois tipos; os automáticos ficam de fora pela lista `TIPOS_AUTOMATICOS` de
+  `getTiposManuaisDeTransacao` — tipo automático novo entra lá também.
 - **Fila por tickets**: `ticket_queue` (inclui `aviso_sem_responsavel_em`, o carimbo da cobrança do
   `@auxiliar`), `ticket_activity`, view `vw_ticket_pontos`, função `incrementar_atividade_ticket`.
 - **Moderação/diversos**: `warnings`, `mutes`, `motd`, `birthdays`, `tgg_quiz_completed`, `contador_crz`.

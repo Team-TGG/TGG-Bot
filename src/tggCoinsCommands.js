@@ -1900,7 +1900,8 @@ export const handleAddCoins = leaderOnly(async (message, args, client) => {
       }
       target = u;
       targetId = u.id;
-      type = message.interaction.options.getString('tipo');
+      // Caixa alta como no prefixo: "gift" e "GIFT" não podem virar dois tipos no histórico
+      type = message.interaction.options.getString('tipo')?.trim().toUpperCase();
       description = message.interaction.options.getString('descricao');
       amount = message.interaction.options.getInteger('quantidade');
     } else {
@@ -1958,6 +1959,29 @@ export const handleAddCoins = leaderOnly(async (message, args, client) => {
     });
   }
 });
+
+/**
+ * Autocomplete do `tipo` do /addcoins: sugere os tipos manuais já usados e, se o texto digitado
+ * não for um deles, oferece criar o novo. O Discord aceita qualquer texto no fim — a sugestão só
+ * evita que "GIFT", "Gift" e "PRESENTE" virem três tipos para a mesma coisa.
+ */
+export async function autocompleteTipoAddCoins(interaction) {
+  const digitado = interaction.options.getFocused().trim().toUpperCase();
+  const tipos = await tggCoins.getTiposManuaisDeTransacao();
+
+  // Existentes primeiro: Enter escolhe a primeira sugestão, e "gi" + Enter tem que dar GIFT, não
+  // criar o tipo "GI".
+  const opcoes = tipos
+    .filter(t => t.tipo.toUpperCase().includes(digitado))
+    .slice(0, 24)
+    .map(t => ({ name: `${t.tipo} (usado ${t.usos}x)`.slice(0, 100), value: t.tipo.slice(0, 100) }));
+
+  if (digitado && !tipos.some(t => t.tipo.toUpperCase() === digitado)) {
+    opcoes.push({ name: `Novo tipo: ${digitado}`.slice(0, 100), value: digitado.slice(0, 100) });
+  }
+
+  await interaction.respond(opcoes);
+}
 
 // ---- .addprovider (admin) ----
 export const handleAddProvider = adminOnly(async (message, args, client) => {

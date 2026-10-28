@@ -9,6 +9,12 @@ import { handleTicketLido } from './services/ticketNudge.js';
 import { handleJustificativaButton, handleJustificativaHistorico } from './public.js';
 import { handlePerfilInteracao } from './handlers/perfilHandlers.js';
 import { tradutor } from './i18n/index.js';
+import { autocompleteTipoAddCoins } from './tggCoinsCommands.js';
+
+// Comando → função que sugere opções enquanto a pessoa digita (opção com setAutocomplete no builder).
+const AUTOCOMPLETES = {
+  addcoins: autocompleteTipoAddCoins,
+};
 
 // Rate limit (mesmo do messageCreate anterior): 5s por usuário, staff isento.
 const rateLimitMap = new Map();
@@ -65,6 +71,17 @@ async function handleChatInput(interaction, client) {
 
 export function registerInteractionHandler(client) {
   client.on(Events.InteractionCreate, async (interaction) => {
+    // Autocomplete não passa pela allowlist de canal nem pelo rate limit: é sugestão enquanto a
+    // pessoa digita, e a permissão de verdade é checada quando o comando é enviado.
+    if (interaction.isAutocomplete()) {
+      const sugerir = AUTOCOMPLETES[interaction.commandName];
+      if (!sugerir) return interaction.respond([]).catch(() => {});
+      return sugerir(interaction).catch((err) => {
+        console.warn(`[AUTOCOMPLETE] /${interaction.commandName}:`, err.message);
+        return interaction.respond([]).catch(() => {});
+      });
+    }
+
     if (interaction.isChatInputCommand()) {
       await handleChatInput(interaction, client);
       return;

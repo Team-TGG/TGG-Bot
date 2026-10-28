@@ -299,6 +299,45 @@ export async function getTransactionsByTypes(types) {
   return data ?? [];
 }
 
+// Tipos que o próprio bot grava. O que sobra no histórico foi digitado à mão no .addcoins (GIFT,
+// CHAMPIONSHIP, BRAWDLE…), e é isso que o autocomplete sugere.
+const TIPOS_AUTOMATICOS = [
+  'DAILY', 'MISSION', 'SHOP_PURCHASE', 'STREAK_RECOVERY', 'QUIZ', 'MOTD',
+  'SERVICE_PAYMENT', 'SERVICE_RECEIVED', 'COACH_PAYMENT', 'COACH_RECEIVED',
+];
+const CACHE_TIPOS_MS = 10 * 60 * 1000;
+let cacheTipos = { em: 0, tipos: [] };
+
+/**
+ * Tipos de transação manuais → [{ tipo, usos }], do mais usado ao menos. Em cache por 10 min: o
+ * autocomplete do Discord tem 3s para responder. Os automáticos saem no próprio filtro, senão a
+ * leitura passaria por ~12 mil linhas de DAILY a cada consulta.
+ */
+export async function getTiposManuaisDeTransacao() {
+  if (Date.now() - cacheTipos.em < CACHE_TIPOS_MS) return cacheTipos.tipos;
+
+  const supabase = getClient();
+  const { data, error } = await supabase
+    .from('tgg_coins_transactions')
+    .select('type')
+    .not('type', 'in', `(${TIPOS_AUTOMATICOS.join(',')})`)
+    .not('type', 'like', 'TOP % SEMANA %')
+    .range(0, 9999);
+
+  if (error) throw error;
+
+  const usos = new Map();
+  for (const { type } of data ?? []) {
+    if (type) usos.set(type, (usos.get(type) ?? 0) + 1);
+  }
+
+  cacheTipos = {
+    em: Date.now(),
+    tipos: [...usos].map(([tipo, n]) => ({ tipo, usos: n })).sort((a, b) => b.usos - a.usos),
+  };
+  return cacheTipos.tipos;
+}
+
 /**
  * Pega leaderboard (ordenado por TGG_coins)
  */
