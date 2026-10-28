@@ -1378,16 +1378,18 @@ export async function getCoachPriceRange(shopId) {
 
   const { data, error } = await supabase
     .from('tgg_coins_coach_prices')
-    .select('price')
+    .select('price, tgg_coins_coachs (*)')
     .eq('shop_id', shopId);
 
   if (error) throw error;
 
-  if (!data.length) {
+  const ligados = data.filter(row => coachLigado(row.tgg_coins_coachs));
+
+  if (!ligados.length) {
     return null;
   }
 
-  const prices = data.map(row => Number(row.price));
+  const prices = ligados.map(row => Number(row.price));
 
   return {
     min: Math.min.apply(null, prices),
@@ -1403,14 +1405,23 @@ export async function getCoachesByShopId(shopId) {
 
   const { data, error } = await supabase
     .from('tgg_coins_coach_prices')
-    .select(`coach_id, tgg_coins_coachs (discord_id, name, description)`)
+    .select(`coach_id, tgg_coins_coachs (*)`)
     .eq('shop_id', shopId);
 
   if (error) {
     throw error;
   }
 
-  return data.map(row => row.tgg_coins_coachs);
+  return data.map(row => row.tgg_coins_coachs).filter(coachLigado);
+}
+
+/**
+ * Coach desligado pela staff no site (`tgg_coins_coachs.active = false`) some do menu e da faixa de
+ * preço, mas guarda os preços para quando voltar. O select é `*` de propósito: sem a coluna, `active`
+ * vem undefined e o coach conta como ligado, então o bot não depende da ordem do deploy.
+ */
+function coachLigado(coach) {
+  return Boolean(coach) && coach.active !== false;
 }
 
 /**
