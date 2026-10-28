@@ -442,9 +442,9 @@ continua sendo outro — é onde o lembrete diário é postado e o único lugar 
 
 `.warn`, `.mute`, `.kick` e `.ban` postam a punição no 🔕｜hall-da-vergonha (`hallDaVergonha.channelId`)
 por [hallDaVergonha.js](src/services/hallDaVergonha.js), no lugar do Apolo. O post mostra **só quem
-tomou** — nunca quem aplicou (decisão do usuário, 19/10/2026). O mute e o ban automáticos do 2º e do 3º
-warn postam também, cada um como a punição que é. Ficam de fora o mute da loja e o `.crz` (brincadeira,
-não punição) e os desfazeres (`.unmute`, `.unwarn`, `.edit-warn`): o canal é vitrine, não log. Post que
+tomou** — nunca quem aplicou (decisão do usuário, 19/10/2026). O limite é de **2 warns**
+(`LIMITE_WARNS`, 28/10/2026): o 1º só registra, o 2º bane, e o ban automático posta também. Ficam de
+fora o mute da loja, o `.crz` e `.mute` acima de 60 dias (brincadeira da staff, não punição) e os desfazeres (`.unmute`, `.unwarn`, `.edit-warn`): o canal é vitrine, não log. Post que
 falha só loga; a punição já foi aplicada.
 
 ### Boas-vindas no #joins
