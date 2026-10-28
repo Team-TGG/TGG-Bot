@@ -54,7 +54,7 @@ export const economyCommands = [
   // ── Admin de economia ──
   new SlashCommandBuilder()
     .setName('addcoins')
-    .setDescription('Concede coins a um usuário (apenas líder)')
+    .setDescription('Concede coins a um usuário (Administrator ou acima)')
     .addUserOption(o => o.setName('usuario').setDescription('@user').setRequired(true))
     .addStringOption(o => o.setName('tipo').setDescription('Tipo da transação (GIFT, CHAMPIONSHIP…): escolha um existente ou digite um novo').setRequired(true).setAutocomplete(true).setMaxLength(100))
     .addStringOption(o => o.setName('descricao').setDescription('Descrição da transação').setRequired(true))

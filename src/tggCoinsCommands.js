@@ -4,7 +4,7 @@ import * as tggCoins from './tggCoins.js';
 import { getUserByDiscordId, getMissionWeekStart, formatDateBR, getMissionWeekEnd, resolveBrawlhallaId, loadAliases } from './db.js';
 import { fetchPlayerStats, fetchPlayerStatsNoResolve, fetchPlayerGuildStatsNewAPI, fetchGuildMembersNewAPI } from './brawlhalla.js';
 import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage, createPagination, awaitConfirmation } from '../utils/discordUtils.js';
-import { adminOnly, leaderOnly, ROLE_HIERARCHY } from '../utils/permissions.js';
+import { adminOnly, ROLE_HIERARCHY, hasPermission } from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
 import { STAFF_ROLE_IDS } from '../config/index.js';
 import { buyHandlers, typeConfig, getTypeConfig, buildHeader, buildMissionText, getDailyReward, QUIZ_REWARD, quizQuestions, shuffleArray, OPTION_LETTERS } from './handlers/tggCoinsHandlers.js';
@@ -1886,7 +1886,14 @@ export async function handleQuiz(message) {
 }
 
 // ---- .addcoins (líder) ----
-export const handleAddCoins = leaderOnly(async (message, args, client) => {
+export const handleAddCoins = async (message, args, client) => {
+  // Administrator para cima pela hierarquia de cargos do Discord; até 28/10/2026 era só o líder.
+  if (!hasPermission(message.member, ROLE_HIERARCHY[STAFF_ROLE_IDS.administrator])) {
+    return message.reply({
+      embeds: [createErrorEmbed('Acesso Negado', 'Apenas Administrator ou acima pode dar TGG-Coins.')]
+    });
+  }
+
   const loading = await message.reply({ embeds: [createLoadingEmbed('💰 Adicionando moedas...')] });
 
   try {
@@ -1958,7 +1965,7 @@ export const handleAddCoins = leaderOnly(async (message, args, client) => {
       embeds: [createErrorEmbed('Erro ao adicionar coins', err.message)]
     });
   }
-});
+};
 
 /**
  * Autocomplete do `tipo` do /addcoins: sugere os tipos manuais já usados e, se o texto digitado
