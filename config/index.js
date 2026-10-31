@@ -251,6 +251,11 @@ export const mutes = {
   logChannelId: '1536704688689516624', // log-guilda
 };
 
+// Cargos personalizados da loja (ver src/cargosPersonalizados.js): nascem logo abaixo do separador.
+export const cargosPersonalizados = {
+  separadorRoleId: '1497685633039077396', // =- Custom -=
+};
+
 // Boas-vindas com imagem a quem entra no servidor (ver src/services/boasVindas.js), no lugar do Apolo.
 export const boasVindas = {
   channelId: '1437416576189202484', // joins

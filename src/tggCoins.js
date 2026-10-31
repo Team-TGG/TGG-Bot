@@ -1410,6 +1410,37 @@ export async function getInventory(discordId) {
 }
 
 /**
+ * Tira um cargo do inventário do usuário (usado quando o dono de um cargo personalizado o retira de alguém)
+ */
+export async function removeInventoryItem(discordId, roleId) {
+  const supabase = getClient();
+
+  const { error } = await supabase
+    .from('tgg_coins_inventory')
+    .delete()
+    .eq('discord_id', String(discordId))
+    .eq('role_id', String(roleId));
+
+  if (error) throw error;
+}
+
+/**
+ * Quem tem um cargo no inventário
+ */
+export async function getInventoryHolders(roleId) {
+  const supabase = getClient();
+
+  const { data, error } = await supabase
+    .from('tgg_coins_inventory')
+    .select('discord_id')
+    .eq('role_id', String(roleId));
+
+  if (error) throw error;
+
+  return [...new Set((data ?? []).map(row => row.discord_id))];
+}
+
+/**
  * Pega a faixa de preço dos treinadores disponíveis na loja
  */
 export async function getCoachPriceRange(shopId) {

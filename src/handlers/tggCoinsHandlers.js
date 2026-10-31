@@ -6,6 +6,8 @@ import { adminOnly, leaderOnly, ROLE_HIERARCHY } from '../../utils/permissions.j
 import { STAFF_ROLE_IDS } from '../../config/index.js';
 import { EMOJIS } from '../../config/emojis.js';
 import { normalizarAlias, motivoAliasInvalida, registrarAliasDoDaily, ehComandoExistente } from '../dailyAliases.js';
+import { criarCredito } from '../cargosPersonalizados.js';
+import { botaoCriarCargo } from './cargoPersonalizadoHandlers.js';
 
 // Cargos relacionados às TGG-Coins (IDs dos cargos no Discord)
 export const TGG_COINS_ROLES = {
@@ -963,6 +965,31 @@ export async function handleBuyDailyAlias(ctx) {
   });
 }
 
+// Para itens CUSTOM_ROLE: cobra e deixa um crédito; o cargo é criado pelo modal do botão (ou depois, pelo .cargo)
+export async function handleBuyCustomRole(ctx) {
+  const { message, item, discordId, finalPrice } = ctx;
+
+  await tggCoins.addTransaction(discordId, -finalPrice, 'SHOP_PURCHASE', `Cargo personalizado: ${item.name}`);
+  const newBalance = await tggCoins.updateBalance(discordId, -finalPrice);
+
+  await tggCoins.createPurchase(discordId, item);
+  await tggCoins.decreaseStock(item.id, item.stock);
+
+  const credito = await criarCredito(discordId);
+
+  return message.reply({
+    embeds: [
+      createSuccessEmbed(
+        'Compra realizada!',
+        'Clique no botão para escolher o nome, as cores e o ícone do seu cargo.\n' +
+        'Se fechar sem querer, use `.cargo` para abrir de novo — as moedas não se perdem.\n' +
+        `Saldo atual: **${newBalance.toLocaleString('pt-BR')} TGG-Coins**`
+      )
+    ],
+    components: [new ActionRowBuilder().addComponents(botaoCriarCargo(credito.id))]
+  });
+}
+
 // Mapa de handlers
 export const buyHandlers = {
     SERVICE: handleBuyService,
@@ -975,7 +1002,8 @@ export const buyHandlers = {
     EXITLAG: handleBuyExitlag,
     EVENT_ROLE: handleBuyEventRole,
     COACH: handleBuyCoach,
-    DAILY_ALIAS: handleBuyDailyAlias
+    DAILY_ALIAS: handleBuyDailyAlias,
+    CUSTOM_ROLE: handleBuyCustomRole
 };
 
 

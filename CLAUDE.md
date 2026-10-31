@@ -438,6 +438,25 @@ log-guilda continua existindo do mesmo jeito, com o link de correção; o post �
 o pedido de canal não quebra a aprovação. O canal dos inativos (`inactivePlayers.channelId`)
 continua sendo outro — é onde o lembrete diário é postado e o único lugar onde `.active` funciona.
 
+### Cargos personalizados
+
+O item `CUSTOM_ROLE` da loja cobra e grava um **crédito** em `tgg_coins_custom_roles` (`role_id`
+nulo); o cargo nasce do modal do botão "Criar meu cargo" — nome, cor, segunda cor (degradê) e ícone
+por upload. Crédito em vez de criar na compra porque o modal precisa de um clique depois do `.buy`, e
+fechar o modal sem querer não pode perder 4.500 moedas: o `.cargo` mostra o botão de novo. O
+cargo é criado **logo abaixo do separador `=- Custom -=`** (`cargosPersonalizados.separadorRoleId`).
+
+Só o dono (`owner_discord_id`) edita, dá e tira — conferido no banco a cada clique, então o painel
+pode ser aberto por qualquer um sem risco. Dar põe no `tgg_coins_inventory` da pessoa e equipa com a
+mesma regra do `.inv` (uma cor por vez); tirar apaga dos dois. Nome só barra link (decisão do usuário,
+31/10/2026: palavrão faz parte da graça dos cargos). Roteado pelo prefixo `cargoperso_` em
+[interactions.js](src/interactions.js), sem collector, para o painel sobreviver a restart.
+
+O backtrack de 31/10/2026 casou cada compra antiga com o cargo criado no mesmo minuto (a data sai
+do snowflake do cargo): 7 donos. Três compras sem cargo que batesse viraram crédito (dead_49,
+meme_d13w, ailette). Iluminado, Infiltrado, luv sic, Esse gajo e um rabolho, Pedinte, Devedor,
+amor do kin e ULTRA LÍDER ficaram **sem dono de propósito** — são cargos de brincadeira ou da staff.
+
 ### Hall da vergonha
 
 `.warn`, `.mute`, `.kick` e `.ban` postam a punição no 🔕｜hall-da-vergonha (`hallDaVergonha.channelId`)
@@ -1092,7 +1111,7 @@ Sem migrations no repo — o schema vive no Supabase. Domínios principais:
   gravados juntos na quinta 06:00), `guild_duels` (idem, `guild_points` e `xp`), `season`.
 - **Economia (TGG Coins)**: `tgg_coins_wallet`, `_transactions`, `_shop`, `_shop_roles`, `_shop_exitlag`,
   `_purchases`, `_inventory`, `_service_providers`, `_coach_prices`, `_daily_streak`, `_achievements`,
-  `_achievements_alts`, `_achievements_finished`, `_daily_aliases`, view `vw_tgg_coins_wallet_total`.
+  `_achievements_alts`, `_achievements_finished`, `_daily_aliases`, `_custom_roles`, view `vw_tgg_coins_wallet_total`.
   A variante `tgg_coins_event_*` é a carteira paralela de eventos/tickets — mesma lógica, tabelas separadas.
   O `tipo` do `.addcoins` é o **rótulo** da transação (GIFT, CHAMPIONSHIP…), não a moeda — o
   comando só dá TGG-Coins. No slash ele tem autocomplete (`AUTOCOMPLETES` em

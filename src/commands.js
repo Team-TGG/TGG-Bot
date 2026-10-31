@@ -2,6 +2,7 @@
 import { handleLimparPerfil, handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleEditWarn, handleMute, handleUnmute, handleBan, handleKick, handleBam, handleInacAll, handleInacList, handleInativar, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleScanTickets, handleImportarTickets, handleAbrirTickets, handleFecharTickets, handleWam, handleJustificativas, handleScan, handleBlindagens, handleIa } from './admin.js';
 import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes, handleDuel, handleCrz, handleVideoGuilda, handleAlts, handleJustificativa, handleResumo, handleLbGuilda, handleProfile } from './public.js';
 import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins, handleAddAccount, handleQuiz, handleInventory } from './tggCoinsCommands.js';
+import { handleCargoPersonalizado } from './handlers/cargoPersonalizadoHandlers.js';
 
 // Command Aliases
 export const COMMAND_ALIASES = {
@@ -116,6 +117,10 @@ export const COMMAND_ALIASES = {
   'inv': 'inventory',
   'cores': 'inventory',
   'cor': 'inventory',
+  'cargo': 'cargo',
+  'meucargo': 'cargo',
+  'meu-cargo': 'cargo',
+  'cargo-personalizado': 'cargo',
   'conquistas': 'conquistas',
   'conquista': 'conquistas',
   'achievements': 'conquistas',
@@ -296,5 +301,6 @@ export const commands = {
   removeprovider: handleRemoveProvider,
   addcoins: handleAddCoins,
   'add-account': handleAddAccount,
-  inventory: handleInventory
+  inventory: handleInventory,
+  cargo: handleCargoPersonalizado
 };

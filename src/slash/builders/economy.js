@@ -34,6 +34,10 @@ export const economyCommands = [
     .setDescription('Equipar/remover cores e itens adquiridos'),
 
   new SlashCommandBuilder()
+    .setName('cargo')
+    .setDescription('Criar, editar, dar ou tirar o seu cargo personalizado'),
+
+  new SlashCommandBuilder()
     .setName('conquistas')
     .setDescription('Conquistas semanais e histórico')
     .addUserOption(o => o.setName('usuario').setDescription('Ver conquistas de outro usuário')),

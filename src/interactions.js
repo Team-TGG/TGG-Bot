@@ -1,4 +1,4 @@
-import { Events } from 'discord.js';
+import { Events, MessageFlags } from 'discord.js';
 import { commands } from './commands.js';
 import { runAsSlash } from '../utils/slashAdapter.js';
 import { checkInteractionChannelPermission, isAdmin } from '../utils/permissions.js';
@@ -8,6 +8,7 @@ import { handleEscreverModalSubmit, handleFilaEsperaButton, handleAssumirTicket 
 import { handleTicketLido } from './services/ticketNudge.js';
 import { handleJustificativaButton, handleJustificativaHistorico } from './public.js';
 import { handlePerfilInteracao } from './handlers/perfilHandlers.js';
+import { handleCargoPersonalizadoInteracao } from './handlers/cargoPersonalizadoHandlers.js';
 import { tradutor } from './i18n/index.js';
 import { autocompleteTipoAddCoins } from './tggCoinsCommands.js';
 
@@ -99,6 +100,25 @@ export function registerInteractionHandler(client) {
         const payload = {
           embeds: [createErrorEmbed(t('Erro Interno'), t('Não consegui concluir: {mensagem}', { mensagem: err.message }))],
           ephemeral: true,
+        };
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp(payload).catch(() => {});
+        } else {
+          await interaction.reply(payload).catch(() => {});
+        }
+      }
+      return;
+    }
+
+    // Painel do .cargo: botões, menus e modais. Antes do bloco de modais, pelo mesmo motivo do perfil.
+    if (interaction.customId?.startsWith('cargoperso_')) {
+      try {
+        await handleCargoPersonalizadoInteracao(interaction);
+      } catch (err) {
+        console.error('[CARGO PERSONALIZADO] interaction failed:', err);
+        const payload = {
+          embeds: [createErrorEmbed('Erro Interno', `Não consegui concluir: ${err.message}`)],
+          flags: MessageFlags.Ephemeral,
         };
         if (interaction.replied || interaction.deferred) {
           await interaction.followUp(payload).catch(() => {});
