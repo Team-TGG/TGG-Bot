@@ -83,7 +83,8 @@ export const inactivePlayers = {
   channelId: '1468600851290521692',
   // Anúncio da inativação semanal (quarta 06:10, src/services/weeklyInactiveService.js).
   avisoChannelId: '1536704688689516624', // log-guilda
-  messageEnabled: true,
+  // Pausado pelo usuário em 15/11/2026 — religar quando a cobrança voltar.
+  messageEnabled: false,
   // Chamada da staff, domingo 06:00, no próprio `channelId`
   // (ver src/services/avisoRemocaoInativos.js). Vai no canal dos inativos e não na log-guilda
   // de propósito: é onde a conversa com essas pessoas acontece, e o membro ler que a staff está
@@ -101,9 +102,12 @@ export const justificativas = {
 
 // Lembrete de domingo 12:00 para quem ainda não bateu a contribuição mínima
 // (ver src/services/contributionReminderService.js). A semana só fecha na quarta 06:00, mas
-// domingo ainda dá tempo de correr atrás. Sem channelId o lembrete é pulado inteiro.
+// domingo ainda dá tempo de correr atrás. messageEnabled desliga o lembrete inteiro (canal + DM)
+// no cron; sem channelId só o post do canal é pulado — as DMs continuariam saindo.
 export const contributionReminder = {
   channelId: '1440865671150829648', // tgg-geral
+  // Pausado pelo usuário em 15/11/2026.
+  messageEnabled: false,
 };
 
 // Aviso no procurando-jogo quando alguém chama partida no modo que não é o da semana

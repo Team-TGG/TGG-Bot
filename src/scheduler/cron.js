@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { discord as discordConfig, inactivePlayers as inactivePlayersConfig } from '../../config/index.js';
+import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, contributionReminder as contributionReminderConfig } from '../../config/index.js';
 import { processBirthdays, removeBirthdayRole } from '../services/birthdayService.js';
 import { publishMotd } from '../services/motdService.js';
 import { registrarMissoesDaSemana } from '../services/weeklyMissionsService.js';
@@ -126,6 +126,7 @@ export function startCronJobs(client, services) {
   // Lembrete de contribuição - domingo 12:00. A semana só fecha na quarta 06:00, então ainda
   // sobram tres dias para quem esta abaixo do minimo correr atras.
   cron.schedule('0 12 * * 0', async () => {
+    if (!contributionReminderConfig.messageEnabled) return;
     try {
       await lembrarContribuicao(client);
     } catch (err) {
