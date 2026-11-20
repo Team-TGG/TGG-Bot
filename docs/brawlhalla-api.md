@@ -2,6 +2,26 @@
 
 Doc oficial: **https://dev.brawlhalla.com**
 
+## Queda da v1 (20/11/2026)
+
+Na VPS, `/clan/396943`, `/player/4165486/stats` e `/ranked` responderam 200. A v1 respondeu 502
+(`origin_bad_gateway`) com e sem a mesma chave válida, inclusive em lendas e nos exemplos oficiais.
+A resposta real da v0 tem XP, mas não Guild Points.
+
+- O cliente HTTP é compartilhado com a sincronização de nomes: timeout de 10 s, duas tentativas,
+  no máximo quatro chamadas simultâneas por versão e pausa de 30 s na v1 após falhas persistentes.
+  As cotas continuam independentes. Chamadas idênticas em andamento são reaproveitadas.
+- `.stats` preserva as estatísticas v0 e mostra GP indisponível quando a consulta de guilda falha.
+  `.guild` e o cartão de perfil permitem dados básicos da v0; `.alts` recupera os dados da conta
+  pedida na v0, sem resolver a conta principal.
+- O fallback de guilda exige `{ allowLegacy: true }` e não entra no cache de GP da v1. MVP,
+  contribuição, duelo e inatividade continuam exigindo dados da v1 e não usam GP vencido.
+- Capturas semanais guardam `guild_points: null` se a leitura falhar, preservando os jogos.
+  A coluna já aceita null. Não sobrescreva a captura quando a API voltar: o valor tardio não é a
+  linha de base da quinta. A contribuição fica sem base válida até existir uma captura correta.
+
+Verificação offline: `npm test` e `node .claude/skills/checar/check.mjs`. Não iniciar outro bot para testar.
+
 As páginas de endpoint não são linkadas da home e `/reference/` dá 404. O padrão de URL é:
 
 ```

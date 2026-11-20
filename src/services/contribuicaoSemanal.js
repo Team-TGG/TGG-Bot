@@ -18,6 +18,7 @@ export const MOTIVOS = {
   FORA_DA_GUILDA: 'FORA_DA_GUILDA',
   SEM_BASE: 'SEM_BASE',
   BASE_ZERADA: 'BASE_ZERADA',
+  PONTOS_INDISPONIVEIS: 'PONTOS_INDISPONIVEIS',
 };
 
 /**
@@ -51,6 +52,12 @@ export function calcularContribuicoes({ users, baseByAccount, membrosDaGuilda, i
     // não há o que medir.
     if (!membro) {
       linha.motivo = MOTIVOS.FORA_DA_GUILDA;
+      linhas.push(linha);
+      continue;
+    }
+
+    if (membro.points == null || !Number.isFinite(Number(membro.points))) {
+      linha.motivo = MOTIVOS.PONTOS_INDISPONIVEIS;
       linhas.push(linha);
       continue;
     }
@@ -96,10 +103,7 @@ export async function calcularContribuicaoSemanal() {
     (guildMembers.guild_members ?? []).map(m => [String(m.brawlhalla_id), {
       name: m.name,
       rank: m.rank ?? null,
-      // A rota devolve alguns registros só com id/nome/xp - sem rank, join_date nem guild_points
-      // (38 de 643, medido em 11/08/2026). Guardar null em vez de 0 mantém "não sei" separado de
-      // "zerou a semana". O cálculo abaixo ainda lê null como 0, como sempre leu; quem precisa da
-      // diferença é o `.lb-guilda`, que mostra "—".
+      // GP ausente continua desconhecido no ranking, no MVP e na inativação.
       points: m.guild_points == null ? null : Number(m.guild_points),
       // join_date separa base 0 legítima (entrou nesta semana) de base 0 não registrada
       joinDate: Number(m.join_date || 0),

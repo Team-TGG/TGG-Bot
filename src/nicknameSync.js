@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { brawlhalla } from '../config/index.js';
 import { getUsersByBrawlhallaIds } from './db.js';
 import { loadCustomNicknames, saveCustomNicknames, getCustomNickname, setCustomNickname } from './customNicknames.js';
+import { apiFetch } from './services/brawlhallaHttp.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLAN_CACHE_FILE = path.join(__dirname, '..', '.brawlhalla-clan-cache.json');
@@ -55,12 +56,7 @@ export async function fetchBrawlhallaClanData() {
   const url = `https://api.brawlhalla.com/clan/${brawlhalla.clanId}?api_key=${process.env.BRAWLHALLA_API_KEY}`;
 
   try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Brawlhalla API error: ${response.status} ${response.statusText}`);
-    }
-
-    let data = await response.json();
+    let data = await apiFetch(url);
     if (!data.clan || !Array.isArray(data.clan)) {
       throw new Error('Invalid clan data: no clan array in response');
     }

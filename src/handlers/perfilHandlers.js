@@ -90,7 +90,7 @@ async function lerChavesDaVitrine(dono) {
    e o cartão diz isso em vez de afirmar que a pessoa está fora da guilda. */
 async function lerMembroNaGuilda(ids) {
   try {
-    const guilda = await fetchGuildMembersNewAPI();
+    const guilda = await fetchGuildMembersNewAPI(undefined, { allowLegacy: true });
     const membro = ids
       .map((id) => guilda.guild_members.find((m) => String(m.brawlhalla_id) === id))
       .find(Boolean) ?? null;

@@ -390,17 +390,20 @@ export async function handleStats(message, args, client) {
       return await message.reply({ embeds: [createErrorEmbed('Brawlhalla ID Não Encontrado', 'Este usuário não tem um Brawlhalla ID registrado.')] });
     }
 
-    const loadingMsg = await message.reply({ embeds: [createLoadingEmbed(`${EMOJIS.loading} Carregando estatísticas...`, 'Buscando dados do Brawlhalla...')] });
+    loadingMsg = await message.reply({ embeds: [createLoadingEmbed(`${EMOJIS.loading} Carregando estatísticas...`, 'Buscando dados do Brawlhalla...')] });
     const playerData = await fetchPlayerStats(brawlhallaId);
 
     // Pegar os guild points e mandar pro stats. O id aqui é o cadastrado, sem resolver: é a conta
     // que está no clã, e é dela que saem pontos, posição e histórico. O `playerData` veio do
     // `fetchPlayerStats`, que resolve alt, então o `brawlhalla_id` de dentro dele é outro — daí
     // mandar `guildAccountId` junto, senão o embed mistura as duas contas no Weekly GP.
-    const guildPoints = await fetchPlayerGuildStatsNewAPI(brawlhallaId);
-    playerData.guildPoints = guildPoints?.personal_points || 0;
+    const guildPoints = await fetchPlayerGuildStatsNewAPI(brawlhallaId).catch(err => {
+      console.warn(`[Stats] Pontos de guilda indisponíveis para ${brawlhallaId}: ${err.message}`);
+      return null;
+    });
+    playerData.guildPoints = guildPoints?.personal_points ?? null;
     playerData.guildAccountId = String(brawlhallaId);
-    playerData.weeklyGuildPosition = await posicaoContribuicaoSemanal(brawlhallaId);
+    playerData.weeklyGuildPosition = guildPoints ? await posicaoContribuicaoSemanal(brawlhallaId) : null;
 
     const mainEmbed = await createStatsEmbed(playerData);
     const rankedEmbed = createRankedEmbed(playerData);
@@ -750,20 +753,21 @@ export async function handleGuild(message, args, client) {
       GuildId = args[0];
     }
 
-    // Contribuição da semana só existe para a nossa guilda - a linha de base é dos nossos membros
-    const topSemanal = GuildId === NOSSA_GUILDA ? await topContribuintesDaSemana(10) : null;
-
     // Cache quente evita a mensagem de loading. A chave é a mesma que fetchGuildStatsNewAPI grava:
     // `clan:` é da rota v0 depreciada e tem outro formato (clan_id/clan_name), que chegava aqui sem
-    // guild_id e fazia a busca de membros ir para a API com 'N/A'. Sem ignoreTtl: fora dos 5 min a
-    // busca normal roda de novo, e ela mesma cai no cache velho se a API estiver fora.
+    // guild_id e fazia a busca de membros ir para a API com 'N/A'. GP vencido não é reutilizado;
+    // sem resposta v1, só os dados básicos da API antiga podem aparecer.
     const cachedData = getCached(`guild:${GuildId}`);
+    if (!cachedData) {
+      loadingMsg = await message.reply({ embeds: [createLoadingEmbed(`${EMOJIS.loading} Carregando informações da guilda...`, 'Buscando dados do Brawlhalla...')] });
+    }
+    // O loading vem antes da consulta opcional: uma queda da v1 pode exigir novas tentativas.
+    const topSemanal = GuildId === NOSSA_GUILDA ? await topContribuintesDaSemana(10) : null;
     if (cachedData) {
       return await message.reply({ embeds: [await createGuildEmbed(cachedData, topSemanal)] });
     }
 
-    loadingMsg = await message.reply({ embeds: [createLoadingEmbed(`${EMOJIS.loading} Carregando informações da guilda...`, 'Buscando dados do Brawlhalla...')] });
-    const guildData = await fetchGuildStatsNewAPI(GuildId);
+    const guildData = await fetchGuildStatsNewAPI(GuildId, { allowLegacy: true });
     await sendCleanMessage(loadingMsg, { embeds: [await createGuildEmbed(guildData, topSemanal)] });
 
   } catch (err) {
@@ -1089,6 +1093,7 @@ const MOTIVO_CONTRIBUICAO = {
   [MOTIVOS.FORA_DA_GUILDA]: 'Fora da guilda no jogo',
   [MOTIVOS.SEM_BASE]: 'Sem base gravada nesta semana',
   [MOTIVOS.BASE_ZERADA]: 'Base zerada - não dá para medir',
+  [MOTIVOS.PONTOS_INDISPONIVEIS]: 'Pontos atuais indisponíveis na API',
 };
 
 const JUSTIFICATIVAS_POR_PAGINA = 5;

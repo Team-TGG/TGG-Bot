@@ -3,6 +3,8 @@ import { getGuildWeeklyGuildPoints, getPlayerWeeklyGuildPoints } from './guild.j
 import { getUserByDiscordId, resolveBrawlhallaId, loadAliases, getMissionWeekEnd, getMissionWeekStart, getMembershipHistory } from './db.js';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs';
 import { resolve } from 'path';
+import { apiFetch } from './services/brawlhallaHttp.js';
+export { apiFetch, MENSAGEM_API_FORA_DO_AR } from './services/brawlhallaHttp.js';
 
 // Configuração do cache
 const CACHE_DIR = resolve(process.cwd(), 'cache');
@@ -18,79 +20,10 @@ if (!existsSync(CACHE_DIR)) {
   }
 }
 
-// Dois limitadores independentes: a v1 aceita 2000 req/5min, a API clássica (v0,
-// depreciada) fica em 180 req/15min. Um contador só estrangulava as chamadas v1 no
-// ritmo da API velha. Ver docs/brawlhalla-api.md.
-const RATE_LIMITS = {
-  v1: { max: 2000, window: 5 * 60 * 1000, log: [], label: 'v1' },
-  legacy: { max: 180, window: 15 * 60 * 1000, log: [], label: 'v0' },
-};
-
-// Toda URL da v1 tem '/v1/' no caminho; o resto é API clássica
-function limitFor(url) {
-  return url.includes('/v1/') ? RATE_LIMITS.v1 : RATE_LIMITS.legacy;
-}
-
-// Descarta o que saiu da janela e devolve quanto falta esperar (0 = pode seguir)
-function rateLimitWait(limit) {
-  const now = Date.now();
-  while (limit.log.length && now - limit.log[0] > limit.window) limit.log.shift();
-  if (limit.log.length < limit.max) return 0;
-  return limit.window - (now - limit.log[0]) + 50;
-}
-
-export const MENSAGEM_API_FORA_DO_AR =
-  'A API do Brawlhalla está fora do ar no momento, o que costuma acontecer quando o jogo está em manutenção ou atualização. Tente de novo em alguns minutos.';
-
 // Cache vencido cobre falha pontual, não API fora do ar: aí ele pode ter dias, e quem subtrai a
 // leitura de uma base semanal (.scan, .games) sai com número negativo (16/09/2026).
 function cacheVencido(key, err) {
   return err?.apiForaDoAr ? null : getCached(key, true);
-}
-
-export async function apiFetch(url) {
-  const limit = limitFor(url);
-  let wait = rateLimitWait(limit);
-
-  if (wait > 0) {
-    console.warn(`[Brawlhalla] Rate limit ${limit.label} atingido, aguardando ${Math.ceil(wait / 1000)}s`);
-  }
-  // Reconfere depois de acordar: chamadas que esperavam juntas acordam juntas, e sem isso todas entravam
-  // na vaga de uma só e passavam do teto. A varredura das insígnias na v0 bate nele toda noite.
-  while (wait > 0) {
-    await new Promise(r => setTimeout(r, wait));
-    wait = rateLimitWait(limit);
-  }
-
-  limit.log.push(Date.now());
-  const res = await fetch(url);
-
-  if (res.status >= 500) {
-    // Sem a query: ela carrega a api_key
-    console.warn(`[Brawlhalla] API unavailable (${res.status}) at ${url.split('?')[0]}`);
-    const erro = new Error(MENSAGEM_API_FORA_DO_AR);
-    erro.status = res.status;
-    erro.apiForaDoAr = true;
-    throw erro;
-  }
-
-  if (!res.ok) {
-    const contentType = res.headers.get('content-type') || '';
-    let details = '';
-
-    // Cloudflare and other proxies often return a full HTML error page. Do not
-    // leak that into logs or Discord embeds; the status already identifies it.
-    if (!contentType.includes('text/html')) {
-      details = (await res.text().catch(() => '')).trim().slice(0, 500);
-    }
-
-    const erro = new Error(`API Error ${res.status} ${res.statusText}${details ? `: ${details}` : ''}`);
-    // Status à parte da mensagem: quem varre a guilda precisa separar 404 de 5xx para decidir se
-    // insiste — sob carga a v1 devolve 404 para conta que existe (medido em 02/09/2026).
-    erro.status = res.status;
-    throw erro;
-  }
-  return res.json();
 }
 
 function getSharedData() {
@@ -781,11 +714,17 @@ export async function fetchPlayerBasicNewAPI(brawlhallaId) {
 
   if (hit) return hit;
 
-  const data = await apiFetch(
-    `https://api.brawlhalla.com/v1/player/stats?brawlhalla_id=${brawlhallaId}`
-  );
+  let data;
+  try {
+    data = await apiFetch(`https://api.brawlhalla.com/v1/player/stats?brawlhalla_id=${brawlhallaId}`);
+    if (String(data?.brawlhalla_id) !== String(brawlhallaId)) throw new Error('Conta diferente da solicitada');
+  } catch (err) {
+    console.warn(`[Brawlhalla] Dados básicos de ${brawlhallaId}: usando a API antiga (${err.message})`);
+    // Não resolve alt: esta função descreve a conta pedida, não a principal.
+    data = await apiFetch(`https://api.brawlhalla.com/player/${brawlhallaId}/stats?api_key=${process.env.BRAWLHALLA_API_KEY}`);
+  }
 
-  if (!data || typeof data !== 'object' || !data.brawlhalla_id) {
+  if (!data || typeof data !== 'object' || String(data.brawlhalla_id) !== String(brawlhallaId)) {
     throw new Error(`Resposta inválida para a conta ${brawlhallaId}`);
   }
 
@@ -834,7 +773,7 @@ export async function fetchPlayerGuildStatsNewAPI(brawlhallaId) {
       throw new Error('Missing personal_xp_this_week');
     }
 
-    if (typeof data.guild.personal_points === 'undefined') {
+    if (data.guild.personal_points == null || data.guild.personal_points === '' || !Number.isFinite(Number(data.guild.personal_points))) {
       throw new Error('Missing personal_points');
     }
 
@@ -858,19 +797,13 @@ export async function fetchPlayerGuildStatsNewAPI(brawlhallaId) {
   } catch (err) {
     console.error(`[Brawlhalla] Failed to fetch player guild stats for ${brawlhallaId}`);
     console.error(err);
-    const stale = cacheVencido(key, err);
-
-    if (stale) {
-      console.warn(`[Brawlhalla] Returning stale cache for player guild ${brawlhallaId}`);
-      return stale;
-    }
-
+    // GP vencido pode virar uma decisão errada de contribuição/inatividade.
     throw err;
   }
 }
 
 // NEW GUILD STATS
-export async function fetchGuildStatsNewAPI(guildId) {
+export async function fetchGuildStatsNewAPI(guildId, { allowLegacy = false } = {}) {
 
   const key = `guild:${guildId}`;
   const hit = getCached(key);
@@ -887,6 +820,7 @@ export async function fetchGuildStatsNewAPI(guildId) {
     if (!data || typeof data !== 'object') throw new Error('Invalid guild response');
     if (Object.keys(data).length === 0) throw new Error('Empty guild response');
     if (!data.name) throw new Error('Missing guild name');
+    if (data.guild_points == null || data.guild_points === '' || !Number.isFinite(Number(data.guild_points))) throw new Error('Missing guild points');
 
     // Normalizar os dados
     data.name = normalizeUnicode(data.name);
@@ -901,19 +835,18 @@ export async function fetchGuildStatsNewAPI(guildId) {
   } catch (err) {
     console.error(`[Brawlhalla] Failed to fetch guild ${guildId}`);
     console.error(err);
-    const stale = cacheVencido(key, err);
-
-    if (stale) {
-      console.warn(`[Brawlhalla] Returning stale cache for guild ${guildId}`);
-      return stale;
+    if (allowLegacy) {
+      const legacy = await fetchClanStats(guildId);
+      if (String(legacy?.clan_id) !== String(guildId) || !Array.isArray(legacy.clan)) throw err;
+      // O cache `guild:` continua exclusivo da v1: rotinas de GP nunca recebem este fallback.
+      return { ...legacy, apiSource: 'v0' };
     }
-
     throw err;
   }
 }
 
 // GUILD MEMBERS
-export async function fetchGuildMembersNewAPI(guildId = process.env.BRAWLHALLA_CLAN_ID || '396943') {
+export async function fetchGuildMembersNewAPI(guildId = process.env.BRAWLHALLA_CLAN_ID || '396943', { allowLegacy = false } = {}) {
 
   const key = `guild_members:${guildId}`;
   const hit = getCached(key);
@@ -940,7 +873,9 @@ export async function fetchGuildMembersNewAPI(guildId = process.env.BRAWLHALLA_C
     // Normalizar nomes
     data.guild_members = data.guild_members.map(member => ({
       ...member,
-      name: normalizeUnicode(member.name || 'Unknown')
+      name: normalizeUnicode(member.name || 'Unknown'),
+      guild_points: member.guild_points == null || member.guild_points === '' || !Number.isFinite(Number(member.guild_points))
+        ? null : Number(member.guild_points),
     }));
 
     console.log(`[Brawlhalla] Caching valid guild members for ${guildId}`);
@@ -954,11 +889,14 @@ export async function fetchGuildMembersNewAPI(guildId = process.env.BRAWLHALLA_C
     console.error(`[Brawlhalla] Failed to fetch guild members ${guildId}`);
     console.error(err);
 
-    const stale = cacheVencido(key, err);
-
-    if (stale) {
-      console.warn(`[Brawlhalla] Returning stale cache for guild members ${guildId}`);
-      return stale;
+    if (allowLegacy) {
+      const legacy = await fetchClanStats(guildId);
+      if (String(legacy?.clan_id) !== String(guildId) || !Array.isArray(legacy.clan)) throw err;
+      return {
+        guild_id: guildId,
+        apiSource: 'v0',
+        guild_members: legacy.clan.map(member => ({ ...member, guild_points: null })),
+      };
     }
 
     throw err;
@@ -1043,10 +981,11 @@ export async function createStatsEmbed(playerData) {
   // no clã; `guildAccountId` é ela, mandada por quem chama.
   const idGuilda = stats.guildAccountId ?? stats.brawlhalla_id;
 
-  const totalGuildPoints = stats.guildPoints || 0;
-  const guildPosition = await getGuildRankingPosition(idGuilda); // Pegar a posição atual do jogador no ranking da guilda (Por GP)
+  const gpDisponivel = stats.guildPoints != null && Number.isFinite(Number(stats.guildPoints));
+  const totalGuildPoints = gpDisponivel ? Number(stats.guildPoints) : null;
+  const guildPosition = gpDisponivel ? await getGuildRankingPosition(idGuilda) : null;
 
-  const lastGuildPointsData = await getPlayerWeeklyGuildPoints(idGuilda);
+  const lastGuildPointsData = gpDisponivel ? await getPlayerWeeklyGuildPoints(idGuilda) : null;
   const lastGuildPoints = Number(lastGuildPointsData || 0);
   const weeklyGuildPoints = Math.max(0, totalGuildPoints - lastGuildPoints);
   const weeklyPosition = stats.weeklyGuildPosition ?? null;
@@ -1079,9 +1018,10 @@ export async function createStatsEmbed(playerData) {
       inline: false
     },
    
-   ...((lastGuildPointsData || linhasGuilda.length) ? [{
+   ...((lastGuildPointsData || linhasGuilda.length || !gpDisponivel) ? [{
       name: '🏰 Guild Record',
       value: [
+        ...(!gpDisponivel ? ['Pontos de guilda indisponíveis no momento. As demais estatísticas estão disponíveis.'] : []),
         ...(lastGuildPointsData ? [
           `Total GP: \`${formatNumber(totalGuildPoints)}\`` + (guildPosition ? ` · \`#${guildPosition}\`` : ''),
           `Weekly GP: \`${formatNumber(weeklyGuildPoints)}\`` + (weeklyPosition ? ` · \`#${weeklyPosition}\`` : '')
@@ -1325,6 +1265,17 @@ export function createRankedEmbed(playerData) {
  * como sempre foi, só com o acumulado.
  */
 export async function createGuildEmbed(guildData, topSemanal = null) {
+  if (guildData.apiSource === 'v0') {
+    return new EmbedBuilder()
+      .setColor(0x0099ff)
+      .setTitle(`🏰 ${normalizeUnicode(guildData.clan_name || 'Guilda')} — Guild Stats`)
+      .addFields(
+        { name: '📊 Info', value: `**Membros:** ${guildData.clan.length}/200\n**XP:** ${formatNumber(guildData.clan_xp || 0)}\n**XP acumulado:** ${formatNumber(guildData.clan_lifetime_xp || 0)}`, inline: false },
+        { name: '🏰 Pontos de guilda', value: 'GP total, contribuição semanal e ranking indisponíveis enquanto a API de guildas não responder.', inline: false },
+      )
+      .setFooter({ text: 'Brawlhalla Guild Stats • Dados da API antiga' })
+      .setTimestamp();
+  }
   const guildName = normalizeUnicode(guildData.name || 'Unknown Guild');
   const guildId = guildData.guild_id || 'N/A';
   const createDate = guildData.create_date || 0;
@@ -1344,7 +1295,7 @@ export async function createGuildEmbed(guildData, topSemanal = null) {
   // Buscar membros. A rota exige guild_id numérico e devolve 400 com qualquer outra coisa - sem a
   // guarda, um guildData sem guild_id derruba o comando inteiro em vez de perder só o top.
   const membersData = /^\d+$/.test(String(guildId))
-    ? await fetchGuildMembersNewAPI(guildId).catch((err) => {
+    ? await fetchGuildMembersNewAPI(guildId, { allowLegacy: true }).catch((err) => {
         console.warn(`[Brawlhalla] Membros indisponiveis para a guilda ${guildId}:`, err.message);
         return null;
       })
@@ -1356,6 +1307,7 @@ export async function createGuildEmbed(guildData, topSemanal = null) {
 
   // Top 10 guild points
   const topMembers = [...(membersData?.guild_members || [])]
+    .filter(member => member.guild_points != null && Number.isFinite(Number(member.guild_points)))
     .sort((a, b) => (b.guild_points || 0) - (a.guild_points || 0))
     .slice(0, 10);
 
@@ -1371,7 +1323,7 @@ export async function createGuildEmbed(guildData, topSemanal = null) {
 
   const topMembersText = topMembers.length
     ? topMembers.map((member, index) => linhaDoTop(member.name, member.guild_points, index)).join('\n')
-    : 'Nenhum membro encontrado';
+    : !membersData || membersData.apiSource === 'v0' ? 'Pontos dos membros indisponíveis no momento.' : 'Nenhum membro encontrado';
 
   const topSemanalText = topSemanal?.length
     ? topSemanal.map((linha, index) => linhaDoTop(linha.nome, linha.contribuicao, index)).join('\n')

@@ -5,6 +5,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
+    "test": "node --test test/*.test.mjs",
     "sync": "node index.js",
     "start": "node index.js",
     "dev": "node index.js --dev",

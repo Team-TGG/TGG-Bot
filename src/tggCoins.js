@@ -997,19 +997,19 @@ export async function ensurePlayerWeeklyInfo(brawlhallaId) {
   const data2v2 = extractModeData(stats, '2v2');
   const data3v3 = extractModeData(stats, '3v3');
 
-  // Guild points do jogador. Falha na API não deve impedir a criação do registro
-  let guildPoints = 0;
+  // Jogos continuam registrados, mas GP que não foi lido não pode virar uma base zero.
+  let guildPoints = null;
 
   try {
     const guildMembers = await fetchGuildMembersNewAPI();
     const membro = (guildMembers.guild_members ?? []).find(m => String(m.brawlhalla_id) === id);
 
     if (membro) {
-      guildPoints = Number(membro.guild_points || 0);
+      guildPoints = membro.guild_points == null ? null : Number(membro.guild_points);
     } else {
       // Não está na guilda (alt, normalmente): tenta a rota individual antes de desistir
       const guildStats = await fetchPlayerGuildStatsNewAPI(id);
-      guildPoints = Number(guildStats?.personal_points || 0);
+      guildPoints = guildStats?.personal_points == null ? null : Number(guildStats.personal_points);
     }
   } catch (err) {
     console.warn(`[WeeklyInfo] Guild points indisponíveis para ${id}:`, err.message);
@@ -1023,7 +1023,7 @@ export async function ensurePlayerWeeklyInfo(brawlhallaId) {
       created_at: formatDateTime(new Date()),
       games: Number(stats.games || 0),
       guild_xp: Number(stats.clan?.personal_xp || 0),
-      guild_points: guildPoints,
+      guild_points: Number.isFinite(guildPoints) ? guildPoints : null,
       initial_elo_1v1: data1v1.elo,
       initial_games_1v1: data1v1.games,
       initial_wins_1v1: data1v1.wins,
