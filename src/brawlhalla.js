@@ -382,6 +382,26 @@ export async function getGuildRankingPosition(brawlhallaId) {
 
 // API
 
+/** A busca pública por nome é oferecida pelo ranking 1v1 da API antiga. */
+export async function fetchPlayersByName(name) {
+  const query = String(name ?? '').trim();
+  if (query.length < 2 || query.length > 100) return [];
+  const key = `player-search:${query.toLowerCase()}`;
+  const hit = getCached(key);
+  if (hit) return hit;
+  const url = new URL('https://api.brawlhalla.com/rankings/1v1/all/1');
+  url.searchParams.set('name', query);
+  url.searchParams.set('api_key', process.env.BRAWLHALLA_API_KEY);
+  const data = await apiFetch(url.href);
+  if (!Array.isArray(data)) {
+    const error = new Error('A busca de jogadores do Brawlhalla está indisponível no momento.');
+    error.apiForaDoAr = true;
+    throw error;
+  }
+  setCached(key, data);
+  return data;
+}
+
 export async function fetchPlayerStats(brawlhallaId) {
   await loadAliases(); // Garante que os aliases foram carregados
 

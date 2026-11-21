@@ -174,7 +174,7 @@ export const adminCommands = [
   new SlashCommandBuilder()
     .setName('ia')
     .setDescription('Conversa com Lady Vera e consulta os dados disponíveis da guilda')
-    .addStringOption(o => o.setName('pergunta').setDescription('Ex: quantos estão abaixo do mínimo? quem são os MVPs?').setRequired(true))
+    .addStringOption(o => o.setName('pergunta').setDescription('Ex: quem é o Trinca Ferro? Qual meu elo? Quem são os MVPs?').setRequired(true))
     .setDefaultMemberPermissions(null),
 
   // Sem permissão padrão: a regra é helper para cima, conferida no handler, e não uma permissão do Discord.

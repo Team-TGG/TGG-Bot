@@ -30,6 +30,18 @@ Todos os membros do servidor podem usar `.ia` e `/ia`, sem cargo de administrado
 prévio no bot. As regras de canal e o intervalo geral de 5 segundos para quem não é staff continuam
 valendo. Consultas pessoais usam o cadastro do membro quando ele existe.
 
+Perguntas como `.ia quem é o Trinca Ferro?`, `.ia qual o elo do Trinca Ferro?` ou
+`.ia qual lenda o Trinca Ferro mais joga?` usam `perfil_de_jogador`.
+O perfil mostra nível, partidas e vitórias totais, ranked 1v1, a dupla 2v2 de maior elo e
+as três lendas mais jogadas. A consulta usa as rotas da API antiga e não depende dos Guild Points.
+Também aceita uma menção ao Discord ou um ID explícito do Brawlhalla; a menção e "meu perfil"
+usam o ID cadastrado. O perfil é da conta encontrada, sem trocar por uma conta alternativa.
+
+A busca prioriza os apelidos da guilda e, se não encontrar, consulta a primeira página da busca
+pública por nome do ranking 1v1. Nomes sem ranking podem não aparecer nessa busca; nesse caso,
+informe o ID do Brawlhalla. Nomes ambíguos pedem uma identificação mais específica. A IA recebe
+somente o resumo do perfil, sem os IDs do cadastro, e não inventa uma biografia do jogador.
+
 A chave vai apenas no cabeçalho de autorização da API. Os erros exibem o provedor e o código
 HTTP, sem repetir o corpo da resposta ou a chave. As chamadas usam `store: false`.
 O roteamento permite uma função conhecida por vez e valida seus argumentos. A redação recebe
@@ -41,3 +53,7 @@ pode ser alterado para uma opção suportada pelo modelo, mas `none` é a config
 
 Referências: [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna) e
 [function calling](https://developers.openai.com/api/docs/guides/function-calling).
+
+Rotas do Brawlhalla: [busca por nome](https://dev.brawlhalla.com/v0/endpoints/rankings/),
+[estatísticas](https://dev.brawlhalla.com/v0/endpoints/playerstats/) e
+[ranked](https://dev.brawlhalla.com/v0/endpoints/playerrankedstats/).

@@ -6,7 +6,9 @@ import { calcularInativosDaSemana, CONTRIBUICAO_MINIMA, LIMIAR_INATIVACAO } from
 import { calcularDueloDaSemana, calcularGanhoDaGuildaNaSemana, SEM_DUELO } from '../services/dueloSemanal.js';
 import { getMissionWeekStart, getMissionWeekStartDateTime, getWeeklyInitial, getMovimentacaoDesde, getCadastroPorBrawlhallaIds, getUserByDiscordId, getMissionsByWeekStart, loadAliases, resolveBrawlhallaId, formatDateTime } from '../db.js';
 import { missoesDaSemana as missoesDoCiclo, semanaVigente, semanaSeguinte } from '../services/weeklyMissionsService.js';
-import { fetchPlayerStats, fetchGuildStats, fetchGuildMembers } from '../brawlhalla.js';
+import { fetchPlayerStats, fetchPlayerStatsNoResolve, fetchPlayersByName, fetchClanStats, fetchGuildStats, fetchGuildMembers } from '../brawlhalla.js';
+import { createPlayerLookup } from '../services/playerLookup.js';
+import { escapeMarkdown } from 'discord.js';
 import { calculateGames } from './publicHandlers.js';
 import { weeklyMvp as mvpConfig, brawlhalla as brawlhallaConfig } from '../../config/index.js';
 
@@ -254,6 +256,22 @@ export const FERRAMENTAS = [
     },
   },
   {
+    name: 'perfil_de_jogador',
+    description:
+      'Busca o perfil real de um jogador do Brawlhalla por apelido, menção ou ID: nome, nível, ' +
+      'partidas e vitórias totais, elo e pico 1v1, melhor dupla 2v2, guilda e lendas mais jogadas. ' +
+      'Use para "quem é o Trinca Ferro?", "mostre o perfil do Fulano", "qual o elo dele?" ou ' +
+      '"qual lenda o Fulano mais joga?". Não é uma biografia de pessoa nem lore de lenda do jogo. ' +
+      'Para partidas jogadas na semana use jogos_de_membro; para Guild Points use contribuicao_de_membro.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        nome: { type: 'STRING', description: 'Apelido do jogador, preservando espaços e grafia. Deixe vazio para "eu" ou uma menção ao Discord.' },
+        brawlhalla_id: { type: 'STRING', description: 'ID numérico do Brawlhalla, somente quando informado na pergunta. Não use o ID de uma menção ao Discord.' },
+      },
+    },
+  },
+  {
     name: 'jogos_de_membro',
     description:
       'Quantas partidas um membro jogou na semana e no total, com a divisão entre ranked 1v1, ' +
@@ -319,8 +337,9 @@ export const FERRAMENTAS = [
       'Conversa geral com Lady Vera: cumprimentos, alô, piadas, opinião, explicações, dicas de ' +
       'Brawlhalla e assuntos sem consulta específica. Também serve quando o catálogo não possui ' +
       'a consulta solicitada: converse sem inventar dados atuais da TGG. Não use quando houver ' +
-      'uma função específica para buscar os números pedidos da guilda. Elo, ranked, saldo, ' +
-      'TGG Coins e loja não possuem consultas neste catálogo: use conversa_livre nesses temas.',
+      'uma função específica para buscar os números pedidos. Elo e ranked de um jogador usam ' +
+      'perfil_de_jogador. Ranking de elo da guilda inteira, saldo, TGG Coins e loja não possuem ' +
+      'consultas neste catálogo: use conversa_livre nesses temas.',
     parameters: { type: 'OBJECT', properties: {} },
   },
   {
@@ -655,6 +674,94 @@ async function contribuicaoDeMembro({ nome }, contexto = {}) {
   };
 }
 
+const buscarJogador = createPlayerLookup({
+  getMembers: async () => (await fetchClanStats()).clan,
+  searchPlayers: fetchPlayersByName,
+  getUser: getUserByDiscordId,
+  // O perfil é da conta encontrada/informada, sem trocar silenciosamente por um alt vinculado.
+  getStats: fetchPlayerStatsNoResolve,
+});
+
+function numeroDoPerfil(value) {
+  if (value == null || value === '' || !['number', 'string'].includes(typeof value)) return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : null;
+}
+
+function textoDoPerfil(value, max = 100) {
+  return value == null ? null : String(value).replace(/[\r\n\t]/g, ' ').slice(0, max);
+}
+
+async function perfilDeJogador(args, contexto = {}) {
+  const result = await buscarJogador(args, contexto);
+  const rodape = 'Dados da API do Brawlhalla • perfil da conta consultada';
+  if (result.status === 'ambiguous') {
+    const names = result.candidates.map(player => textoDoPerfil(player.name));
+    return {
+      dados: { encontrado: false, ambiguo: true, total_encontrado: names.length, nomes: names.slice(0, MAX_LINHAS_EMBED),
+        observacao: result.incomplete
+          ? 'A busca pública atingiu o limite da primeira página; podem existir outras contas com esse nome. Peça o ID do Brawlhalla para confirmar a conta.'
+          : 'Há mais de uma conta com esse nome. Peça o nome completo ou o ID do Brawlhalla; não atribua estatísticas de uma delas à pessoa procurada.' },
+      titulo: '🔍 Qual jogador?',
+      campos: [{ name: 'Especifique o nome ou informe o ID do Brawlhalla', value: listaEmEmbed(result.candidates.map(player => `**${escapeMarkdown(textoDoPerfil(player.name))}** — ID \`${player.id}\``)) }],
+      rodape,
+    };
+  }
+  if (result.status !== 'found') {
+    const observacao = result.status === 'unregistered'
+      ? (result.self ? 'Você não tem um ID do Brawlhalla cadastrado. Informe seu nome no jogo ou seu ID do Brawlhalla.' : 'O membro mencionado não tem um ID do Brawlhalla cadastrado. Informe o nome dele no jogo ou o ID do Brawlhalla.')
+      : result.status === 'invalid-id' ? 'Informe um ID numérico válido do Brawlhalla, não o ID do Discord.'
+        : result.status === 'invalid-name' ? 'Informe pelo menos 2 letras ou números do nome no jogo (máximo de 100 caracteres), ou o ID do Brawlhalla.'
+          : 'Não encontrei essa conta na guilda ou na busca pública do ranking 1v1. Informe o nome completo no jogo ou o ID do Brawlhalla.';
+    return { dados: { encontrado: false, observacao }, titulo: '🔍 Jogador não encontrado', campos: [{ name: 'Busca de jogador', value: observacao }], rodape };
+  }
+  const { stats } = result;
+  const games = numeroDoPerfil(stats.games);
+  const wins = numeroDoPerfil(stats.wins);
+  const winRate = games > 0 && wins != null && wins <= games ? Number((wins / games * 100).toFixed(1)) : null;
+  const ranked = stats.ranked;
+  const rankSummary = data => data ? {
+    elo: numeroDoPerfil(data.rating), pico_de_elo: numeroDoPerfil(data.peak_rating),
+    rank: textoDoPerfil(data.tier, 40), partidas: numeroDoPerfil(data.games), vitorias: numeroDoPerfil(data.wins),
+  } : null;
+  const teams = Array.isArray(ranked?.['2v2']) ? ranked['2v2'] : null;
+  const bestTeam = teams?.filter(team => numeroDoPerfil(team.rating) != null).sort((a, b) => Number(b.rating) - Number(a.rating))[0];
+  const legends = (Array.isArray(stats.legends) ? stats.legends : []).filter(legend => numeroDoPerfil(legend.games) > 0)
+    .sort((a, b) => Number(b.games) - Number(a.games)).slice(0, 3).map(legend => ({
+      nome: textoDoPerfil(legend.legend_name_key || 'Lenda sem nome', 50),
+      nivel: numeroDoPerfil(legend.level), partidas: numeroDoPerfil(legend.games), vitorias: numeroDoPerfil(legend.wins),
+    }));
+  const dados = {
+    encontrado: true, sobre_quem_perguntou: result.self, nome: textoDoPerfil(stats.name),
+    nivel: numeroDoPerfil(stats.level), jogos_totais: games, vitorias_totais: wins,
+    derrotas_totais: games != null && wins != null && wins <= games ? games - wins : null,
+    taxa_de_vitorias_percentual: winRate, guilda: textoDoPerfil(stats.clan?.clan_name),
+    ranked_1v1: rankSummary(ranked),
+    melhor_dupla_2v2: bestTeam ? { ...rankSummary(bestTeam), equipe: textoDoPerfil(bestTeam.teamname, 150) } : null,
+    duplas_2v2_registradas: teams?.length ?? null,
+    lendas_mais_jogadas: legends,
+    observacao: 'Elo e partidas ranked são da temporada atual; totais e lendas são acumulados da conta. A dupla exibida é a de maior elo entre as equipes 2v2 registradas. Valores nulos estão indisponíveis e não significam zero. XP não é Guild Points.',
+  };
+  const valor = value => value == null ? 'Indisponível' : numeroBR(value);
+  const rankField = data => data
+    ? `Elo: **${valor(data.elo)}** • Pico: **${valor(data.pico_de_elo)}**\nRank: ${escapeMarkdown(data.rank || 'Indisponível')}\nPartidas: ${valor(data.partidas)} • Vitórias: ${valor(data.vitorias)}`
+    : '_Indisponível._';
+  return {
+    dados,
+    titulo: `🎮 Perfil de ${dados.nome}`,
+    campos: [
+      { name: 'Conta', value: `Nível: **${valor(dados.nivel)}**\nPartidas: **${valor(games)}** • Vitórias: **${valor(wins)}**\nTaxa de vitórias: ${winRate == null ? 'Indisponível' : `${numeroBR(winRate)}%`}`, inline: true },
+      { name: 'Guilda', value: dados.guilda ? escapeMarkdown(dados.guilda) : '_Não informada pela API._', inline: true },
+      { name: 'Ranked 1v1 • temporada atual', value: rankField(dados.ranked_1v1), inline: true },
+      { name: 'Melhor dupla 2v2 • temporada atual', value: dados.melhor_dupla_2v2
+        ? `${escapeMarkdown(dados.melhor_dupla_2v2.equipe || 'Equipe sem nome')}\n${rankField(dados.melhor_dupla_2v2)}`
+        : teams?.length === 0 ? '_Sem duplas registradas nesta temporada._' : '_Indisponível._', inline: true },
+      { name: 'Lendas mais jogadas • total da conta', value: legends.length ? legends.map(legend => `**${escapeMarkdown(legend.nome)}** — ${valor(legend.partidas)} partidas • nível ${valor(legend.nivel)}`).join('\n') : '_Sem dados de lendas jogadas._' },
+    ],
+    rodape,
+  };
+}
+
 /**
  * Jogos são da conta **principal** (`alt_ids`), contribuição é da conta que está na guilda — a
  * mesma divisão do `.scan` e do dossiê de blindagem. Juntar as duas medidas numa resposta só é o
@@ -965,6 +1072,7 @@ function conversaLivre() {
 
 export const EXECUTORES = {
   conversa_livre: conversaLivre,
+  perfil_de_jogador: perfilDeJogador,
   informacoes_da_guilda: informacoesDaGuilda,
   ranking_contribuicao: rankingContribuicao,
   media_de_contribuicao: mediaDeContribuicao,
@@ -986,7 +1094,7 @@ export async function executarConsultaIa(nome, args, contexto) {
       dados: { consulta: nome, dados_indisponiveis: true,
         observacao: 'A fonte de dados do Brawlhalla está indisponível agora. Não há números atuais ' +
           'para esta consulta. Não inferir zeros, ranking, MVP ou punição. A conversa geral continua disponível.' },
-      titulo: 'Registros da guilda indisponíveis',
+      titulo: nome === 'perfil_de_jogador' ? 'Perfil do Brawlhalla indisponível' : 'Registros da guilda indisponíveis',
       campos: [{ name: 'Consulta', value: 'Não foi possível conferir esses dados agora. Podemos continuar conversando ou consultar outros registros disponíveis.' }],
       rodape: 'Dados indisponíveis • nenhum valor estimado',
     };
@@ -996,17 +1104,21 @@ export async function executarConsultaIa(nome, args, contexto) {
 // ---- Instruções ----
 
 export const INSTRUCAO_ESCOLHA =
-  'Você roteia perguntas da staff de uma guilda de Brawlhalla para as funções de um bot. ' +
+  'Você roteia perguntas dos membros de um servidor de Brawlhalla para as funções de um bot. ' +
   'Escolha exatamente uma função e preencha os argumentos a partir da pergunta. ' +
   'Contexto: "contribuição" são guild points ganhos na semana; a semana vai de quinta 06:00 a ' +
   'quarta 06:00; a contribuição mínima exigida de cada membro é ' + CONTRIBUICAO_MINIMA + ' por semana. ' +
   // A regra do nome vem primeiro e diz "mesmo que", porque "fulano corre risco de ser inativado?"
   // casa com as duas: sem a precedência explícita o modelo responde a contagem da guilda inteira
   // para uma pergunta sobre uma pessoa (medido em 11/08/2026).
-  'Consulta de números que cita o nome de uma pessoa é sempre sobre ela, mesmo que fale de inativação ou de ' +
-  'risco: use jogos_de_membro se for sobre partidas jogadas e contribuicao_de_membro no resto. ' +
+  'Perguntas "quem é o Trinca Ferro?", perfil, estatísticas gerais, nível, elo, ranked ou lendas mais jogadas ' +
+  'de uma pessoa usam perfil_de_jogador com o nome citado. Para um ID explícito do Brawlhalla, use brawlhalla_id. ' +
+  'Menções do Discord deixam nome e brawlhalla_id vazios: o bot resolve a conta mencionada. ' +
+  'Perguntas sobre personagens/lendas do jogo ou sobre a própria Lady Vera usam conversa_livre, não perfil_de_jogador. ' +
+  'Consulta de contribuição, média, inativação ou risco que cita o nome de uma pessoa usa contribuicao_de_membro. ' +
+  'Consulta de partidas jogadas, sobretudo na semana ou em comparação com contribuição, usa jogos_de_membro. ' +
   'Pergunta em primeira pessoa ("eu", "meu", "minha") é sobre quem perguntou: use as mesmas duas ' +
-  'ferramentas e deixe o argumento nome vazio, mesmo que ela fale em média — ' +
+  'ferramentas, ou perfil_de_jogador para perfil, nível, elo ou lendas, e deixe nome e brawlhalla_id vazios, mesmo que ela fale em média — ' +
   'contribuicao_de_membro já traz a média do membro e a da guilda junto. ' +
   'inativos_da_semana é só para contagem da guilda inteira, sem nome de ninguém. ' +
   'Na dúvida entre ranking e MVP, use ranking_contribuicao. ' +
@@ -1023,9 +1135,9 @@ export const INSTRUCAO_ESCOLHA =
   'Cumprimentos, bate-papo, explicações e assuntos sem consulta específica usam conversa_livre. ' +
   'Nunca tente responder um alô consultando contribuição. Se nenhuma função buscar os dados ' +
   'pedidos, use conversa_livre sem inventar esses dados. Quantidade total de membros, nome e XP ' +
-  'da guilda usam informacoes_da_guilda, não o ranking de contribuição. Perguntas sobre elo, ' +
-  'ranked, TGG Coins, saldo ou loja usam conversa_livre: contribuição é somente Guild Points, ' +
-  'nunca moedas da loja ou elo.';
+  'da guilda usam informacoes_da_guilda, não o ranking de contribuição. Elo e ranked individuais usam perfil_de_jogador. ' +
+  'Ranking de elo da guilda inteira, TGG Coins, saldo ou loja usam conversa_livre: contribuição é somente Guild Points, ' +
+  'nunca moedas da loja ou elo. Não invente nomes ou IDs que não apareceram na pergunta.';
 
 export const INSTRUCAO_CONVERSA =
   'Você interpreta Lady Vera, a Luminária de Brawlhalla: sábia, altiva, serena e devota à luz. ' +
@@ -1043,7 +1155,7 @@ export const INSTRUCAO_CONVERSA =
   'algo. Sua persona é ficcional e não lhe dá acesso a fatos que não foram consultados.';
 
 export const INSTRUCAO_RESPOSTA =
-  'Você responde à staff de uma guilda de Brawlhalla, em português do Brasil. ' +
+  'Você responde aos membros de um servidor de Brawlhalla, em português do Brasil. ' +
   'Interprete Lady Vera, a Luminária de Brawlhalla: sábia, altiva, serena e devota à luz. ' +
   'Fale com autoridade elegante e uma leve ironia de mentora exigente; inclua uma única imagem ' +
   'curta sobre luz ou sigilos por resposta. Seja legível e útil, sem arcaísmos difíceis, ' +

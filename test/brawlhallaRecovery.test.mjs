@@ -62,7 +62,15 @@ test('comandos, fallback e capturas semanais durante queda e recuperação da v1
     }
     if (url.pathname.startsWith('/clan/')) return json({ clan_id: 396943, clan_name: 'Offline Guild', clan_xp: 2000, clan_lifetime_xp: 3000, clan: [member] });
     if (url.pathname === '/legend/all') return json([{ legend_name_key: 'bodvar', weapon_one: 'Hammer', weapon_two: 'Sword' }]);
+    if (url.pathname === '/rankings/1v1/all/1') {
+      assert.equal(url.searchParams.get('name'), 'Jogador & Externo');
+      return json([{ brawlhalla_id: 777, name: 'Jogador & Externo' }]);
+    }
     const stats = url.pathname.match(/^\/player\/(\d+)\/stats$/);
+    if (stats?.[1] === '888') return json({ brawlhalla_id: 888, name: 'Perfil sem números' });
+    if (url.pathname === '/player/888/ranked') return json({ brawlhalla_id: 888, name: 'Perfil sem números' });
+    if (stats?.[1] === '777') return json({ brawlhalla_id: 777, name: 'Jogador & Externo', level: 100, games: 1000, wins: 550, clan: { clan_name: 'Outra Guilda' }, legends: [{ legend_name_key: 'mordex', games: 800, wins: 500, level: 70 }, { legend_name_key: 'asuri', games: 100, wins: 30, level: 20 }] });
+    if (url.pathname === '/player/777/ranked') return json({ brawlhalla_id: 777, name: 'Jogador & Externo', tier: 'Diamond', rating: 2200, peak_rating: 2300, games: 100, wins: 60, '2v2': [{ teamname: 'Externo+Dupla A', rating: 1800, peak_rating: 2000, tier: 'Platinum', games: 80, wins: 40 }, { teamname: 'Externo+Dupla B', rating: 2100, peak_rating: 2200, tier: 'Diamond', games: 50, wins: 35 }] });
     if (stats) return rejectLegacyStats ? json({}, 502) : json({ brawlhalla_id: Number(stats[1]), name: 'Offline Player', level: 10, xp: 2000, games: 100, wins: 60, legends: [] });
     if (/^\/player\/\d+\/ranked$/.test(url.pathname)) return json({ brawlhalla_id: Number(url.pathname.split('/')[2]), name: 'Offline Player', tier: 'Silver', rating: 1200, games: 40, wins: 25, '2v2': [] });
     throw new Error(`Rota inesperada: ${url.pathname}`);
@@ -110,6 +118,54 @@ test('comandos, fallback e capturas semanais durante queda e recuperação da v1
       assert.equal(response.dados.jogos_totais, 100);
       assert.equal(response.dados.contribuicao_na_semana, null);
       assert.match(response.campos.find(field => field.name === 'Contribuição').value, /Sem medição/);
+    });
+
+    await t.test('IA busca perfil pelo apelido mesmo durante queda da v1, sem enviar IDs ao modelo', async () => {
+      const before = requests.length;
+      const response = await executarConsultaIa('perfil_de_jogador', { nome: 'offline player' }, { discordId: user().discord_id });
+      assert.equal(response.dados.encontrado, true);
+      assert.equal(response.dados.nome, 'Offline Player');
+      assert.equal(response.dados.nivel, 10);
+      assert.equal(response.dados.jogos_totais, 100);
+      assert.equal(response.dados.vitorias_totais, 60);
+      assert.equal(response.dados.taxa_de_vitorias_percentual, 60);
+      assert.equal(response.dados.ranked_1v1.elo, 1200);
+      assert.equal(response.dados.melhor_dupla_2v2, null);
+      assert.equal(response.dados.sobre_quem_perguntou, false);
+      assert.equal(requests.slice(before).some(path => path.startsWith('/v1/')), false);
+      assert.doesNotMatch(JSON.stringify(response.dados), /discord_id|brawlhalla_id|4165486/);
+    });
+
+    await t.test('IA busca jogador externo e separa totais, ranked, melhor dupla e lendas', async () => {
+      const response = await EXECUTORES.perfil_de_jogador({ nome: 'Jogador & Externo' });
+      assert.equal(response.dados.nome, 'Jogador & Externo');
+      assert.equal(response.dados.guilda, 'Outra Guilda');
+      assert.equal(response.dados.derrotas_totais, 450);
+      assert.equal(response.dados.taxa_de_vitorias_percentual, 55);
+      assert.equal(response.dados.ranked_1v1.elo, 2200);
+      assert.equal(response.dados.ranked_1v1.partidas, 100);
+      assert.equal(response.dados.melhor_dupla_2v2.equipe, 'Externo+Dupla B');
+      assert.equal(response.dados.melhor_dupla_2v2.elo, 2100);
+      assert.equal(response.dados.lendas_mais_jogadas[0].nome, 'mordex');
+      assert.equal(response.dados.lendas_mais_jogadas[0].partidas, 800);
+      assert.ok(response.campos.every(field => field.value.length <= 1024));
+      assert.ok(response.titulo.length <= 256);
+      assert.doesNotMatch(JSON.stringify(response.dados), /discord_id|brawlhalla_id/);
+      const before = requests.filter(path => path === '/rankings/1v1/all/1').length;
+      await EXECUTORES.perfil_de_jogador({ nome: 'Jogador & Externo' });
+      assert.equal(requests.filter(path => path === '/rankings/1v1/all/1').length, before, 'busca pública deve aproveitar cache');
+    });
+
+    await t.test('perfil não converte dados ausentes em zeros', async () => {
+      const response = await EXECUTORES.perfil_de_jogador({ brawlhalla_id: '888' });
+      assert.equal(response.dados.nivel, null);
+      assert.equal(response.dados.jogos_totais, null);
+      assert.equal(response.dados.vitorias_totais, null);
+      assert.equal(response.dados.derrotas_totais, null);
+      assert.equal(response.dados.ranked_1v1.elo, null);
+      assert.equal(response.dados.duplas_2v2_registradas, null);
+      assert.match(response.campos.find(field => field.name === 'Conta').value, /Indisponível/);
+      assert.doesNotMatch(response.campos.find(field => field.name === 'Conta').value, /\b0\b/);
     });
 
     await t.test('IA consulta metadados da guilda na antiga sem converter XP em GP', async () => {

@@ -27,6 +27,10 @@ const MAX_TITULO = 256;
 const CASOS = [
   ['conversa_livre', {}],
   ['informacoes_da_guilda', {}],
+  ['perfil_de_jogador', { nome: 'Trinca Ferro' }, { exigePerfil: true }],
+  ['perfil_de_jogador', { brawlhalla_id: '4165486' }, { exigePerfil: true }],
+  ['perfil_de_jogador', { nome: 'x' }],
+  ['perfil_de_jogador', {}, { comoAutor: true, exigeEncontrado: true }],
   ['ranking_contribuicao', {}],
   ['ranking_contribuicao', { ordem: 'menor', limite: 15 }],
   ['media_de_contribuicao', {}],
@@ -174,6 +178,7 @@ for (const [nome, args, opcoes = {}] of CASOS_EM_TESTE) {
     if (!dados?.encontrado) problemas.push('não encontrou quem perguntou');
     else if (!dados?.sobre_quem_perguntou) problemas.push('encontrou, mas não marcou sobre_quem_perguntou');
   }
+  if (opcoes.exigePerfil && !dados?.encontrado) problemas.push('não encontrou o perfil solicitado');
 
   // Sem autor utilizável a saída é "não achei" com motivo, nunca uma resposta sobre outra pessoa
   if ((opcoes.semAutor || opcoes.autorFalso) && dados?.encontrado !== false) {

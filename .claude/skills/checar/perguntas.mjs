@@ -64,11 +64,20 @@ const CASOS = [
   ['contra quem a gente joga o duelo essa semana?', 'duelo_da_semana'],
   ['a gente tá ganhando o duelo?', 'duelo_da_semana'],
   ['quantos membros a guilda tem?', 'informacoes_da_guilda'],
+  ['quem é o trinca ferro?', 'perfil_de_jogador', { nome: 'trinca ferro' }],
+  ['mostra as estatísticas do Trinca Ferro', 'perfil_de_jogador', { nome: 'Trinca Ferro' }],
+  ['qual o elo do Trinca Ferro?', 'perfil_de_jogador', { nome: 'Trinca Ferro' }],
+  ['qual lenda o Trinca Ferro mais joga?', 'perfil_de_jogador', { nome: 'Trinca Ferro' }],
+  ['mostra meu perfil no Brawlhalla', 'perfil_de_jogador', { nome: null }],
+  ['qual é meu elo?', 'perfil_de_jogador', { nome: null }],
+  ['quem é o <@321055835683946497>?', 'perfil_de_jogador', { nome: null, brawlhalla_id: null }],
+  ['mostre o perfil do Brawlhalla ID 4165486', 'perfil_de_jogador', { brawlhalla_id: '4165486' }],
   ['qual o elo mais alto da guilda?', 'conversa_livre'],
   ['quem tem mais TGG Coins?', 'conversa_livre'],
   ['alô', 'conversa_livre'],
   ['alô Lady Vera', 'conversa_livre'],
   ['quem é Lady Vera?', 'conversa_livre'],
+  ['quem é Mordex no Brawlhalla?', 'conversa_livre'],
   ['me explica o que são guild points', 'conversa_livre'],
   ['como você está hoje?', 'conversa_livre'],
   ['me conta uma piada', 'conversa_livre'],
@@ -172,7 +181,8 @@ const RESPOSTAS = [
         // semana em cima de uma lista que a quinta-feira ainda pode mudar (12/08/2026).
         rotulo: 'a previsão não é apresentada como cadastro',
         erro: 'a resposta chamou a previsão do ciclo de "missões cadastradas" - elas só são cadastradas na quinta 06:00',
-        ok: (texto) => !/missões cadastradas/i.test(texto) || /não (foram|estão|são)/i.test(texto),
+        // Também aceita o contraste explícito "previstas, não missões cadastradas".
+        ok: (texto) => !/missões cadastradas/i.test(texto) || /não (?:(?:foram|estão|são)\b|missões cadastradas\b)/i.test(texto),
       },
       {
         rotulo: 'a origem prevista da lista fica explícita',
@@ -186,7 +196,7 @@ const RESPOSTAS = [
 // O free tier limita por minuto, não só por dia: 16 perguntas seguidas levam 429 no fim da lista
 // (medido em 11/08/2026 — um minuto depois a mesma chave responde 200). O intervalo mantém o ritmo
 // abaixo do teto e o retry cobre o caso de a lista crescer ou de o bot estar sendo usado junto.
-const INTERVALO_MS = config.provedor === 'ollama' ? 0 : 5_000;
+const INTERVALO_MS = config.provedor === 'gemini' ? 5_000 : config.provedor === 'openai' ? 200 : 0;
 const ESPERA_APOS_429_MS = 65_000;
 const ESPERA_APOS_FALHA_MS = 3_000;
 

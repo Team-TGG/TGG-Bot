@@ -2986,6 +2986,7 @@ export const handleIa = async (message, args) => {
         'Exemplos:\n' +
         '`.ia alô, Lady Vera`\n' +
         '`.ia como melhorar no Brawlhalla?`\n' +
+        '`.ia quem é o Trinca Ferro?`\n' +
         '`.ia quantos membros estão abaixo da contribuição mínima?`\n' +
         '`.ia quem são os MVPs da semana?`\n' +
         '`.ia quem contribuiu menos essa semana?`'
