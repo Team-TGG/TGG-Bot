@@ -2973,7 +2973,7 @@ export const handleScan = adminOnly(async (message, args, client) => {
 // Pergunta em português sobre a semana. A IA só escolhe qual função do bot responde e escreve a
 // frase — todo número vem de `EXECUTORES`, que chamam as mesmas funções do cron de quarta. O embed
 // mostra os dados de verdade abaixo do texto, então dá para conferir a resposta sem confiar nela.
-export const handleIa = adminOnly(async (message, args) => {
+export const handleIa = async (message, args) => {
   const pergunta = String(
     message.interaction ? message.interaction.options.getString('pergunta') : args.join(' ')
   ).trim();
@@ -3064,7 +3064,7 @@ export const handleIa = adminOnly(async (message, args) => {
         : createErrorEmbed('Erro na consulta', err.message)]
     });
   }
-});
+};
 
 // .limpar-perfil <@membro|ID>
 export async function handleLimparPerfil(message, args, client) {

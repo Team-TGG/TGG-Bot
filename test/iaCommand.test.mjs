@@ -3,8 +3,18 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
+import { PermissionFlagsBits } from 'discord.js';
+import { adminCommands } from '../src/slash/builders/admin.js';
 
-test('.ia respeita ativação manual e conversa livre não consulta a API do jogo', async () => {
+test('/ia é público e os comandos de moderação continuam restritos', () => {
+  const commands = adminCommands.map(command => command.toJSON());
+  assert.ok(commands.find(command => command.name === 'ia'));
+  assert.equal(commands.find(command => command.name === 'ia').default_member_permissions, null);
+  assert.equal(commands.find(command => command.name === 'ban').default_member_permissions, PermissionFlagsBits.BanMembers.toString());
+  assert.equal(commands.find(command => command.name === 'warn').default_member_permissions, PermissionFlagsBits.ModerateMembers.toString());
+});
+
+test('.ia e /ia atendem usuário comum; conversa livre não consulta banco nem API do jogo', async () => {
   const previousCwd = process.cwd();
   const temporary = mkdtempSync(join(tmpdir(), 'tgg-ia-offline-'));
   const originalFetch = globalThis.fetch;
@@ -32,7 +42,8 @@ test('.ia respeita ativação manual e conversa livre não consulta a API do jog
     const replies = [];
     const edits = [];
     const sent = { edit: async body => { edits.push(body); return sent; } };
-    await handleIa({ author: { id: '100000000000000001' }, reply: async body => { replies.push(body); return sent; } }, ['quem', 'são', 'os', 'MVPs?']);
+    const message = { author: { id: '100000000000000002', tag: 'membro-comum' }, reply: async body => { replies.push(body); return sent; } };
+    await handleIa(message, ['quem', 'são', 'os', 'MVPs?']);
     assert.equal(replies.length, 1);
     assert.equal(edits.length, 1);
     const embed = edits[0].embeds[0].toJSON();
@@ -44,7 +55,15 @@ test('.ia respeita ativação manual e conversa livre não consulta a API do jog
     replies.length = 0;
     edits.length = 0;
     requests.length = 0;
-    await handleIa({ author: { id: '100000000000000001' }, reply: async body => { replies.push(body); return sent; } }, ['alô']);
+    await handleIa(message, ['alô']);
+    assert.equal(replies.length, 1);
+    assert.equal(edits.length, 1);
+    assert.match(edits[0].embeds[0].toJSON().description, /um alô/);
+    assert.ok(requests.every(url => url.origin === 'http://127.0.0.1:11435'));
+    replies.length = 0;
+    edits.length = 0;
+    requests.length = 0;
+    await handleIa({ ...message, interaction: { options: { getString: name => { assert.equal(name, 'pergunta'); return 'alô'; } } } }, []);
     assert.equal(replies.length, 1);
     assert.equal(edits.length, 1);
     assert.match(edits[0].embeds[0].toJSON().description, /um alô/);

@@ -26,6 +26,10 @@ processo PM2 e o serviço da API estiverem disponíveis, sem precisar manter o P
 
 ## Comportamento
 
+Todos os membros do servidor podem usar `.ia` e `/ia`, sem cargo de administrador ou cadastro
+prévio no bot. As regras de canal e o intervalo geral de 5 segundos para quem não é staff continuam
+valendo. Consultas pessoais usam o cadastro do membro quando ele existe.
+
 A chave vai apenas no cabeçalho de autorização da API. Os erros exibem o provedor e o código
 HTTP, sem repetir o corpo da resposta ou a chave. As chamadas usam `store: false`.
 O roteamento permite uma função conhecida por vez e valida seus argumentos. A redação recebe
