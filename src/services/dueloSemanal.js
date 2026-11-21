@@ -1,14 +1,13 @@
-import { fetchGuildStatsNewAPI } from '../brawlhalla.js';
+import { fetchGuildStats } from '../brawlhalla.js';
 import { getGuildWeeklyGuildPoints, getDuelGuildWeeklyGuildPoints } from '../guild.js';
 import { guildDuel as config } from '../../config/index.js';
+import { pontosSemanaisDaGuilda } from './pontosDaGuilda.js';
 
 /**
  * Placar do duelo da semana: quanto cada guilda ganhou desde a virada de quinta.
  *
- * O que vale é a **diferença**, não o acumulado — guild points nunca zeram, então comparar os
- * totais diria só qual guilda é mais velha. A linha de base de cada lado vem do banco
- * (`guild_weekly_guild_points` para nós, `guild_duels` para o oponente, ambos gravados pelo cron
- * de quarta 07:00) e o valor atual sai da API.
+ * `guild_points` já é o total da semana e reinicia semanalmente. As capturas guardadas no banco
+ * servem para o XP acumulado; subtraí-las dos pontos zeraria ou inverteria o placar após o reset.
  *
  * Extraído de `handleDuel` quando o `.ia` passou a responder sobre o duelo: são duas rotinas lendo
  * o mesmo placar, e a staff perguntando "quem tá ganhando?" tem que ouvir o mesmo que o `.duel`
@@ -29,31 +28,23 @@ export const SEM_DUELO = {
  * battles). Enquanto ninguém fecha o tier seguinte, os membros continuam somando e a guilda não —
  * medido em 12/08/2026: 432.826 do lado dos membros contra 343.497 do lado da guilda.
  *
- * A base é a mesma linha que o duelo usa (`guild_weekly_guild_points`, gravada pelo cron de quarta),
- * então sem ela não há o que medir e volta `null` em vez de devolver o acumulado inteiro como ganho.
+ * Não depende de captura anterior: zero é uma semana recém-iniciada, não falta de linha de base.
  */
 export async function calcularGanhoDaGuildaNaSemana() {
-  const [api, base] = await Promise.all([
-    fetchGuildStatsNewAPI(config.ourGuildId),
-    getGuildWeeklyGuildPoints(),
-  ]);
-
-  const pontosNaVirada = base?.total_guild_points;
+  const api = await fetchGuildStats(config.ourGuildId);
+  const pontos = pontosSemanaisDaGuilda(api?.guild_points);
 
   return {
     nome: api?.name ?? 'Desconhecida',
     membros: api?.member_count ?? null,
-    pontosAtuais: api?.guild_points == null ? null : Number(api.guild_points),
-    pontosNaVirada: pontosNaVirada == null ? null : Number(pontosNaVirada),
-    ganhoNaSemana: api?.guild_points == null || pontosNaVirada == null
-      ? null
-      : Number(api.guild_points) - Number(pontosNaVirada),
+    pontosAtuais: pontos,
+    ganhoNaSemana: pontos,
   };
 }
 
 export async function calcularDueloDaSemana() {
   const [nossaApi, nossaBase, duelo] = await Promise.all([
-    fetchGuildStatsNewAPI(config.ourGuildId),
+    fetchGuildStats(config.ourGuildId),
     getGuildWeeklyGuildPoints(),
     getDuelGuildWeeklyGuildPoints(),
   ]);
@@ -61,29 +52,23 @@ export async function calcularDueloDaSemana() {
   if (!duelo) return { motivo: SEM_DUELO.SEM_OPONENTE };
   if (!duelo.guild_id) return { motivo: SEM_DUELO.OPONENTE_SEM_ID };
 
-  const oponenteApi = await fetchGuildStatsNewAPI(duelo.guild_id);
+  const oponenteApi = await fetchGuildStats(duelo.guild_id);
 
-  // XP tem o mesmo desenho dos guild points: o `xp` de /v1/guild/stats acumula desde a
-  // atualização de guildas, então o da semana é diferença entre duas capturas. `legacy_xp` fica
-  // de fora — é o acumulado da era anterior, congelado, e diferença dele é sempre 0.
-  //
-  // Base ausente vira `null` e não 0, ao contrário dos pontos acima: semana gravada antes de a
-  // coluna existir devolveria o acumulado inteiro (dezenas de milhões) como ganho da semana. Quem
-  // monta o embed traduz `null` para "—".
-  const lado = (api, base, baseXp) => ({
+  // Só o XP continua acumulado; sem sua captura não há diferença semanal confiável.
+  const lado = (api, baseXp) => ({
     nome: api?.name ?? 'Desconhecida',
     membros: api?.member_count ?? null,
     convite: api?.discord_invite_code ?? null,
-    pontosAtuais: Number(api?.guild_points || 0),
-    pontosNaVirada: Number(base || 0),
-    ganhoNaSemana: Number(api?.guild_points || 0) - Number(base || 0),
+    pontosAtuais: pontosSemanaisDaGuilda(api?.guild_points),
+    ganhoNaSemana: pontosSemanaisDaGuilda(api?.guild_points),
     xpAtual: api?.xp == null ? null : Number(api.xp),
     xpNaVirada: baseXp == null ? null : Number(baseXp),
     ganhoDeXpNaSemana: api?.xp == null || baseXp == null ? null : Number(api.xp) - Number(baseXp),
   });
 
-  const nos = lado(nossaApi, nossaBase?.total_guild_points, nossaBase?.total_xp);
-  const eles = lado(oponenteApi, duelo.guild_points, duelo.xp);
+  const nos = lado(nossaApi, nossaBase?.total_xp);
+  const eles = lado(oponenteApi, duelo.xp);
+  if (nos.ganhoNaSemana == null || eles.ganhoNaSemana == null) throw new Error('Pontos semanais da guilda indisponíveis.');
 
   return {
     motivo: null,

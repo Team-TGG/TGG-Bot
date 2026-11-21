@@ -100,9 +100,8 @@ export async function getGuildDuelByWeek(weekStart) {
 }
 
 /**
- * Guild points e XP entram juntos porque saem da mesma leitura, na quinta 06:00 (ver
- * guildDuelService.js). XP ausente na API fica **nulo, nunca 0**: o ganho da semana é diferença
- * contra esta linha, e 0 faria a leitura seguinte contar o acumulado inteiro como ganho.
+ * GP semanal e XP entram juntos como captura da quinta 06:00 (ver guildDuelService.js).
+ * Só o XP acumulado usa esta linha como base de diferença. XP ausente fica nulo, nunca 0.
  *
  * Quem protege a linha é o `insert` — só é chamado quando a semana ainda não existe, nunca
  * `upsert`, do mesmo jeito que `ensurePlayerWeeklyInfo` faz com a linha do jogador.

@@ -38,6 +38,12 @@ test('timeout encerra requisição travada', async () => {
   await assert.rejects(request('https://api.brawlhalla.com/v1/guild/stats?guild_id=3'), e => e.apiForaDoAr);
 });
 
+test('uma rota v1 fora do ar não bloqueia outra rota v1 saudável', async () => {
+  const request = createApiFetch({ logger, attempts: 1, fetchImpl: async url => url.pathname === '/v1/player/guild' ? json({}, 502) : json({ guild_members: [] }) });
+  await assert.rejects(request('https://api.brawlhalla.com/v1/player/guild?brawlhalla_id=1'), e => e.status === 502);
+  assert.deepEqual(await request('https://api.brawlhalla.com/v1/guild/members?guild_id=3'), { guild_members: [] });
+});
+
 test('timeout também cobre o corpo da resposta', async () => {
   const request = createApiFetch({ logger, timeoutMs: 10, attempts: 1, fetchImpl: async (_url, options) => ({
     status: 200, ok: true,

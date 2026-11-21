@@ -2,7 +2,7 @@ import { getClient, formatDateTime, getMissionWeekStart } from './db.js';
 import { TGG_COINS_ROLES } from './tggCoinsCommands.js';
 import { tggCoinsEvents } from '../config/index.js';
 import { SYSTEM_ROLES} from './discord.js';
-import { fetchPlayerStats, fetchPlayerStatsNoResolve, fetchPlayerGuildStatsNewAPI, fetchGuildMembersNewAPI } from './brawlhalla.js';
+import { fetchPlayerStats, fetchPlayerStatsNoResolve, fetchPlayerGuildStats, fetchGuildMembers } from './brawlhalla.js';
 
 /**
  * Adiciona transação
@@ -1001,18 +1001,22 @@ export async function ensurePlayerWeeklyInfo(brawlhallaId) {
   let guildPoints = null;
 
   try {
-    const guildMembers = await fetchGuildMembersNewAPI();
+    const guildMembers = await fetchGuildMembers();
     const membro = (guildMembers.guild_members ?? []).find(m => String(m.brawlhalla_id) === id);
 
     if (membro) {
       guildPoints = membro.guild_points == null ? null : Number(membro.guild_points);
-    } else {
-      // Não está na guilda (alt, normalmente): tenta a rota individual antes de desistir
-      const guildStats = await fetchPlayerGuildStatsNewAPI(id);
-      guildPoints = guildStats?.personal_points == null ? null : Number(guildStats.personal_points);
     }
   } catch (err) {
-    console.warn(`[WeeklyInfo] Guild points indisponíveis para ${id}:`, err.message);
+    console.warn(`[WeeklyInfo] Consulta em lote indisponível para ${id}:`, err.message);
+  }
+  if (guildPoints == null) {
+    try {
+      const guildStats = await fetchPlayerGuildStats(id);
+      guildPoints = guildStats?.personal_points == null ? null : Number(guildStats.personal_points);
+    } catch (err) {
+      console.warn(`[WeeklyInfo] Guild points indisponíveis para ${id}:`, err.message);
+    }
   }
 
   const { error: insertError } = await supabase

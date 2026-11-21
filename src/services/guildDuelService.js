@@ -1,5 +1,5 @@
 import { EmbedBuilder } from 'discord.js';
-import { fetchGuildStatsNewAPI } from '../brawlhalla.js';
+import { fetchGuildStats } from '../brawlhalla.js';
 import { getMissionWeekStart } from '../db.js';
 import { getGuildRegistry, getGuildDuelByWeek, getGuildWeeklyPointsByWeek, saveGuildDuel, saveGuildWeeklyPoints } from '../guild.js';
 import { guildDuel as config } from '../../config/index.js';
@@ -11,13 +11,9 @@ import { LEADER_ID } from '../../utils/permissions.js';
  * O pareamento do jogo é 1º contra 2º, 3º contra 4º, 5º contra 6º — sempre pela classificação
  * corrente. O campo `rank` de /v1/guild/stats é essa posição, não o acumulado de guild points.
  *
- * **Guild points e XP saem da mesma leitura.** Eram duas rotinas em dois horários — duelo na
- * quarta 09:00, XP na quinta 06:00 — porque os dois números têm calendários diferentes: guild
- * points param quando as missões fecham, na quarta 06:00, e XP sobe em qualquer partida, até a
- * virada. A quinta 06:00 respeita os dois de uma vez: o guild point já está parado há 24h e o XP
- * é lido no instante em que a semana começa. Decisão do usuário (02/09/2026), e é o que permite
- * uma chamada por guilda e um `insert` por lado, em vez de um `insert` na quarta e um `update` na
- * quinta.
+ * GP e XP saem da mesma leitura na quinta 06:00. GP é uma captura do total semanal; só o XP
+ * acumulado precisa desta linha de base para calcular o ganho da semana. Mantém o horário
+ * decidido pelo usuário (02/09/2026), sem sobrescrever capturas históricas.
  */
 
 /** XP que a API não devolveu fica nulo, nunca 0 — ver a nota no `insert` de `guild.js`. */
@@ -43,7 +39,7 @@ async function carregarMonitoradas(guildIds) {
     if (String(guildId) === String(config.ourGuildId)) continue;
 
     try {
-      const g = await fetchGuildStatsNewAPI(guildId);
+      const g = await fetchGuildStats(guildId);
 
       guildas.push({
         guildId: String(guildId),
@@ -74,7 +70,7 @@ function embedCadastrado({ weekStart, nossa, oponente, nossoRank }) {
         name: `${nossa.name} (nós)`,
         value:
           `🏅 **Posição:** ${nossoRank}º\n` +
-          `📈 **Pontos na virada:** ${nossa.points.toLocaleString('pt-BR')}\n` +
+          `📈 **GP da semana na captura:** ${nossa.points.toLocaleString('pt-BR')}\n` +
           `✨ **XP na virada:** ${formatarXp(nossa.xp)}`,
         inline: true,
       },
@@ -82,13 +78,13 @@ function embedCadastrado({ weekStart, nossa, oponente, nossoRank }) {
         name: oponente.name,
         value:
           `🏅 **Posição:** ${oponente.rank}º\n` +
-          `📈 **Pontos na virada:** ${oponente.points.toLocaleString('pt-BR')}\n` +
+          `📈 **GP da semana na captura:** ${oponente.points.toLocaleString('pt-BR')}\n` +
           `✨ **XP na virada:** ${formatarXp(oponente.xp)}\n` +
           `🆔 ${oponente.guildId}`,
         inline: true,
       },
     )
-    .setFooter({ text: 'É contra estas leituras que o .duel mede o ganho da semana' })
+    .setFooter({ text: 'Guild Points reiniciam semanalmente • XP é medido desde a captura' })
     .setTimestamp();
 }
 
@@ -167,7 +163,7 @@ export async function registrarDueloDaSemana(client) {
       return { cadastrado: false, weekStart, motivo: 'JA_EXISTE' };
     }
 
-    const nossaApi = await fetchGuildStatsNewAPI(config.ourGuildId);
+    const nossaApi = await fetchGuildStats(config.ourGuildId);
     const nossoRank = Number(nossaApi?.rank);
 
     if (!Number.isFinite(nossoRank) || nossoRank < 1) {

@@ -32,6 +32,7 @@ export function createWarningEmbed(title, description) {
 
 // Resposta do try/catch global: API fora do ar não é erro do bot, e "erro inesperado" mandaria reportar
 export function createCommandErrorEmbed(err) {
+  if (err?.guildPointsUnavailable) return createWarningEmbed('Pontos de guilda indisponíveis', err.message);
   if (err?.apiForaDoAr) return createWarningEmbed('API do Brawlhalla fora do ar', err.message);
   return createErrorEmbed('Erro Interno', `Um erro inesperado ocorreu: ${err.message}`);
 }

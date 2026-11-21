@@ -5,7 +5,7 @@ import {
   StringSelectMenuBuilder, TextInputBuilder, TextInputStyle,
 } from 'discord.js';
 import { getContasDoMembro, getPeakElo, getUserByDiscordId, loadAliases, resolveBrawlhallaId } from '../db.js';
-import { fetchGuildMembersNewAPI } from '../brawlhalla.js';
+import { fetchGuildMembers } from '../brawlhalla.js';
 import { getInsigniasGravadas, getPerfil, salvarPerfil } from '../insignias.js';
 import { CATEGORIAS, INSIGNIAS, textoDaInsignia } from '../services/insigniasCatalogo.js';
 import { recalcularInsignias } from '../services/insigniasMotor.js';
@@ -90,7 +90,7 @@ async function lerChavesDaVitrine(dono) {
    e o cartão diz isso em vez de afirmar que a pessoa está fora da guilda. */
 async function lerMembroNaGuilda(ids) {
   try {
-    const guilda = await fetchGuildMembersNewAPI(undefined, { allowLegacy: true });
+    const guilda = await fetchGuildMembers(undefined, { requireGuildPoints: false });
     const membro = ids
       .map((id) => guilda.guild_members.find((m) => String(m.brawlhalla_id) === id))
       .find(Boolean) ?? null;

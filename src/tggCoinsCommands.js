@@ -2,7 +2,7 @@
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, StringSelectMenuBuilder, ButtonStyle, ComponentType } from 'discord.js';
 import * as tggCoins from './tggCoins.js';
 import { getUserByDiscordId, getMissionWeekStart, formatDateBR, getMissionWeekEnd, resolveBrawlhallaId, loadAliases } from './db.js';
-import { fetchPlayerStats, fetchPlayerStatsNoResolve, fetchPlayerGuildStatsNewAPI, fetchGuildMembersNewAPI } from './brawlhalla.js';
+import { fetchPlayerStats, fetchPlayerStatsNoResolve, fetchGuildMembers } from './brawlhalla.js';
 import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage, createPagination, awaitConfirmation } from '../utils/discordUtils.js';
 import { adminOnly, ROLE_HIERARCHY, hasPermission } from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
@@ -1364,7 +1364,7 @@ export async function handleConquistas(message) {
     const guildPointsByAccount = new Map();
 
     try {
-      const guildMembers = await fetchGuildMembersNewAPI();
+      const guildMembers = await fetchGuildMembers();
       const membroPorId = new Map(
         (guildMembers.guild_members ?? []).map(m => [String(m.brawlhalla_id), m])
       );

@@ -1,6 +1,6 @@
 import { getActiveUsersWithBrawlhallaId, getMissionWeekStart } from '../db.js';
 import { getPlayerMissionProgress } from '../tggCoins.js';
-import { fetchGuildMembersNewAPI } from '../brawlhalla.js';
+import { fetchGuildMembers } from '../brawlhalla.js';
 
 /**
  * Contribuição da semana de cada membro ativo — a base do MVP semanal e da inativação.
@@ -96,7 +96,7 @@ export async function calcularContribuicaoSemanal() {
 
   const [users, guildMembers] = await Promise.all([
     getActiveUsersWithBrawlhallaId(),
-    fetchGuildMembersNewAPI(),
+    fetchGuildMembers(),
   ]);
 
   const membrosDaGuilda = new Map(

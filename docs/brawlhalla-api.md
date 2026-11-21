@@ -2,6 +2,30 @@
 
 Doc oficial: **https://dev.brawlhalla.com**
 
+## Integração unificada (21/11/2026)
+
+Os comandos e regras usam `fetchGuildStats`, `fetchGuildMembers`, `fetchPlayerGuildStats`,
+`fetchPlayerProfile` e `fetchPlayerBasic`, expostos por `brawlhalla.js`. A seleção das fontes de
+guilda, membros e perfil fica em `src/services/brawlhallaService.js`.
+
+- O mesmo formato de guilda representa resposta v1 ou fallback v0. `sources` identifica a origem
+  e `availability.guildPoints` distingue pontuação conhecida de indisponível; zero continua válido.
+- A v1 fornece GP. A v0 completa nome, quantidade de membros, entrada e XP. Membros são ligados
+  somente pelo ID, sem cruzar guildas ou associar pessoas pelo nome. A lista v1 continua sendo a
+  referência quando disponível; uma lista vazia que contradiz a v0 é tratada como leitura incerta.
+- Regras exigem GP por padrão. Interfaces podem passar `{ requireGuildPoints: false }` para
+  mostrar os dados básicos da v0. XP nunca é convertido em GP; essa combinação não resolve um 502.
+- A consulta individual de GP tem alternativa pela rota em lote. O limite temporário de uma rota
+  HTTP com falha não bloqueia as outras rotas v1.
+- `.stats` busca contadores e pontos independentemente; GP opcional tem orçamento de seis segundos.
+  Os contadores e ranked permanecem na v0 para continuar compatíveis com as bases do cron do site.
+  Caches v0 e v1 de estatísticas são separados; resolver alt para contadores não altera a conta dos GP.
+- Os nomes antigos terminados em `NewAPI` continuam como adaptadores compatíveis. Não devem ser
+  usados por comandos novos, que devem consumir a camada unificada.
+
+Consulta real em cópia temporária na VPS em 21/11/2026: a camada recuperou Team TGG com 188 membros
+e 49.732.567 de XP acumulado pela v0. GP permaneceu indisponível; nenhum valor de XP foi tratado como pontos.
+
 ## Queda da v1 (20/11/2026)
 
 Na VPS, `/clan/396943`, `/player/4165486/stats` e `/ranked` responderam 200. A v1 respondeu 502
@@ -9,12 +33,12 @@ Na VPS, `/clan/396943`, `/player/4165486/stats` e `/ranked` responderam 200. A v
 A resposta real da v0 tem XP, mas não Guild Points.
 
 - O cliente HTTP é compartilhado com a sincronização de nomes: timeout de 10 s, duas tentativas,
-  no máximo quatro chamadas simultâneas por versão e pausa de 30 s na v1 após falhas persistentes.
+  no máximo quatro chamadas simultâneas por versão e pausa de 30 s por rota v1 após falhas persistentes.
   As cotas continuam independentes. Chamadas idênticas em andamento são reaproveitadas.
 - `.stats` preserva as estatísticas v0 e mostra GP indisponível quando a consulta de guilda falha.
   `.guild` e o cartão de perfil permitem dados básicos da v0; `.alts` recupera os dados da conta
   pedida na v0, sem resolver a conta principal.
-- O fallback de guilda exige `{ allowLegacy: true }` e não entra no cache de GP da v1. MVP,
+- O fallback de interface exige `{ requireGuildPoints: false }` e não entra no cache de GP da v1. MVP,
   contribuição, duelo e inatividade continuam exigindo dados da v1 e não usam GP vencido.
 - Capturas semanais guardam `guild_points: null` se a leitura falhar, preservando os jogos.
   A coluna já aceita null. Não sobrescreva a captura quando a API voltar: o valor tardio não é a
@@ -40,17 +64,22 @@ Decisão da liderança (04/08/2026), vale para todo cálculo de atividade no bot
 - **XP é irrelevante para contribuição.** Serve só como métrica de *quanto a pessoa jogou* — ganha-se
   em qualquer partida, inclusive contra bots.
 
-## Guild points acumulam — o "reset semanal" é só in-game
+## Pontos da guilda reiniciam semanalmente (20/11/2026)
 
-A doc do `/v1/guild/stats` descreve `guild_points` como *"resets weekly"*. **Isso descreve o jogo, não
-a API.** O reset semanal acontece in-game; o valor devolvido pela API é sempre o **total acumulado**.
+Por pedido do usuário, o total da guilda segue o contrato de
+[GetGuildStats](https://dev.brawlhalla.com/v1/endpoints/guild/getguild/): `guild_points` é a pontuação
+da semana e reinicia semanalmente. `.guild`, `.duel` e a IA usam o valor atual diretamente, sem
+subtrair `guild_weekly_guild_points.total_guild_points` ou `guild_duels.guild_points`.
+Zero é válido depois do reset; leitura ausente continua desconhecida. O cache desses totais
+também exige a mesma semana da leitura, além do TTL de cinco minutos.
 
-Vale igual nos três lugares: `guild_points` do `/v1/guild/stats`, `guild_points` por membro do
-`/v1/guild/members` e `personal_points` do `/v1/player/guild`. Confirmado em séries de 10 semanas em
-`player_weekly_info`: sempre crescente, nunca zera.
+As capturas do banco ficam preservadas como histórico. O XP continua acumulado e seu ganho semanal
+continua sendo calculado por diferença entre capturas.
 
-Por isso o ganho de uma semana se calcula por **diferença entre duas capturas** (é o que
-`player_weekly_info` existe para permitir), nunca lendo o valor direto como se fosse "pontos da semana".
+Isso não altera os pontos individuais de `/v1/guild/members` e `/v1/player/guild`: os schemas desses
+campos não especificam reset semanal. A contribuição dos membros mantém a diferença contra
+`player_weekly_info`. O projeto registrou séries históricas individuais crescentes durante dez
+semanas; essa observação não deve mais ser generalizada para o total semanal da guilda.
 
 ## Confiabilidade do histórico (importante)
 
@@ -258,8 +287,9 @@ Parâmetros: `page`, `max_results` (máx 100, **padrão 50**), `filter_by_id`, `
 4. **O array de 2v2 mudou de lugar:** v0 `ranked['2v2']`, v1 `teams.ranked_2v2`. `calculateGames`
    ([src/handlers/publicHandlers.js](../src/handlers/publicHandlers.js)) itera esse array.
 
-5. **A doc mente sobre o reset semanal** — ver a seção acima. Não é a única vez que a descrição
-   textual descreve o jogo em vez da resposta da API; na dúvida, meça contra os dados reais.
+5. **Não generalize o total da guilda para os membros.** O total `guild_points` de GetGuildStats
+   segue o reset semanal documentado. Os contadores individuais mantêm o cálculo por diferença
+   descrito acima; XP não substitui nenhum desses pontos.
 
 6. **`404` sob carga não quer dizer "não existe".** Varrendo `/v1/player/stats` conta a conta, a v1
    devolve `404` para jogador que responde normalmente sozinho — e como `404` também é a resposta legítima

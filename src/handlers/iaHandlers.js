@@ -833,8 +833,7 @@ async function dueloDaSemana() {
       quem_esta_vencendo: quem ?? 'empate',
       nossos_membros: nos.membros,
       membros_do_adversario: eles.membros,
-      // Guild points acumulam: o que vale é o ganho da semana, não o total
-      observacao: 'O placar é o ganho desde a virada de quinta, não o total acumulado de cada guilda.',
+      observacao: 'O placar usa os Guild Points da semana devolvidos pela API, que reiniciam semanalmente.',
     },
     titulo: '⚔️ Duelo da semana',
     campos: [
@@ -853,7 +852,7 @@ async function dueloDaSemana() {
         value: quem ? `🏆 **${quem}** na frente por ${numeroBR(duelo.diferenca)}` : '🤝 Empate',
       },
     ],
-    rodape: 'Ganho desde quinta 06:00 • mesmo cálculo do .duel',
+    rodape: 'Guild Points da semana • mesmo cálculo do .duel',
   };
 }
 

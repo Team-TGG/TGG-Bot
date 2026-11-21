@@ -986,20 +986,27 @@ Armadilhas que o cálculo já trata e não devem ser "simplificadas":
 Referência completa em [docs/brawlhalla-api.md](docs/brawlhalla-api.md): endpoints, schemas, o que ainda
 está na v0 depreciada e as pegadinhas. Dois pontos que atravessam o código todo:
 
+A integração dos comandos usa a camada unificada de `brawlhallaService.js`, exposta pelas funções
+sem o sufixo `NewAPI` em `brawlhalla.js`. Ela combina metadados v0 com GP v1 pelo ID e devolve o mesmo
+formato; `requireGuildPoints` é verdadeiro por padrão e só interfaces podem usar dados parciais.
+Falha de uma rota não bloqueia as outras. Contadores semanais continuam na fonte v0 do cron do site.
+
 - **Contribuição = guild points**, ganhos nas missões semanais. É o que a staff avalia e é a unidade do
   limiar de inatividade (1.000/semana). **XP não conta como contribuição** — ganha-se em qualquer
   partida, inclusive contra bots, e serve só para medir volume de jogo.
-- **Guild points acumulam.** A doc diz "resets weekly", mas isso é comportamento in-game; a API devolve
-  o total acumulado. Ganho de uma semana é sempre **diferença entre duas capturas** de
-  `player_weekly_info`, nunca o valor lido direto.
+- **Total da guilda é semanal.** Por pedido do usuário (20/11/2026), `guild_points` de
+  `/v1/guild/stats` segue o reset semanal documentado: `.guild`, `.duel` e IA usam o valor atual,
+  sem subtrair capturas antigas. O cache não atravessa a virada de semana. Os pontos individuais
+  mantêm o cálculo por diferença de `player_weekly_info`, pois seus schemas não especificam reset.
 - **O ponto do membro e o ponto da guilda não são a mesma contagem.** O membro pontua a cada partida
   que avança uma missão; a **guilda** só pontua quando um **tier** da missão fecha (uma missão tem
   vários: 5 partidas → 500, 15 → 1.000, 30 → 2.000…), mais as guild battles. Enquanto ninguém fecha o
   tier seguinte, os membros somam e a guilda não — medido em 12/08/2026: 432.826 somando membro a
   membro contra 343.497 do lado da guilda, na mesma semana. **Somar os membros não dá o total da
   guilda**, e é o da guilda que a staff vê no jogo: ele sai de `calcularGanhoDaGuildaNaSemana()`
-  ([dueloSemanal.js](src/services/dueloSemanal.js)), guild points atuais menos a base de
-  `guild_weekly_guild_points`.
+  ([dueloSemanal.js](src/services/dueloSemanal.js)), usando diretamente o total semanal da API.
+  As capturas de `guild_weekly_guild_points` e `guild_duels` continuam históricas; a diferença
+  contra elas é usada apenas para o XP acumulado.
 
 O histórico de guild points anterior a **agosto/2026 não é confiável** (a API devolvia valores errados,
 corrigida pouco antes de 04/08/2026). Não monte análise de membro em cima dele.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 
@@ -17,6 +17,10 @@ test('comandos, fallback e capturas semanais durante queda e recuperação da v1
   let playerId = '4165486';
   let rejectLegacyStats = false;
   let memberPoints = 1200;
+  let weeklyPoints = 5000;
+  let opponentPoints = 7;
+  let guildBase = { total_guild_points: 900000, total_xp: 1800 };
+  const duelBase = { guild_id: '999', guild_points: 10, xp: 2000 };
   const requests = [];
   const inserts = [];
   const member = { brawlhalla_id: 4165486, name: 'Offline Player', rank: 'Member', join_date: 1000, xp: 500 };
@@ -40,12 +44,18 @@ test('comandos, fallback e capturas semanais durante queda e recuperação da v1
         return json(accept?.includes('vnd.pgrst.object') ? user() : [user()]);
       }
       if (url.pathname.endsWith('/player_weekly_info')) return json(url.searchParams.get('select') === 'id' ? [] : [{ guild_points: 1000 }]);
+      if (url.pathname.endsWith('/guild_weekly_guild_points')) return json(guildBase ? [guildBase] : []);
+      if (url.pathname.endsWith('/guild_duels')) return json([duelBase]);
       return json([]);
     }
     assert.equal(url.hostname, 'api.brawlhalla.com', 'nenhuma rede externa é permitida neste teste');
     if (url.pathname.startsWith('/v1/')) {
       if (!recovered) return json({ error_name: 'origin_bad_gateway' }, 502);
-      if (url.pathname === '/v1/guild/stats') return json({ guild_id: 396943, name: 'Offline Guild', guild_points: 5000, xp: 2000, member_count: 1 });
+      if (url.pathname === '/v1/guild/stats') {
+        const id = url.searchParams.get('guild_id');
+        const ours = id === '396943';
+        return json({ guild_id: Number(id), name: ours ? 'Offline Guild' : 'Opponent Guild', guild_points: ours ? weeklyPoints : opponentPoints, xp: ours ? 2000 : 2050, member_count: 1 });
+      }
       if (url.pathname === '/v1/guild/members') return json({ guild_id: 396943, guild_members: [{ ...member, guild_points: memberPoints }] });
       if (url.pathname === '/v1/player/guild') return json({ brawlhalla_id: 4165486, guild: { guild_id: 396943, guild_name: 'Offline Guild', personal_points: 1200, personal_xp_this_week: 20 } });
       return json({ brawlhalla_id: Number(url.searchParams.get('brawlhalla_id')), name: 'Offline Player', level: 10, games: 100, wins: 60 });
@@ -69,6 +79,8 @@ test('comandos, fallback e capturas semanais durante queda e recuperação da v1
     const commands = await import('../src/public.js');
     const { ensurePlayerWeeklyInfo } = await import('../src/tggCoins.js');
     const { calcularContribuicoes, MOTIVOS } = await import('../src/services/contribuicaoSemanal.js');
+    const { calcularGanhoDaGuildaNaSemana, calcularDueloDaSemana } = await import('../src/services/dueloSemanal.js');
+    const { EXECUTORES } = await import('../src/handlers/iaHandlers.js');
 
     await t.test('.stats edita o loading e mantém quatro abas com GP desconhecido', async () => {
       const msg = message();
@@ -89,7 +101,7 @@ test('comandos, fallback e capturas semanais durante queda e recuperação da v1
       const embed = msg.edits[0].embeds[0].toJSON();
       assert.match(embed.title, /Offline Guild/);
       assert.match(embed.footer.text, /API antiga/);
-      assert.match(JSON.stringify(embed), /ranking indisponíveis/);
+      assert.match(JSON.stringify(embed), /GP Semanal.*Indisponível/);
     });
 
     await t.test('fallback de membros não contamina o cache nem libera dados para automações de GP', async () => {
@@ -130,6 +142,99 @@ test('comandos, fallback e capturas semanais durante queda e recuperação da v1
       const body = JSON.stringify(msg.edits[0].embeds[0].toJSON());
       assert.match(body, /Total GP/);
       assert.doesNotMatch(body, /Pontos de guilda indisponíveis/);
+    });
+
+    await t.test('GP válido não transforma XP pessoal ausente em zero', async () => {
+      const data = await api.fetchPlayerGuildStats('4165486');
+      assert.equal(data.personal_points, 1200);
+      assert.equal(data.personal_xp, null);
+      assert.equal(data.personal_xp_this_week, 20);
+    });
+
+    await t.test('membros presentes sem GP não aparecem como lista vazia no embed', async () => {
+      memberPoints = null;
+      api.clearCache();
+      try {
+        const guild = await api.fetchGuildStats('396943');
+        const embed = (await api.createGuildEmbed(guild)).toJSON();
+        const top = embed.fields.find(field => field.name === '🏆 Top 10 - GP total');
+        assert.match(top.value, /Pontos dos membros indisponíveis/);
+        assert.doesNotMatch(top.value, /Nenhum membro encontrado/);
+      } finally {
+        memberPoints = 1200;
+        api.clearCache();
+      }
+    });
+
+    await t.test('total da guilda após reset usa o valor da semana, sem subtrair os 900.000 históricos', async () => {
+      weeklyPoints = 42;
+      api.clearCache();
+      const before = requests.filter(p => p.endsWith('/guild_weekly_guild_points')).length;
+      const result = await calcularGanhoDaGuildaNaSemana();
+      assert.equal(result.ganhoNaSemana, 42);
+      assert.equal(result.pontosAtuais, 42);
+      assert.equal(requests.filter(p => p.endsWith('/guild_weekly_guild_points')).length, before);
+      const embed = (await api.createGuildEmbed(await api.fetchGuildStats('396943'))).toJSON();
+      const info = embed.fields.find(f => f.name === '📊 Info').value;
+      assert.match(info, /GP Semanal:\*\* 42/);
+      assert.doesNotMatch(info, /GP Totais/);
+    });
+
+    await t.test('duelo compara os totais semanais e mantém apenas o XP como diferença', async () => {
+      const result = await calcularDueloDaSemana();
+      assert.equal(result.nos.ganhoNaSemana, 42);
+      assert.equal(result.eles.ganhoNaSemana, 7);
+      assert.equal(result.diferenca, 35);
+      assert.equal(result.vencendo, 'nos');
+      assert.equal(result.nos.ganhoDeXpNaSemana, 200);
+      assert.equal(result.eles.ganhoDeXpNaSemana, 50);
+    });
+
+    await t.test('reset para zero é uma semana válida e não vira pontos negativos', async () => {
+      weeklyPoints = 0;
+      api.clearCache();
+      assert.equal((await calcularGanhoDaGuildaNaSemana()).ganhoNaSemana, 0);
+      const result = await calcularDueloDaSemana();
+      assert.equal(result.nos.ganhoNaSemana, 0);
+      assert.equal(result.diferenca, 7);
+      assert.equal(result.vencendo, 'eles');
+    });
+
+    await t.test('sem captura anterior, GP semanal continua disponível e XP fica desconhecido', async () => {
+      guildBase = null;
+      const result = await calcularDueloDaSemana();
+      assert.equal(result.nos.ganhoNaSemana, 0);
+      assert.equal(result.nos.ganhoDeXpNaSemana, null);
+      assert.equal(result.nos.xpNaVirada, null);
+      guildBase = { total_guild_points: 900000, total_xp: 1800 };
+    });
+
+    await t.test('cache de outra semana é recusado mesmo quando o timestamp ainda está dentro do TTL', async () => {
+      const cachePath = join(dir, 'cache', 'shared.json');
+      const cache = JSON.parse(readFileSync(cachePath, 'utf8'));
+      cache['guild:396943'].data._guildPointsWeek = 'semana-anterior';
+      cache['guild:396943'].data.guild_points = 999999;
+      cache['guild:396943'].timestamp = time;
+      writeFileSync(cachePath, JSON.stringify(cache));
+      assert.equal(api.getCachedGuildStats('396943'), null);
+      weeklyPoints = 2;
+      const msg = message();
+      await commands.handleGuild(msg, [], {});
+      assert.equal(msg.edits.length, 1);
+      const info = msg.edits[0].embeds[0].toJSON().fields.find(f => f.name === '📊 Info').value;
+      assert.match(info, /GP Semanal:\*\* 2/);
+      assert.equal(api.getCachedGuildStats('396943').guild_points, 2);
+    });
+
+    await t.test('executor da IA usa o mesmo placar semanal do duelo e não envia identificadores', async () => {
+      weeklyPoints = 42;
+      api.clearCache();
+      const result = await EXECUTORES.duelo_da_semana({});
+      assert.equal(result.dados.nossos_pontos_na_semana, 42);
+      assert.equal(result.dados.pontos_do_adversario_na_semana, 7);
+      assert.equal(result.dados.diferenca, 35);
+      assert.match(result.dados.observacao, /reiniciam semanalmente/);
+      assert.doesNotMatch(JSON.stringify(result.dados), /discord_id|brawlhalla_id/);
     });
 
     await t.test('pontuação zero lida de verdade continua válida na captura e no cálculo', async () => {

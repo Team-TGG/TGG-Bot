@@ -12,10 +12,11 @@ export function createApiFetch({
   logger = console,
 } = {}) {
   const limits = {
-    v1: { max: 2000, window: 5 * 60_000, log: [], active: 0, queue: [], retryAt: 0 },
-    v0: { max: 180, window: 15 * 60_000, log: [], active: 0, queue: [], retryAt: 0 },
+    v1: { max: 2000, window: 5 * 60_000, log: [], active: 0, queue: [] },
+    v0: { max: 180, window: 15 * 60_000, log: [], active: 0, queue: [] },
   };
   const pending = new Map();
+  const retriesAfter = new Map();
 
   function unavailable(version, status = 503) {
     const err = new Error(`A API ${version} do Brawlhalla está indisponível no momento. Tente novamente em alguns instantes.`);
@@ -39,7 +40,7 @@ export function createApiFetch({
     const release = await acquire(limit);
     let timer;
     try {
-      if (limit.retryAt > now()) throw unavailable(version);
+      if ((retriesAfter.get(url.pathname) || 0) > now()) throw unavailable(version);
       while (true) {
         while (limit.log.length && now() - limit.log[0] >= limit.window) limit.log.shift();
         if (limit.log.length < limit.max) break;
@@ -75,7 +76,7 @@ export function createApiFetch({
       let data;
       try { data = await res.json(); }
       catch { throw unavailable(version); }
-      limit.retryAt = 0;
+      retriesAfter.delete(url.pathname);
       return data;
     } finally {
       clearTimeout(timer);
@@ -85,13 +86,13 @@ export function createApiFetch({
 
   async function execute(url, version, limit) {
     for (let attempt = 0; attempt < attempts; attempt++) {
-      if (limit.retryAt > now()) throw unavailable(version);
+      if ((retriesAfter.get(url.pathname) || 0) > now()) throw unavailable(version);
       try { return await request(url, version, limit); }
       catch (err) {
         if (!err.apiForaDoAr) throw err;
         if (attempt + 1 === attempts) {
-          // A queda da v1 não consome a cota da API antiga nem prende cada comando em novas tentativas.
-          if (version === 'v1') limit.retryAt = now() + cooldownMs;
+          // Uma rota indisponível não bloqueia outras fontes válidas da mesma versão.
+          if (version === 'v1') retriesAfter.set(url.pathname, now() + cooldownMs);
           throw err;
         }
         await wait(500 * (attempt + 1));

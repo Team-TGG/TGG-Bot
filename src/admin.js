@@ -1,7 +1,7 @@
 // admin.js - Comandos apenas para administradores
 import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, Events, ComponentType, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 import { createClient, runSync, runEloSync } from './discord.js';
-import { fetchPlayerStats, getUserBrawlhallaId, fetchPlayerGuildStatsNewAPI, MENSAGEM_API_FORA_DO_AR } from './brawlhalla.js';
+import { fetchPlayerStats, getUserBrawlhallaId, fetchPlayerGuildStats, MENSAGEM_API_FORA_DO_AR } from './brawlhalla.js';
 import { calculateGames, calculateGamesFromClosedWeek } from './handlers/publicHandlers.js';
 import { addWarning, getUserWarnings, removeWarning, removeLastWarning, editWarning, deleteExpiredWarnings, parseTime, formatTime as formatModTime } from './moderation.js';
 import { getUsers, getAllUsers, getUsersWithElo, getAllUsersWithElo, getUserByDiscordId, addInactivePlayer, removeInactivePlayer, getInactivePlayers, getWeeklyMissions, getClient, reactivateOrAddUser, addPersistentMute, removePersistentMute, getMissionWeekStart, getActiveUser, getMemberJustifications, formatDateBR, getMembershipHistory, getPreviousMissionWeekStart, getWeeklyInitial, getMissionWeekStartDateTime, formatCreatedAtBR, loadAliases, resolveBrawlhallaId, getLastWednesdayReference } from './db.js';
@@ -2579,7 +2579,7 @@ export const handleScan = adminOnly(async (message, args, client) => {
       return null;
     });
 
-    const guildStats = await fetchPlayerGuildStatsNewAPI(brawlhallaId).catch((err) => {
+    const guildStats = await fetchPlayerGuildStats(brawlhallaId).catch((err) => {
       console.warn(`[SCAN] Guild points indisponiveis para ${brawlhallaId}:`, err.message);
       if (err.apiForaDoAr) apiForaDoAr = true;
       return null;

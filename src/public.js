@@ -3,7 +3,7 @@ import { EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder, AttachmentBuil
 import { removeInactivePlayer, getWeeklyMissions, getMissionWeekEnd, addMotd, getLastMotd, getBirthdayByUserId, addBirthday, formatCreatedAtBR, formatDateBR, getMissionWeekStartDateTime, getMonthWeekStartDateTime, getCurrentSeason, getSeasonWeekStartDateTime, getWeeklyInitial, loadAliases, resolveBrawlhallaId, corrigirID, incrementCrz, getUserByDiscordId, getContasVinculadas, getMemberJustifications, getLastWednesdayReference } from './db.js';
 import { getPlayerWeeklyGuildPoints } from './guild.js';
 import { calcularDueloDaSemana, SEM_DUELO } from './services/dueloSemanal.js';
-import { fetchPlayerStats, fetchClanStats, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCached, fetchPlayerStatsNewAPI, fetchGuildStatsNewAPI, fetchPlayerGuildStatsNewAPI, fetchPlayerBasicNewAPI } from './brawlhalla.js';
+import { fetchPlayerStats, fetchPlayerProfile, createStatsEmbed, createRankedEmbed, createGuildEmbed, getUserBrawlhallaId, getCachedGuildStats, fetchGuildStats, fetchPlayerBasic } from './brawlhalla.js';
 import { discord as discordConfig, inactivePlayers as inactivePlayersConfig, justificativas as justificativasConfig, weeklyMvp as weeklyMvpConfig, perfil as perfilConfig } from '../config/index.js';
 import { criarPedidoDeBlindagem, decidirBlindagem, getBlindagem, getPedidoPendenteDoMembro, registrarMensagemDoPedido, MAX_SEMANAS, STATUS } from './inactivity.js';
 import { calculateGames, calculateGamesFromClosedWeek, ORDENS_LB_GUILDA, POR_PAGINA_LB_GUILDA, ordenarLbGuilda, embedLbGuilda } from './handlers/publicHandlers.js';
@@ -391,19 +391,8 @@ export async function handleStats(message, args, client) {
     }
 
     loadingMsg = await message.reply({ embeds: [createLoadingEmbed(`${EMOJIS.loading} Carregando estatísticas...`, 'Buscando dados do Brawlhalla...')] });
-    const playerData = await fetchPlayerStats(brawlhallaId);
-
-    // Pegar os guild points e mandar pro stats. O id aqui é o cadastrado, sem resolver: é a conta
-    // que está no clã, e é dela que saem pontos, posição e histórico. O `playerData` veio do
-    // `fetchPlayerStats`, que resolve alt, então o `brawlhalla_id` de dentro dele é outro — daí
-    // mandar `guildAccountId` junto, senão o embed mistura as duas contas no Weekly GP.
-    const guildPoints = await fetchPlayerGuildStatsNewAPI(brawlhallaId).catch(err => {
-      console.warn(`[Stats] Pontos de guilda indisponíveis para ${brawlhallaId}: ${err.message}`);
-      return null;
-    });
-    playerData.guildPoints = guildPoints?.personal_points ?? null;
-    playerData.guildAccountId = String(brawlhallaId);
-    playerData.weeklyGuildPosition = guildPoints ? await posicaoContribuicaoSemanal(brawlhallaId) : null;
+    const playerData = await fetchPlayerProfile(brawlhallaId);
+    playerData.weeklyGuildPosition = playerData.availability.guildPoints ? await posicaoContribuicaoSemanal(brawlhallaId) : null;
 
     const mainEmbed = await createStatsEmbed(playerData);
     const rankedEmbed = createRankedEmbed(playerData);
@@ -753,11 +742,11 @@ export async function handleGuild(message, args, client) {
       GuildId = args[0];
     }
 
-    // Cache quente evita a mensagem de loading. A chave é a mesma que fetchGuildStatsNewAPI grava:
+    // Cache quente evita a mensagem de loading. A chave é a mesma que fetchGuildStats grava:
     // `clan:` é da rota v0 depreciada e tem outro formato (clan_id/clan_name), que chegava aqui sem
     // guild_id e fazia a busca de membros ir para a API com 'N/A'. GP vencido não é reutilizado;
     // sem resposta v1, só os dados básicos da API antiga podem aparecer.
-    const cachedData = getCached(`guild:${GuildId}`);
+    const cachedData = getCachedGuildStats(GuildId);
     if (!cachedData) {
       loadingMsg = await message.reply({ embeds: [createLoadingEmbed(`${EMOJIS.loading} Carregando informações da guilda...`, 'Buscando dados do Brawlhalla...')] });
     }
@@ -767,7 +756,7 @@ export async function handleGuild(message, args, client) {
       return await message.reply({ embeds: [await createGuildEmbed(cachedData, topSemanal)] });
     }
 
-    const guildData = await fetchGuildStatsNewAPI(GuildId, { allowLegacy: true });
+    const guildData = await fetchGuildStats(GuildId, { requireGuildPoints: false });
     await sendCleanMessage(loadingMsg, { embeds: [await createGuildEmbed(guildData, topSemanal)] });
 
   } catch (err) {
@@ -1879,7 +1868,6 @@ export async function handleDuel(message, args, client) {
           name: `${nos.nome}`,
           value:
             `👥 **Membros:** ${nos.membros}\n` +
-            `📈 **Guild Points:** ${nos.pontosAtuais.toLocaleString()}\n` +
             `🔥 **Pontos na semana:** ${ourDiff.toLocaleString()}\n` +
             `✨ **XP:** ${numero(nos.xpAtual)}\n` +
             `⚡ **XP na semana:** ${numero(nos.ganhoDeXpNaSemana)}\n` +
@@ -1890,7 +1878,6 @@ export async function handleDuel(message, args, client) {
           name: `${eles.nome}`,
           value:
             `👥 **Membros:** ${eles.membros}\n` +
-            `📈 **Guild Points:** ${eles.pontosAtuais.toLocaleString()}\n` +
             `🔥 **Pontos na semana:** ${enemyDiff.toLocaleString()}\n` +
             `✨ **XP:** ${numero(eles.xpAtual)}\n` +
             `⚡ **XP na semana:** ${numero(eles.ganhoDeXpNaSemana)}\n` +
@@ -1982,7 +1969,7 @@ export async function handleAlts(message, args) {
     const dados = await Promise.all(
       contas.map(async (c) => {
         try {
-          return { ...c, info: await fetchPlayerBasicNewAPI(c.id) };
+          return { ...c, info: await fetchPlayerBasic(c.id) };
         } catch (err) {
           console.warn(`[ALTS] Dados indisponíveis para ${c.id}:`, err.message);
           return { ...c, info: null };
