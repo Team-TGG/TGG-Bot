@@ -80,7 +80,7 @@ test('comandos, fallback e capturas semanais durante queda e recuperação da v1
     const { ensurePlayerWeeklyInfo } = await import('../src/tggCoins.js');
     const { calcularContribuicoes, MOTIVOS } = await import('../src/services/contribuicaoSemanal.js');
     const { calcularGanhoDaGuildaNaSemana, calcularDueloDaSemana } = await import('../src/services/dueloSemanal.js');
-    const { EXECUTORES } = await import('../src/handlers/iaHandlers.js');
+    const { EXECUTORES, executarConsultaIa } = await import('../src/handlers/iaHandlers.js');
     const { handleWam } = await import('../src/admin.js');
 
     await t.test('.wam aceita admin configurado sem cargo e não grava punição', async () => {
@@ -95,6 +95,36 @@ test('comandos, fallback e capturas semanais durante queda e recuperação da v1
       assert.match(embed.title, /Aviso Adicionado/);
       assert.match(embed.footer.text, /comando é fake/);
       assert.equal(inserts.length, before);
+    });
+
+    await t.test('conversa livre não depende da API de guild points', async () => {
+      const before = requests.length;
+      const response = await executarConsultaIa('conversa_livre', {}, {});
+      assert.equal(response.dados.modo, 'conversa_livre');
+      assert.equal(requests.length, before);
+    });
+
+    await t.test('IA mantém jogos disponíveis quando a v1 de guilda falha', async () => {
+      const response = await EXECUTORES.jogos_de_membro({}, { discordId: user().discord_id });
+      assert.equal(response.dados.encontrado, true);
+      assert.equal(response.dados.jogos_totais, 100);
+      assert.equal(response.dados.contribuicao_na_semana, null);
+      assert.match(response.campos.find(field => field.name === 'Contribuição').value, /Sem medição/);
+    });
+
+    await t.test('IA consulta metadados da guilda na antiga sem converter XP em GP', async () => {
+      const response = await executarConsultaIa('informacoes_da_guilda', {}, {});
+      assert.equal(response.dados.nome, 'Offline Guild');
+      assert.equal(response.dados.membros, 1);
+      assert.equal(response.dados.xp_acumulado, 3000);
+      assert.equal(response.dados.guild_points_semanais, null);
+    });
+
+    await t.test('falha de GP vira resultado honesto para a IA em vez de abortar a conversa', async () => {
+      const response = await executarConsultaIa('ranking_contribuicao', {}, {});
+      assert.equal(response.dados.dados_indisponiveis, true);
+      assert.match(response.dados.observacao, /Não inferir zeros/);
+      assert.equal(response.dados.membros, undefined);
     });
 
     await t.test('.stats edita o loading e mantém quatro abas com GP desconhecido', async () => {

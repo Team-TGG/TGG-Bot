@@ -1,9 +1,14 @@
 # IA local: Qwen 4B e Lady Vera
 
-O `.ia` pode usar `IA_PROVIDER=ollama`. O modelo seleciona uma consulta do catálogo existente;
-os executores do bot continuam buscando os dados. A segunda chamada escreve a resposta no tom
+O `.ia` pode usar `IA_PROVIDER=ollama`. Cumprimentos, dúvidas e assuntos gerais usam conversa livre,
+sem banco ou API do jogo. Quando a pergunta pede dados da guilda, o modelo seleciona uma consulta
+e os executores do bot buscam os registros. A segunda chamada escreve a resposta no tom
 da Lady Vera: sábia, altiva e ligada à luz, com ironia leve de mentora. Números, nomes, unidades,
 previsões e ressalvas continuam vindo dos registros do bot.
+
+Dados básicos da guilda aproveitam a API antiga quando a v1 falha. A consulta de jogos também
+preserva estatísticas disponíveis, deixando GP desconhecido. Falhas de uma consulta de pontos
+produzem uma explicação honesta da limitação; a conversa continua sem inventar ranking ou zeros.
 
 A personalidade fica apenas na redação, separada das instruções que escolhem a consulta.
 `GEMINI_API_KEY` não é usada nesse modo. Gemini continua disponível como provedor alternativo

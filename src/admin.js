@@ -19,7 +19,7 @@ import { getBlindagensAprovadas, getBlindagensPendentes, cobreSemana, ehPermanen
 import { calcularInativosDaSemana, inativarSemana, CONTRIBUICAO_MINIMA, LIMIAR_INATIVACAO, TOLERANCIA_INATIVACAO } from './services/weeklyInactiveService.js';
 import { calcularMediaHistorica } from './services/mediaHistorica.js';
 import { escolherFerramenta, redigirResposta, iaConfigurada } from './services/iaProvider.js';
-import { FERRAMENTAS, EXECUTORES, INSTRUCAO_ESCOLHA, INSTRUCAO_RESPOSTA } from './handlers/iaHandlers.js';
+import { FERRAMENTAS, EXECUTORES, executarConsultaIa, INSTRUCAO_ESCOLHA, INSTRUCAO_RESPOSTA, INSTRUCAO_CONVERSA } from './handlers/iaHandlers.js';
 import { escanearTickets, reconciliarTickets, CATEGORIA_TICKETS_ID } from './services/ticketQueue.js';
 import { definirResponsavel, getTicket } from './tickets.js';
 import { recalcularOrdemDaFila } from './services/ticketReorder.js';
@@ -2984,6 +2984,8 @@ export const handleIa = adminOnly(async (message, args) => {
         'Faltou a pergunta',
         'Use: `.ia <pergunta>`\n\n' +
         'Exemplos:\n' +
+        '`.ia alô, Lady Vera`\n' +
+        '`.ia como melhorar no Brawlhalla?`\n' +
         '`.ia quantos membros estão abaixo da contribuição mínima?`\n' +
         '`.ia quem são os MVPs da semana?`\n' +
         '`.ia quem contribuiu menos essa semana?`'
@@ -3010,43 +3012,34 @@ export const handleIa = adminOnly(async (message, args) => {
   }
 
   const loading = await message.reply({
-    embeds: [createLoadingEmbed(`${EMOJIS.loading} Pensando...`, 'Entendendo a pergunta e medindo a semana.')]
+    embeds: [createLoadingEmbed(`${EMOJIS.loading} Lady Vera`, 'Um instante, os sigilos estão se alinhando.')]
   });
 
   try {
-    const escolha = await escolherFerramenta({
+    const roteada = await escolherFerramenta({
       pergunta,
       ferramentas: FERRAMENTAS,
       instrucao: INSTRUCAO_ESCOLHA,
     });
 
-    const executor = escolha && EXECUTORES[escolha.nome];
-
-    if (!executor) {
-      console.warn(`[IA] sem ferramenta para "${pergunta}" (escolhido: ${escolha?.nome ?? 'nada'})`);
-      return sendCleanMessage(loading, {
-        embeds: [createErrorEmbed(
-          'Não sei responder isso',
-          'Por enquanto eu só respondo sobre **contribuição da semana** (ranking), ' +
-          '**média de contribuição por semana**, **MVPs**, **inativação**, ' +
-          '**jogos e situação de um membro** (inclusive a sua), **missões semanais** ' +
-          '(as desta semana e as da próxima), **movimentação da guilda** e o ' +
-          '**duelo semanal**. Tente reformular.'
-        )]
-      });
-    }
+    const escolha = roteada && EXECUTORES[roteada.nome] ? roteada : { nome: 'conversa_livre', args: {} };
 
     console.log(`[IA] ${message.author.tag}: "${pergunta}" -> ${escolha.nome}(${JSON.stringify(escolha.args)})`);
 
     // O autor vai junto para as ferramentas de membro resolverem "quanto eu contribuí?" sem nome
-    const { dados, titulo, campos, rodape } = await executor(escolha.args, { discordId: message.author.id });
+    const mencoes = [...new Set([...pergunta.matchAll(/<@!?(\d+)>/g)].map(match => match[1]))];
+    const { dados, titulo, campos, rodape } = await executarConsultaIa(escolha.nome, escolha.args, {
+      discordId: message.author.id, membroDiscordId: mencoes.length === 1 ? mencoes[0] : undefined,
+    });
+    const conversaLivre = dados.modo === 'conversa_livre';
 
     // Falha ao redigir não perde o trabalho: os dados abaixo já respondem a pergunta sozinhos
     const texto = await redigirResposta({
       pergunta,
       escolha,
       resultado: dados,
-      instrucao: INSTRUCAO_RESPOSTA,
+      instrucao: conversaLivre ? INSTRUCAO_CONVERSA : INSTRUCAO_RESPOSTA,
+      conversaLivre,
     }).catch(err => {
       console.warn(`[IA] falha ao redigir: ${err.message}`);
       return '';
@@ -3056,9 +3049,9 @@ export const handleIa = adminOnly(async (message, args) => {
       .setColor(0x5865f2)
       .setTitle(titulo)
       .setAuthor({ name: 'Lady Vera • A Luminária' })
-      .setDescription(texto ? texto.slice(0, 4000) : '_Os números estão abaixo._')
+      .setDescription(texto ? texto.slice(0, 4000) : conversaLivre ? 'Não consegui completar a resposta agora. Tente novamente.' : '_Os registros disponíveis estão abaixo._')
       .addFields(campos)
-      .setFooter({ text: `${rodape} • ${escolha.nome} • números do bot, texto por IA` })
+      .setFooter({ text: conversaLivre ? rodape : `${rodape} • ${escolha.nome} • dados do bot, texto por IA` })
       .setTimestamp();
 
     await sendCleanMessage(loading, { embeds: [embed] });

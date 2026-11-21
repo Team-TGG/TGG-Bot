@@ -25,6 +25,8 @@ const MAX_TITULO = 256;
 // Busca larga de propósito em alguns casos: é assim que se alcança o caminho de lista longa, que
 // é onde mora o bug de truncagem. `nome: 'a'` casou com 121 membros em 11/08/2026.
 const CASOS = [
+  ['conversa_livre', {}],
+  ['informacoes_da_guilda', {}],
   ['ranking_contribuicao', {}],
   ['ranking_contribuicao', { ordem: 'menor', limite: 15 }],
   ['media_de_contribuicao', {}],
@@ -50,6 +52,9 @@ const CASOS = [
   ['contribuicao_de_membro', {}, { semAutor: true }],
   ['contribuicao_de_membro', {}, { autorFalso: true }],
 ];
+
+const filtro = process.argv.find(arg => arg.startsWith('--consultas='))?.slice('--consultas='.length).split(',');
+const CASOS_EM_TESTE = filtro ? CASOS.filter(([nome]) => filtro.includes(nome)) : CASOS;
 
 const linha = '─'.repeat(72);
 const falhas = [];
@@ -97,12 +102,11 @@ async function autorDeVerdade() {
 
 console.log(`\n${linha}\n  EXECUTORES DO .ia\n${linha}`);
 
-const AUTOR = await autorDeVerdade();
+const AUTOR = process.env.IA_TEST_DISCORD_ID || await autorDeVerdade();
 
-// Estrutural: par declaração + executor. `nao_sei_responder` é a exceção documentada — handleIa
-// trata ferramenta sem executor como "não sei responder", que é a resposta certa para ela.
+// Estrutural: toda declaração, inclusive conversa livre, tem seu executor.
 for (const f of FERRAMENTAS) {
-  if (!EXECUTORES[f.name] && f.name !== 'nao_sei_responder') {
+  if (!EXECUTORES[f.name]) {
     err(`${f.name}: declarada para a IA e sem executor — toda pergunta que cair nela vira "não sei responder"`);
   }
 }
@@ -112,7 +116,7 @@ for (const nome of Object.keys(EXECUTORES)) {
   if (!declaradas.has(nome)) err(`${nome}: tem executor e não está em FERRAMENTAS — a IA nunca vai escolher`);
 }
 
-for (const [nome, args, opcoes = {}] of CASOS) {
+for (const [nome, args, opcoes = {}] of CASOS_EM_TESTE) {
   const contexto = opcoes.semAutor ? {}
     : opcoes.autorFalso ? { discordId: '000000000000000001' }
       : opcoes.comoAutor ? { discordId: AUTOR }
@@ -146,7 +150,7 @@ for (const [nome, args, opcoes = {}] of CASOS) {
   if (!titulo) problemas.push('sem titulo');
   if (titulo && titulo.length > MAX_TITULO) problemas.push(`titulo com ${titulo.length} caracteres`);
   if (!rodape) problemas.push('sem rodape');
-  if (!Array.isArray(campos) || !campos.length) problemas.push('sem campos');
+  if (!Array.isArray(campos) || (!campos.length && dados?.modo !== 'conversa_livre')) problemas.push('sem campos');
 
   for (const campo of campos ?? []) {
     if (!campo?.name) problemas.push('campo sem name');
@@ -184,7 +188,7 @@ for (const [nome, args, opcoes = {}] of CASOS) {
 }
 
 console.log(linha);
-console.log(`  ${CASOS.length - new Set(falhas.map(f => f.split(':')[0])).size}/${CASOS.length} casos limpos`);
+console.log(`  ${CASOS_EM_TESTE.length - new Set(falhas.map(f => f.split(':')[0])).size}/${CASOS_EM_TESTE.length} casos limpos`);
 for (const f of falhas) console.log(`  ERRO  ${f}`);
 console.log(`${linha}\n`);
 

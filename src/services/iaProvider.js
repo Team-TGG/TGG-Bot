@@ -121,22 +121,24 @@ export function createIaProvider(settings, { fetchImpl = (...args) => globalThis
     } catch { return null; }
   }
 
-  async function redigirResposta({ pergunta, escolha, resultado, instrucao }) {
+  async function redigirResposta({ pergunta, escolha, resultado, instrucao, conversaLivre = false }) {
     if (ollama) {
       const data = await chat({ think: true, options: { temperature: 0, num_ctx: 8192, num_predict: 4096 }, messages: [
         { role: 'system', content: instrucao },
         { role: 'user', content: pergunta },
-        { role: 'assistant', content: '', tool_calls: [{ function: { name: escolha.nome, arguments: escolha.args } }] },
-        { role: 'tool', tool_name: escolha.nome, content: JSON.stringify(resultado) },
+        ...(conversaLivre ? [] : [
+          { role: 'assistant', content: '', tool_calls: [{ function: { name: escolha.nome, arguments: escolha.args } }] },
+          { role: 'tool', tool_name: escolha.nome, content: JSON.stringify(resultado) },
+        ]),
       ] });
       return String(data?.message?.content || '').replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
     }
-    const call = { functionCall: { name: escolha.nome, args: escolha.args } };
+    const call = conversaLivre ? null : { functionCall: { name: escolha.nome, args: escolha.args } };
     // Gemini 3 exige reenviar a assinatura do turno original.
-    if (escolha.assinatura) call.thoughtSignature = escolha.assinatura;
+    if (!conversaLivre && escolha.assinatura) call.thoughtSignature = escolha.assinatura;
     const data = await gemini({
       system_instruction: { parts: [{ text: instrucao }] },
-      contents: [
+      contents: conversaLivre ? [{ role: 'user', parts: [{ text: pergunta }] }] : [
         { role: 'user', parts: [{ text: pergunta }] },
         { role: 'model', parts: [call] },
         { role: 'user', parts: [{ functionResponse: { name: escolha.nome, response: resultado } }] },

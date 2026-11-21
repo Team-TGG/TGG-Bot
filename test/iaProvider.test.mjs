@@ -87,6 +87,21 @@ test('pensamento não aparece no texto enviado ao Discord', async () => {
   assert.equal(await client.redigirResposta({ escolha: { nome: 'ranking', args: {} }, resultado: {}, instrucao: '', pergunta: '' }), 'Apenas a resposta.');
 });
 
+test('conversa livre no Ollama não fabrica histórico de ferramenta', async () => {
+  const { client, requests } = mock({ message: { content: 'A luz também ilumina uma boa conversa.' } });
+  const text = await client.redigirResposta({ conversaLivre: true, pergunta: 'alô', instrucao: 'Converse como Lady Vera.' });
+  assert.match(text, /boa conversa/);
+  assert.deepEqual(requests[0].body.messages.map(message => message.role), ['system', 'user']);
+  assert.equal(requests[0].body.messages[1].content, 'alô');
+});
+
+test('conversa livre no Gemini também dispensa chamada e assinatura', async () => {
+  let body;
+  const client = createIaProvider({ provedor: 'gemini', modelo: 'offline', apiKey: 'offline', timeoutMs: 1000 }, { fetchImpl: async (url, options) => { body = JSON.parse(options.body); return json({ candidates: [{ content: { parts: [{ text: 'Olá.' }] } }] }); } });
+  assert.equal(await client.redigirResposta({ conversaLivre: true, pergunta: 'alô', instrucao: 'Converse.' }), 'Olá.');
+  assert.deepEqual(body.contents, [{ role: 'user', parts: [{ text: 'alô' }] }]);
+});
+
 test('PC desconectado produz erro útil sem tentar Gemini', async () => {
   let calls = 0;
   const client = createIaProvider(settings, { fetchImpl: async () => { calls++; throw new Error('ECONNREFUSED'); } });

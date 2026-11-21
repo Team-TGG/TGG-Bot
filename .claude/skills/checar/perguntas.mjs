@@ -63,11 +63,17 @@ const CASOS = [
   ['quem foi promovido?', 'movimentacao_da_guilda'],
   ['contra quem a gente joga o duelo essa semana?', 'duelo_da_semana'],
   ['a gente tá ganhando o duelo?', 'duelo_da_semana'],
-  // Fora do catálogo: sem `nao_sei_responder` o `mode: 'ANY'` obriga o modelo a escolher uma das
-  // outras e a resposta sai confiante e errada. Ferramenta nova pode reabrir esse buraco.
-  ['quantos membros a guilda tem?', 'nao_sei_responder'],
-  ['qual o elo mais alto da guilda?', 'nao_sei_responder'],
-  ['quem tem mais TGG Coins?', 'nao_sei_responder'],
+  ['quantos membros a guilda tem?', 'informacoes_da_guilda'],
+  ['qual o elo mais alto da guilda?', 'conversa_livre'],
+  ['quem tem mais TGG Coins?', 'conversa_livre'],
+  ['alô', 'conversa_livre'],
+  ['alô Lady Vera', 'conversa_livre'],
+  ['quem é Lady Vera?', 'conversa_livre'],
+  ['me explica o que são guild points', 'conversa_livre'],
+  ['como você está hoje?', 'conversa_livre'],
+  ['me conta uma piada', 'conversa_livre'],
+  ['como melhorar no Brawlhalla?', 'conversa_livre'],
+  ['quantos jogos tem o <@321055835683946497>', 'jogos_de_membro'],
   // Missão é tarefa da guilda; contribuição é número de gente. As duas vivem na mesma semana e a
   // pergunta mistura ("o que falta essa semana?"), então os dois lados ficam na lista.
   ['quais são as missões dessa semana?', 'missoes_da_semana'],

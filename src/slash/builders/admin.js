@@ -172,7 +172,7 @@ export const adminCommands = [
 
   new SlashCommandBuilder()
     .setName('ia')
-    .setDescription('Pergunta em português sobre contribuição, MVPs e inativação da semana')
+    .setDescription('Conversa com Lady Vera e consulta os dados disponíveis da guilda')
     .addStringOption(o => o.setName('pergunta').setDescription('Ex: quantos estão abaixo do mínimo? quem são os MVPs?').setRequired(true))
     .setDefaultMemberPermissions(MOD_DEFAULT_PERMS),
 

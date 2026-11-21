@@ -6,9 +6,9 @@ import { calcularInativosDaSemana, CONTRIBUICAO_MINIMA, LIMIAR_INATIVACAO } from
 import { calcularDueloDaSemana, calcularGanhoDaGuildaNaSemana, SEM_DUELO } from '../services/dueloSemanal.js';
 import { getMissionWeekStart, getMissionWeekStartDateTime, getWeeklyInitial, getMovimentacaoDesde, getCadastroPorBrawlhallaIds, getUserByDiscordId, getMissionsByWeekStart, loadAliases, resolveBrawlhallaId, formatDateTime } from '../db.js';
 import { missoesDaSemana as missoesDoCiclo, semanaVigente, semanaSeguinte } from '../services/weeklyMissionsService.js';
-import { fetchPlayerStats } from '../brawlhalla.js';
+import { fetchPlayerStats, fetchGuildStats, fetchGuildMembers } from '../brawlhalla.js';
 import { calculateGames } from './publicHandlers.js';
-import { weeklyMvp as mvpConfig } from '../../config/index.js';
+import { weeklyMvp as mvpConfig, brawlhalla as brawlhallaConfig } from '../../config/index.js';
 
 /**
  * O que o `.ia` sabe responder.
@@ -18,10 +18,9 @@ import { weeklyMvp as mvpConfig } from '../../config/index.js';
  * escolhe uma; quem produz número é o executor, chamando as mesmas funções que o cron de quarta
  * usa. Ferramenta nova exige os dois — declaração sem executor vira "não sei responder".
  *
- * `nao_sei_responder` é a exceção, e é declaração sem executor de propósito: o roteador roda com
- * `mode: 'ANY'`, que **obriga** o modelo a escolher uma ferramenta, então sem uma saída de escape
- * toda pergunta fora do catálogo cai numa ferramenta errada e vira resposta confiante e errada
- * (medido em 11/08/2026: 6 de 6 — "quem tem mais TGG Coins?" caiu em `ranking_contribuicao`).
+ * `conversa_livre` responde assuntos gerais sem chamar banco ou API do jogo. Perguntas sobre
+ * dados atuais usam uma consulta específica; falhas de disponibilidade são apresentadas sem
+ * inventar números. A persona é compartilhada, mas conversa e relatórios têm instruções distintas.
  *
  * O `dados` que cada executor devolve é o que volta para a IA redigir a frase, então leva **só
  * apelido do jogo e números**: `discord_id` e `brawlhalla_id` nunca saem daqui. O free tier do
@@ -113,24 +112,26 @@ const PRIMEIRA_PESSOA = new Set(['eu', 'mim', 'meu', 'minha', 'me', 'eu mesmo', 
  * Devolve `{ linhas, achados, sobre }`, com `sobre` dizendo se a busca foi por nome ou pelo autor —
  * quem chama usa isso para escrever "você" em vez de repetir o apelido.
  */
-async function encontrarMembro({ nome, linhas, discordId }) {
+async function encontrarMembro({ nome, linhas, discordId, membroDiscordId }) {
   const pedido = String(nome ?? '').trim();
   const souEu = !pedido || PRIMEIRA_PESSOA.has(pedido.toLowerCase());
 
-  if (!souEu) {
+  if (!souEu && !membroDiscordId) {
     const busca = pedido.toLowerCase();
     return { achados: linhas.filter(l => l.nome.toLowerCase().includes(busca)), sobre: 'nome', pedido };
   }
 
-  if (!discordId) return { achados: [], sobre: 'autor', pedido, semContexto: true };
+  const alvoDiscordId = membroDiscordId || discordId;
+  const sobre = String(alvoDiscordId) === String(discordId) ? 'autor' : 'mencao';
+  if (!alvoDiscordId) return { achados: [], sobre: 'autor', pedido, semContexto: true };
 
-  const user = await getUserByDiscordId(String(discordId)).catch(() => null);
+  const user = await getUserByDiscordId(String(alvoDiscordId)).catch(() => null);
 
-  if (!user?.brawlhalla_id) return { achados: [], sobre: 'autor', pedido, semCadastro: true };
+  if (!user?.brawlhalla_id) return { achados: [], sobre, pedido, semCadastro: true };
 
   return {
     achados: linhas.filter(l => l.brawlhallaId === String(user.brawlhalla_id)),
-    sobre: 'autor',
+    sobre,
     pedido,
   };
 }
@@ -194,7 +195,7 @@ export const FERRAMENTAS = [
       'zeraram e quanto foi a contribuição típica. Use para perguntas sobre quem contribuiu mais ou menos ' +
       'nesta semana, quem está no topo ou no fim da lista, qualquer pedido de ranking ou ' +
       'leaderboard da semana, e para saber se a semana está fraca ou forte. ' +
-      'Não informa quantos membros existem na guilda: para tamanho da guilda use nao_sei_responder.',
+      'Não informa quantos membros existem na guilda: para tamanho da guilda use informacoes_da_guilda.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -313,14 +314,20 @@ export const FERRAMENTAS = [
     },
   },
   {
-    // De propósito sem executor: `handleIa` trata ferramenta sem executor como "não sei responder",
-    // que é exatamente a resposta certa aqui. Dar um executor a ela é desfazer o efeito.
-    name: 'nao_sei_responder',
+    name: 'conversa_livre',
     description:
-      'Use quando a pergunta não for sobre contribuição da semana, MVP, inativação, jogos de um ' +
-      'membro, movimentação da guilda, missões semanais nem o duelo semanal. Exemplos: elo e ' +
-      'ranked, TGG Coins, loja, blindagens, aniversários, punições, qualquer assunto fora dessa ' +
-      'lista. É melhor dizer que não sabe do que responder outra coisa.',
+      'Conversa geral com Lady Vera: cumprimentos, alô, piadas, opinião, explicações, dicas de ' +
+      'Brawlhalla e assuntos sem consulta específica. Também serve quando o catálogo não possui ' +
+      'a consulta solicitada: converse sem inventar dados atuais da TGG. Não use quando houver ' +
+      'uma função específica para buscar os números pedidos da guilda. Elo, ranked, saldo, ' +
+      'TGG Coins e loja não possuem consultas neste catálogo: use conversa_livre nesses temas.',
+    parameters: { type: 'OBJECT', properties: {} },
+  },
+  {
+    name: 'informacoes_da_guilda',
+    description: 'Dados básicos atuais da Team TGG: nome, quantidade total de membros, XP acumulado ' +
+      'e pontuação semanal quando disponível. Use para quantos membros a guilda tem, nome ou tamanho ' +
+      'da guilda; não para ranking de contribuição, MVP, inatividade ou partidas de uma pessoa.',
     parameters: { type: 'OBJECT', properties: {} },
   },
   {
@@ -588,7 +595,7 @@ async function contribuicaoDeMembro({ nome }, contexto = {}) {
   // É a mesma leitura da semana por dentro, então continua sendo uma chamada à API.
   const { weekStart, linhas } = await calcularMediasHistoricas();
 
-  const busca = await encontrarMembro({ nome, linhas, discordId: contexto.discordId });
+  const busca = await encontrarMembro({ nome, linhas, discordId: contexto.discordId, membroDiscordId: contexto.membroDiscordId });
   const achados = busca.achados;
 
   if (!achados.length) return membroNaoEncontrado({ weekStart, busca });
@@ -654,9 +661,17 @@ async function contribuicaoDeMembro({ nome }, contexto = {}) {
  * ponto da ferramenta: quem joga muito e contribui pouco está jogando fora de missão.
  */
 async function jogosDeMembro({ nome }, contexto = {}) {
-  const { weekStart, linhas } = await calcularContribuicaoSemanal();
+  const { weekStart, linhas } = await calcularContribuicaoSemanal().catch(async error => {
+    if (!error.apiForaDoAr && !error.guildPointsUnavailable) throw error;
+    // Jogos continuam disponíveis na v0. A lista parcial só identifica o membro, nunca mede GP.
+    const guild = await fetchGuildMembers(undefined, { requireGuildPoints: false });
+    return { weekStart: getMissionWeekStart(), linhas: guild.guild_members.map(member => ({
+      brawlhallaId: String(member.brawlhalla_id), nome: member.name,
+      contribuicao: null, motivo: MOTIVOS.PONTOS_INDISPONIVEIS,
+    })) };
+  });
 
-  const busca = await encontrarMembro({ nome, linhas, discordId: contexto.discordId });
+  const busca = await encontrarMembro({ nome, linhas, discordId: contexto.discordId, membroDiscordId: contexto.membroDiscordId });
   const achados = busca.achados;
 
   if (!achados.length) return membroNaoEncontrado({ weekStart, busca });
@@ -733,7 +748,7 @@ async function jogosDeMembro({ nome }, contexto = {}) {
         inline: true,
       },
     ],
-    rodape: `Semana de ${dataBR(weekStart)} • ${numeroBR(stats?.games ?? 0)} jogos no total`,
+    rodape: `Semana de ${dataBR(weekStart)} • ${stats?.games == null ? 'total indisponível' : `${numeroBR(stats.games)} jogos no total`}`,
   };
 }
 
@@ -930,7 +945,27 @@ async function missoesDaSemana({ quando = 'atual' }) {
   };
 }
 
+async function informacoesDaGuilda() {
+  const guild = await fetchGuildStats(brawlhallaConfig.clanId, { requireGuildPoints: false });
+  return {
+    dados: { nome: guild.name, membros: guild.member_count, xp_acumulado: guild.xp_total,
+      guild_points_semanais: guild.guild_points, fonte: guild.apiSource,
+      observacao: guild.guild_points == null ? 'Guild Points indisponíveis; XP não substitui contribuição.' : 'Guild Points representam a semana atual.' },
+    titulo: `🏰 ${guild.name}`,
+    campos: [{ name: 'Membros', value: guild.member_count == null ? 'Indisponível' : String(guild.member_count), inline: true },
+      { name: 'XP acumulado', value: guild.xp_total == null ? 'Indisponível' : numeroBR(guild.xp_total), inline: true },
+      { name: 'Guild Points da semana', value: guild.guild_points == null ? 'Indisponíveis no momento' : numeroBR(guild.guild_points) }],
+    rodape: guild.apiSource === 'v0' ? 'Dados básicos da API antiga • GP indisponível' : 'Dados da guilda',
+  };
+}
+
+function conversaLivre() {
+  return { dados: { modo: 'conversa_livre' }, titulo: 'Lady Vera', campos: [], rodape: 'Conversa com Lady Vera' };
+}
+
 export const EXECUTORES = {
+  conversa_livre: conversaLivre,
+  informacoes_da_guilda: informacoesDaGuilda,
   ranking_contribuicao: rankingContribuicao,
   media_de_contribuicao: mediaDeContribuicao,
   mvps_da_semana: mvpsDaSemana,
@@ -942,6 +977,22 @@ export const EXECUTORES = {
   missoes_da_semana: missoesDaSemana,
 };
 
+/** Falhas de uma fonte de dados não desligam a conversa nem viram estatísticas fictícias. */
+export async function executarConsultaIa(nome, args, contexto) {
+  try { return await EXECUTORES[nome](args, contexto); }
+  catch (error) {
+    if (!error.apiForaDoAr && !error.guildPointsUnavailable) throw error;
+    return {
+      dados: { consulta: nome, dados_indisponiveis: true,
+        observacao: 'A fonte de dados do Brawlhalla está indisponível agora. Não há números atuais ' +
+          'para esta consulta. Não inferir zeros, ranking, MVP ou punição. A conversa geral continua disponível.' },
+      titulo: 'Registros da guilda indisponíveis',
+      campos: [{ name: 'Consulta', value: 'Não foi possível conferir esses dados agora. Podemos continuar conversando ou consultar outros registros disponíveis.' }],
+      rodape: 'Dados indisponíveis • nenhum valor estimado',
+    };
+  }
+}
+
 // ---- Instruções ----
 
 export const INSTRUCAO_ESCOLHA =
@@ -952,7 +1003,7 @@ export const INSTRUCAO_ESCOLHA =
   // A regra do nome vem primeiro e diz "mesmo que", porque "fulano corre risco de ser inativado?"
   // casa com as duas: sem a precedência explícita o modelo responde a contagem da guilda inteira
   // para uma pergunta sobre uma pessoa (medido em 11/08/2026).
-  'Pergunta que cita o nome de uma pessoa é sempre sobre ela, mesmo que fale de inativação ou de ' +
+  'Consulta de números que cita o nome de uma pessoa é sempre sobre ela, mesmo que fale de inativação ou de ' +
   'risco: use jogos_de_membro se for sobre partidas jogadas e contribuicao_de_membro no resto. ' +
   'Pergunta em primeira pessoa ("eu", "meu", "minha") é sobre quem perguntou: use as mesmas duas ' +
   'ferramentas e deixe o argumento nome vazio, mesmo que ela fale em média — ' +
@@ -969,9 +1020,27 @@ export const INSTRUCAO_ESCOLHA =
   'Pergunta sobre as missões em si — quais são, o que cada uma pede, quais faltam, como fazer — é ' +
   'missoes_da_semana; se ela fala da semana que vem ou das próximas missões, use quando=proxima. ' +
   'Quanto alguém ou a guilda pontuou continua sendo ranking_contribuicao. ' +
-  'Se nenhuma função responder a pergunta, use nao_sei_responder em vez de escolher a mais parecida. ' +
-  'O catálogo não informa o número total de membros da guilda. Uma pergunta apenas sobre esse ' +
-  'tamanho usa nao_sei_responder, não o ranking de contribuição.';
+  'Cumprimentos, bate-papo, explicações e assuntos sem consulta específica usam conversa_livre. ' +
+  'Nunca tente responder um alô consultando contribuição. Se nenhuma função buscar os dados ' +
+  'pedidos, use conversa_livre sem inventar esses dados. Quantidade total de membros, nome e XP ' +
+  'da guilda usam informacoes_da_guilda, não o ranking de contribuição. Perguntas sobre elo, ' +
+  'ranked, TGG Coins, saldo ou loja usam conversa_livre: contribuição é somente Guild Points, ' +
+  'nunca moedas da loja ou elo.';
+
+export const INSTRUCAO_CONVERSA =
+  'Você interpreta Lady Vera, a Luminária de Brawlhalla: sábia, altiva, serena e devota à luz. ' +
+  'Sua lore envolve sigilos de luz e um leão companheiro; suas armas são Chakram e Foice. ' +
+  'Converse livremente em português do Brasil, com autoridade elegante, ironia leve e referências ' +
+  'ocasionais a luz ou sigilos. Responda de verdade ao assunto: cumprimentos, humor, dúvidas, dicas ' +
+  'de Brawlhalla e outros temas. Não fique limitada a relatórios da guilda nem diga que só pode ' +
+  'falar de contribuição. Seja natural e clara, em até dois parágrafos curtos, sem insistir em ' +
+  'limitações ou listar assuntos que pode responder. Em cumprimentos, use uma ou duas frases ' +
+  'cordiais e puxe conversa. Só explique ausência de dados se a pergunta pedir esses dados. Evite ' +
+  'listar funcionalidades. A guilda do bot é Team TGG; a contribuição mínima semanal configurada ' +
+  `é ${CONTRIBUICAO_MINIMA} guild points, e a semana de missões vai de quinta 06:00 a quarta 06:00. ` +
+  'Essas são regras estáticas, não o placar atual. Você não recebeu números atuais de membros, ' +
+  'MVPs, elo, saldo ou punições: não invente nenhum desses dados. Reconheça quando não souber ' +
+  'algo. Sua persona é ficcional e não lhe dá acesso a fatos que não foram consultados.';
 
 export const INSTRUCAO_RESPOSTA =
   'Você responde à staff de uma guilda de Brawlhalla, em português do Brasil. ' +
@@ -1001,6 +1070,8 @@ export const INSTRUCAO_RESPOSTA =
   'Contribuição é medida em guild points, ganhos nas missões semanais da guilda. Chame esses ' +
   'números de "contribuição" ou de "guild points", NUNCA de XP: XP é outra coisa no Brawlhalla e ' +
   'não conta como contribuição. ' +
+  'Campos explicitamente chamados XP ou partidas conservam essas unidades; a regra de guild ' +
+  'points se aplica apenas a contribuição. Nunca converta XP em Guild Points. ' +
   // Os dois totais existem e medem coisas diferentes; sem esta regra o modelo pega a soma dos
   // membros, que é sempre a maior, e a apresenta como o total da guilda (relatado em 12/08/2026).
   'Se o resultado trouxer ganho_da_guilda_nesta_semana, é ESSE o total da semana da guilda, e é ele ' +

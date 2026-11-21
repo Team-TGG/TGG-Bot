@@ -802,18 +802,18 @@ entre duas leituras dele é sempre 0. XP que a API não devolveu fica `null` em 
 
 ### `.ia` — pergunta em linguagem natural
 
-A IA **não calcula nada**. Ela faz duas coisas: escolhe qual função do bot responde a pergunta e
+Nos relatórios da guilda, a IA **não calcula os indicadores**. Ela escolhe qual função responde e
 escreve a frase em português a partir do resultado. Todo número sai dos mesmos serviços que decidem
 o MVP, a inativação e o `.duel` — se a IA somasse dados crus, o `.ia` daria um número que discorda
 da quarta-feira, que é exatamente o que [contribuicaoSemanal.js](src/services/contribuicaoSemanal.js)
 existe para evitar.
 
 Cada ferramenta é um **par**: a declaração que a IA lê e o executor que roda no bot, ambos em
-[src/handlers/iaHandlers.js](src/handlers/iaHandlers.js). Ferramenta nova exige os dois. A exceção é
-`nao_sei_responder`, declaração sem executor de propósito: o roteador usa `mode: 'ANY'`, que obriga o
-modelo a escolher alguma ferramenta, e sem essa saída pergunta fora do catálogo vira resposta
-confiante e errada. Ao adicionar ferramenta, **tire o assunto novo da descrição de
-`nao_sei_responder`** e da mensagem de "não sei responder isso" em `handleIa`.
+[src/handlers/iaHandlers.js](src/handlers/iaHandlers.js). `conversa_livre` atende cumprimentos e
+assuntos gerais sem consultar banco ou API. Ela usa `INSTRUCAO_CONVERSA`; os relatórios usam
+`INSTRUCAO_RESPOSTA` e só podem afirmar os dados recebidos. `informacoes_da_guilda` aproveita a v0
+para metadados; jogos continuam disponíveis sem GP. `executarConsultaIa` transforma falhas de
+disponibilidade em dados explicitamente indisponíveis, sem inventar números nem abortar a conversa.
 
 O que volta para a IA leva só apelido do jogo e números — `discord_id` e `brawlhalla_id` nunca saem
 daqui, porque o free tier pode usar o conteúdo para treino.
