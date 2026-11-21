@@ -1,0 +1,39 @@
+# IA na VPS com OpenAI
+
+O provedor `openai` mantém a conversa livre, a personalidade da Lady Vera e as consultas da guilda.
+Ele usa a Responses API, com `gpt-6-luna` como modelo padrão e raciocínio `none`.
+A VPS chama a API diretamente; o PC e o túnel do Ollama não são necessários nesse modo.
+
+## Arquivo para preencher
+
+O arquivo local `.env.openai.local`, na raiz do repositório, está ignorado pelo Git. Preencha
+somente `OPENAI_API_KEY=` e salve. O restante já está preparado:
+
+```dotenv
+IA_PROVIDER=openai
+OPENAI_MODEL=gpt-6-luna
+OPENAI_REASONING_EFFORT=none
+IA_TIMEOUT_MS=60000
+```
+
+Esse arquivo é separado da configuração de Discord, Supabase e Brawlhalla. Depois de preenchido,
+suas variáveis devem ser aplicadas ao `.env` da VPS e o bot reiniciado. Não substitua o `.env`
+inteiro por esse arquivo: as configurações dos outros serviços precisam permanecer.
+
+Editar o arquivo local não troca o provedor do bot em produção. A ativação depende da chave válida
+e da publicação das variáveis na VPS. Depois disso, o comando fica disponível 24/7 enquanto o
+processo PM2 e o serviço da API estiverem disponíveis, sem precisar manter o PC ligado.
+
+## Comportamento
+
+A chave vai apenas no cabeçalho de autorização da API. Os erros exibem o provedor e o código
+HTTP, sem repetir o corpo da resposta ou a chave. As chamadas usam `store: false`.
+O roteamento permite uma função conhecida por vez e valida seus argumentos. A redação recebe
+o resultado vinculado ao `call_id`, incluindo o estado retornado pelo modelo quando necessário.
+Perguntas gerais usam o modo de conversa, sem fabricar uma consulta aos dados da guilda.
+
+O limite é de 1.024 tokens de saída no roteamento e 2.048 na redação. `OPENAI_REASONING_EFFORT`
+pode ser alterado para uma opção suportada pelo modelo, mas `none` é a configuração preparada.
+
+Referências: [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna) e
+[function calling](https://developers.openai.com/api/docs/guides/function-calling).

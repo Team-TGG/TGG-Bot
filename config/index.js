@@ -71,6 +71,8 @@ const iaTimeout = Number(process.env.IA_TIMEOUT_MS);
 export const ia = {
   provedor: iaProvider,
   apiKey: process.env.GEMINI_API_KEY,
+  openaiApiKey: process.env.OPENAI_API_KEY,
+  openaiReasoningEffort: process.env.OPENAI_REASONING_EFFORT || 'none',
   ollamaUrl: process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434',
   // Flash Lite, não Flash: o free tier do `gemini-3.6-flash` dá 20 requisições por dia e cada
   // pergunta gasta duas (escolher a ferramenta + redigir), então eram 10 perguntas por dia. O
@@ -78,10 +80,10 @@ export const ia = {
   // Precisa ser um modelo com function calling - Gemma e os de embedding/tradução não servem.
   // Modelo aposentado devolve 404: conferir em ai.google.dev/gemini-api/docs/models e trocar por
   // env, sem mexer no código.
-  modelo: iaProvider === 'ollama' ? process.env.OLLAMA_MODEL || 'qwen3.5:4b' : process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
+  modelo: iaProvider === 'openai' ? process.env.OPENAI_MODEL || 'gpt-6-luna' : iaProvider === 'ollama' ? process.env.OLLAMA_MODEL || 'qwen3.5:4b' : process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
   // A leitura de contribuição já gasta alguns segundos antes da IA entrar; 20s é o teto de cada
   // uma das duas chamadas, para o comando não ficar pendurado se o provedor engasgar.
-  timeoutMs: Number.isFinite(iaTimeout) && iaTimeout >= 1000 && iaTimeout <= 120000 ? iaTimeout : iaProvider === 'ollama' ? 60_000 : 20_000,
+  timeoutMs: Number.isFinite(iaTimeout) && iaTimeout >= 1000 && iaTimeout <= 120000 ? iaTimeout : iaProvider === 'gemini' ? 20_000 : 60_000,
   maxPergunta: 300,
 };
 

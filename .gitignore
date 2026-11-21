@@ -4,4 +4,5 @@ cache/
 brawlhalla_cache.json
 vigia/
 .env
+.env.openai.local
 .claude/settings.local.json

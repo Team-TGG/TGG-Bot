@@ -1,21 +1,24 @@
 import { ia as config } from '../../config/index.js';
 
 const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
+const OPENAI_ENDPOINT = 'https://api.openai.com/v1/responses';
 const object = value => value != null && typeof value === 'object' && !Array.isArray(value);
 
 /** O catálogo continua independente do provedor; a IA seleciona consultas, não calcula os dados. */
 export function createIaProvider(settings, { fetchImpl = (...args) => globalThis.fetch(...args) } = {}) {
   const provider = settings.provedor || 'gemini';
   const ollama = provider === 'ollama';
+  const openai = provider === 'openai';
+  const providerName = openai ? 'OpenAI' : ollama ? 'Ollama' : 'Gemini';
   const configured = () => ollama
     ? Boolean(settings.modelo && settings.ollamaUrl && /^https?:\/\//.test(settings.ollamaUrl))
-    : provider === 'gemini' && Boolean(settings.apiKey);
+    : openai ? Boolean(settings.openaiApiKey?.trim()) : provider === 'gemini' && Boolean(settings.apiKey);
 
-  async function post(url, body) {
+  async function post(url, body, headers = {}) {
     let response;
     try {
       response = await fetchImpl(url, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
         body: JSON.stringify(body), signal: AbortSignal.timeout(settings.timeoutMs),
       });
     } catch (cause) {
@@ -27,8 +30,12 @@ export function createIaProvider(settings, { fetchImpl = (...args) => globalThis
     }
     if (!response.ok) {
       // Não repassar corpo ou URL autenticada para mensagens do Discord.
-      await response.body?.cancel().catch(() => {});
-      throw new Error(`${ollama ? 'Ollama' : 'Gemini'} respondeu HTTP ${response.status}.`);
+      const detail = openai ? await response.json().catch(() => null) : null;
+      if (!openai) await response.body?.cancel().catch(() => {});
+      const error = new Error(`${providerName} respondeu HTTP ${response.status}.`);
+      error.status = response.status;
+      if (typeof detail?.error?.code === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(detail.error.code)) error.code = detail.error.code;
+      throw error;
     }
     try { return await response.json(); }
     catch { throw new Error('O serviço de IA retornou uma resposta inválida.'); }
@@ -40,13 +47,18 @@ export function createIaProvider(settings, { fetchImpl = (...args) => globalThis
     options: { temperature: 0, num_ctx: 8192, num_predict: 512 }, ...body,
   });
   const parts = data => data?.candidates?.[0]?.content?.parts ?? [];
+  const responses = body => post(OPENAI_ENDPOINT, {
+    model: settings.modelo, store: false,
+    reasoning: { effort: settings.openaiReasoningEffort || 'none' },
+    ...body,
+  }, { Authorization: `Bearer ${settings.openaiApiKey}` });
 
   // Gemini descreve os tipos em maiúsculas; Ollama recebe JSON Schema padrão.
-  function schemaForOllama(value) {
-    if (Array.isArray(value)) return value.map(schemaForOllama);
+  function jsonSchema(value) {
+    if (Array.isArray(value)) return value.map(jsonSchema);
     if (!object(value)) return value;
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key,
-      key === 'type' && typeof item === 'string' ? item.toLowerCase() : schemaForOllama(item),
+      key === 'type' && typeof item === 'string' ? item.toLowerCase() : jsonSchema(item),
     ]));
   }
 
@@ -78,6 +90,19 @@ export function createIaProvider(settings, { fetchImpl = (...args) => globalThis
   }
 
   async function escolherFerramenta({ pergunta, ferramentas, instrucao }) {
+    if (openai) {
+      const data = await responses({
+        instructions: instrucao, input: [{ role: 'user', content: pergunta }],
+        tools: ferramentas.map(tool => ({ type: 'function', name: tool.name,
+          description: tool.description || '', parameters: jsonSchema(tool.parameters), strict: false })),
+        tool_choice: 'required', parallel_tool_calls: false, max_output_tokens: 1024,
+        include: ['reasoning.encrypted_content'],
+      });
+      const calls = (data.output || []).filter(item => item.type === 'function_call');
+      if (calls.length !== 1 || !calls[0].call_id || data.status === 'incomplete') return null;
+      const choice = normalizeChoice(calls[0].name, calls[0].arguments, ferramentas);
+      return choice ? { ...choice, openaiOutput: data.output, openaiCallId: calls[0].call_id } : null;
+    }
     if (!ollama) {
       const data = await gemini({
         system_instruction: { parts: [{ text: instrucao }] },
@@ -95,7 +120,7 @@ export function createIaProvider(settings, { fetchImpl = (...args) => globalThis
     ];
     const data = await chat({
       messages,
-      tools: ferramentas.map(tool => ({ type: 'function', function: { ...tool, parameters: schemaForOllama(tool.parameters) } })),
+      tools: ferramentas.map(tool => ({ type: 'function', function: { ...tool, parameters: jsonSchema(tool.parameters) } })),
     });
     const calls = data?.message?.tool_calls;
     if (Array.isArray(calls) && calls.length === 1) {
@@ -106,7 +131,7 @@ export function createIaProvider(settings, { fetchImpl = (...args) => globalThis
     const format = { oneOf: ferramentas.map(tool => ({
       type: 'object', properties: {
         nome: { type: 'string', const: tool.name },
-        args: { ...schemaForOllama(tool.parameters), additionalProperties: false },
+        args: { ...jsonSchema(tool.parameters), additionalProperties: false },
       }, required: ['nome', 'args'], additionalProperties: false,
     })) };
     const retry = await chat({
@@ -122,6 +147,19 @@ export function createIaProvider(settings, { fetchImpl = (...args) => globalThis
   }
 
   async function redigirResposta({ pergunta, escolha, resultado, instrucao, conversaLivre = false }) {
+    if (openai) {
+      if (!conversaLivre && !escolha?.openaiCallId) throw new Error('A chamada da consulta OpenAI não está disponível.');
+      const data = await responses({
+        instructions: instrucao, max_output_tokens: 2048,
+        input: [{ role: 'user', content: pergunta }, ...(conversaLivre ? [] : [
+          ...escolha.openaiOutput,
+          { type: 'function_call_output', call_id: escolha.openaiCallId, output: JSON.stringify(resultado) },
+        ])],
+      });
+      return (data.output || []).filter(item => item.type === 'message')
+        .flatMap(item => item.content || []).filter(item => item.type === 'output_text')
+        .map(item => item.text).join('\n').trim();
+    }
     if (ollama) {
       const data = await chat({ think: true, options: { temperature: 0, num_ctx: 8192, num_predict: 4096 }, messages: [
         { role: 'system', content: instrucao },

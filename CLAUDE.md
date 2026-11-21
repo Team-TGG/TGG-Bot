@@ -17,7 +17,8 @@ Node >= 18 (usa `fetch` nativo), ESM (`"type": "module"` — todo import precisa
 `SUPABASE_SERVICE_ROLE_KEY` (ou `SUPABASE_ANON_KEY`), `BRAWLHALLA_API_KEY`.
 Opcionais: `BRAWLHALLA_CLAN_ID` (default `'396943'` no código),
 `BOT_ADMIN_USER_IDS` (IDs do Discord separados por vírgula/espaço; acesso admin no bot, nível 4),
-`IA_PROVIDER` (`gemini` por padrão, ou `ollama`), `OLLAMA_MODEL` (default `qwen3.5:4b`),
+`IA_PROVIDER` (`gemini` por padrão, `ollama` ou `openai`), `OLLAMA_MODEL` (default `qwen3.5:4b`),
+`OPENAI_API_KEY`, `OPENAI_MODEL` (default `gpt-6-luna`), `OPENAI_REASONING_EFFORT` (default `none`),
 `OLLAMA_BASE_URL` (default `http://127.0.0.1:11434`), `IA_TIMEOUT_MS` (20s Gemini, 60s Ollama),
 `GEMINI_API_KEY` (obrigatória apenas com `IA_PROVIDER=gemini`), `GEMINI_MODEL` (default `gemini-3.5-flash-lite`),
 `IGNORE_SSL_ERRORS=true` para desligar verificação TLS (uso local), `TICKET_CYCLE_SECONDS` (default 60,
@@ -854,6 +855,9 @@ pergunta da vizinha. Depois de qualquer edição ali, rode
 Com Ollama, a escolha usa tool calling com alternativa por JSON Schema; a redação recebe o resultado
 como mensagem `tool`. O tom da Lady Vera fica só em `INSTRUCAO_RESPOSTA`, sem interferir no roteamento.
 Ver [docs/ia-ollama.md](docs/ia-ollama.md) para o Qwen 4B e a conexão privada do PC à VPS.
+Ver [docs/ia-openai.md](docs/ia-openai.md) para OpenAI direto na VPS. `.env.openai.local` contém a
+configuração privada para preencher e nunca deve entrar no Git. Sua existência local não troca
+o provedor em produção; a ativação exige aplicar as variáveis na VPS com a chave válida.
 
 Mexeu no **executor**, rode `node .claude/skills/checar/executores.mjs`, que é outra pergunta e
 outro script: um mede qual ferramenta a IA escolhe, o outro o que a ferramenta produz. Os dois
