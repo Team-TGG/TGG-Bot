@@ -1,7 +1,7 @@
 import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 
 // Comandos de administração e moderação (23)
-// default_member_permissions restringe os comandos de moderação; IA e outras exceções são públicas.
+// default_member_permissions restringe os comandos de moderação; exceções conferem acesso no handler.
 // Checks internos de DB/hierarchy permanecem nos comandos administrativos.
 const MOD_DEFAULT_PERMS = PermissionFlagsBits.ModerateMembers;
 
@@ -173,8 +173,9 @@ export const adminCommands = [
 
   new SlashCommandBuilder()
     .setName('ia')
-    .setDescription('Conversa com Lady Vera e consulta os dados disponíveis da guilda')
+    .setDescription('Staff: conversa com Lady Vera e consulta perfis e dados da guilda')
     .addStringOption(o => o.setName('pergunta').setDescription('Ex: quem é o Trinca Ferro? Qual meu elo? Quem são os MVPs?').setRequired(true))
+    // Assistants/helpers não precisam de ModerateMembers; o handler exige staff nos dois formatos.
     .setDefaultMemberPermissions(null),
 
   // Sem permissão padrão: a regra é helper para cima, conferida no handler, e não uma permissão do Discord.

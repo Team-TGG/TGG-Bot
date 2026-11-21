@@ -2974,6 +2974,13 @@ export const handleScan = adminOnly(async (message, args, client) => {
 // frase — todo número vem de `EXECUTORES`, que chamam as mesmas funções do cron de quarta. O embed
 // mostra os dados de verdade abaixo do texto, então dá para conferir a resposta sem confiar nela.
 export const handleIa = async (message, args) => {
+  if (!hasPermission(message.member, 1) && !await isAdmin(message.author.id)) {
+    return message.reply({ embeds: [createErrorEmbed(
+      'Acesso Negado',
+      'Apenas assistants, helpers ou superiores da staff podem usar a IA.'
+    )] });
+  }
+
   const pergunta = String(
     message.interaction ? message.interaction.options.getString('pergunta') : args.join(' ')
   ).trim();

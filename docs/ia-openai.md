@@ -26,9 +26,11 @@ processo PM2 e o serviço da API estiverem disponíveis, sem precisar manter o P
 
 ## Comportamento
 
-Todos os membros do servidor podem usar `.ia` e `/ia`, sem cargo de administrador ou cadastro
-prévio no bot. As regras de canal e o intervalo geral de 5 segundos para quem não é staff continuam
-valendo. Consultas pessoais usam o cadastro do membro quando ele existe.
+Somente a staff (Assistant, Helper ou superiores) e administradores já autorizados no bot podem
+usar `.ia` e `/ia`. O handler verifica o acesso antes de consultar a IA ou os dados do jogo.
+O slash não exige uma permissão de moderação do Discord, pois Assistants/Helpers podem não tê-la;
+a restrição é aplicada pelo bot nos dois formatos. As regras de canal continuam valendo.
+Consultas pessoais usam o cadastro do membro quando ele existe.
 
 Perguntas como `.ia quem é o Trinca Ferro?`, `.ia qual o elo do Trinca Ferro?` ou
 `.ia qual lenda o Trinca Ferro mais joga?` usam `perfil_de_jogador`.
