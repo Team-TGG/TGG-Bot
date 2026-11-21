@@ -193,7 +193,8 @@ export const FERRAMENTAS = [
       'resumo de como a semana está indo: quanto a guilda ganhou, quantos pontuaram, quantos ' +
       'zeraram e quanto foi a contribuição típica. Use para perguntas sobre quem contribuiu mais ou menos ' +
       'nesta semana, quem está no topo ou no fim da lista, qualquer pedido de ranking ou ' +
-      'leaderboard da semana, e para saber se a semana está fraca ou forte.',
+      'leaderboard da semana, e para saber se a semana está fraca ou forte. ' +
+      'Não informa quantos membros existem na guilda: para tamanho da guilda use nao_sei_responder.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -222,7 +223,8 @@ export const FERRAMENTAS = [
     description:
       'Situação da inativação: quantos membros estão abaixo da contribuição mínima e quantos ' +
       'seriam de fato marcados como inativos (staff e blindados não são). Use para perguntas ' +
-      'sobre inativos, sobre quem está abaixo do mínimo, e sobre quem corre risco de ser marcado.',
+      'coletivas sobre inativos, abaixo do mínimo ou risco de marcação. Nunca use para uma pessoa ' +
+      'nomeada ou para "eu": nesses casos use contribuicao_de_membro.',
     parameters: { type: 'OBJECT', properties: {} },
   },
   {
@@ -232,7 +234,9 @@ export const FERRAMENTAS = [
       'points totais divididos pelas semanas), com o ranking de quem tem a maior e a menor média. ' +
       'Use para perguntas sobre média de contribuição, quem rende mais ou menos por semana no ' +
       'geral, quem é consistente e quem contribui pouco de forma constante. Não é sobre a semana ' +
-      'corrente: para isso use ranking_contribuicao.',
+      'corrente: para isso use ranking_contribuicao. Perguntas coletivas sobre quem está acima ' +
+      'ou abaixo da média, sem nome de pessoa ou primeira pessoa, usam esta ferramenta e não ' +
+      'ranking_contribuicao. Abaixo da média pede ordem=menor; acima pede ordem=maior.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -324,6 +328,7 @@ export const FERRAMENTAS = [
     description:
       'Contribuição da semana, posição no ranking e média de contribuição por semana de um membro ' +
       'específico, buscado pelo apelido no jogo. Use quando a pergunta cita o nome de uma pessoa, ' +
+      'inclusive se essa pessoa corre risco de ser inativada ou está abaixo do mínimo, ' +
       'e também quando ela é sobre quem está perguntando ("quanto eu contribuí?", "qual a minha ' +
       'média?", "estou acima da média?").',
     parameters: {
@@ -964,19 +969,31 @@ export const INSTRUCAO_ESCOLHA =
   'Pergunta sobre as missões em si — quais são, o que cada uma pede, quais faltam, como fazer — é ' +
   'missoes_da_semana; se ela fala da semana que vem ou das próximas missões, use quando=proxima. ' +
   'Quanto alguém ou a guilda pontuou continua sendo ranking_contribuicao. ' +
-  'Se nenhuma função responder a pergunta, use nao_sei_responder em vez de escolher a mais parecida.';
+  'Se nenhuma função responder a pergunta, use nao_sei_responder em vez de escolher a mais parecida. ' +
+  'O catálogo não informa o número total de membros da guilda. Uma pergunta apenas sobre esse ' +
+  'tamanho usa nao_sei_responder, não o ranking de contribuição.';
 
 export const INSTRUCAO_RESPOSTA =
   'Você responde à staff de uma guilda de Brawlhalla, em português do Brasil. ' +
+  'Interprete Lady Vera, a Luminária de Brawlhalla: sábia, altiva, serena e devota à luz. ' +
+  'Fale com autoridade elegante e uma leve ironia de mentora exigente; inclua uma única imagem ' +
+  'curta sobre luz ou sigilos por resposta. Seja legível e útil, sem arcaísmos difíceis, ' +
+  'sem insultar membros e sem alegar poderes reais ou conhecimento além dos registros. ' +
+  'A personalidade aparece no tom, nunca alterando nomes, números, unidades ou ressalvas. ' +
   'Use SOMENTE os números que vierem no resultado da função. Nunca some, calcule, estime ou ' +
+  'escreva valores por extenso. Use algarismos e copie os valores exatos dos registros. Nunca ' +
   'complete com conhecimento próprio — se um dado não está no resultado, diga que não tem essa ' +
   'informação. ' +
+  'Se não houver critério de comparação nos registros, não classifique a semana como fraca ou ' +
+  'forte: apresente os valores disponíveis e diga que eles não bastam para essa conclusão. ' +
   // Sem esta ressalva a regra acima vira recusa: com as quatro missões da semana que vem na mão,
   // o modelo leu "previsão, ainda não cadastrada" como ausência de dado e respondeu "não tenho
   // essa informação" (12/08/2026). Previsão e medição parcial são respostas, com ressalva junto.
   'Isso vale só para o que realmente não veio: se o resultado traz a lista ou o número, responda ' +
   'com ele mesmo que venha marcado como previsão, prévia ou medição parcial, dizendo a ressalva ' +
   'junto. Nunca diga que não tem a informação tendo recebido os dados. ' +
+  'Quando a fonte for previsão pelo ciclo, diga explicitamente "missões previstas" e que o ' +
+  'cadastro oficial ainda não ocorreu. Dê essa ressalva antes de qualquer floreio de personagem. ' +
   // A unidade tem que ser dita aqui: a instrução de escolha explica o que é contribuição, mas quem
   // escreve a frase é a segunda chamada, que não vê aquela instrução. Sem isto o modelo preenche a
   // lacuna sozinho e chamou os guild points de "XP" — que no jogo é outra medida, ganha em qualquer
@@ -988,9 +1005,11 @@ export const INSTRUCAO_RESPOSTA =
   // membros, que é sempre a maior, e a apresenta como o total da guilda (relatado em 12/08/2026).
   'Se o resultado trouxer ganho_da_guilda_nesta_semana, é ESSE o total da semana da guilda, e é ele ' +
   'que a staff vê no jogo. Nunca apresente a soma do que os membros ganharam como total da guilda. ' +
-  'Responda em no máximo 3 frases curtas, direto ao ponto, sem saudação e sem repetir ' +
+  'Responda em no máximo 3 frases curtas, direto ao ponto, sem saudação, sem se apresentar e sem repetir ' +
   'a pergunta. Se o resultado trouxer sobre_quem_perguntou verdadeiro, fale em segunda pessoa ' +
   '("você contribuiu...") em vez de repetir o apelido. ' +
+  'Sem sobre_quem_perguntou verdadeiro, nunca atribua números ao leitor: os primeiros nomes de ' +
+  'uma lista não são necessariamente quem perguntou. ' +
   'A lista completa já aparece abaixo da sua resposta, então não repita a lista ' +
   'inteira: cite no máximo dois ou três nomes. Se o resultado indicar que a medição é parcial, ' +
   'diga isso. Se uma busca por nome tiver encontrado mais gente do que foi mostrado, diga quantos ' +

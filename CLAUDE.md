@@ -17,7 +17,9 @@ Node >= 18 (usa `fetch` nativo), ESM (`"type": "module"` — todo import precisa
 `SUPABASE_SERVICE_ROLE_KEY` (ou `SUPABASE_ANON_KEY`), `BRAWLHALLA_API_KEY`.
 Opcionais: `BRAWLHALLA_CLAN_ID` (default `'396943'` no código),
 `BOT_ADMIN_USER_IDS` (IDs do Discord separados por vírgula/espaço; acesso admin no bot, nível 4),
-`GEMINI_API_KEY` (sem ela só o `.ia` fica desligado), `GEMINI_MODEL` (default `gemini-3.5-flash-lite`),
+`IA_PROVIDER` (`gemini` por padrão, ou `ollama`), `OLLAMA_MODEL` (default `qwen3.5:4b`),
+`OLLAMA_BASE_URL` (default `http://127.0.0.1:11434`), `IA_TIMEOUT_MS` (20s Gemini, 60s Ollama),
+`GEMINI_API_KEY` (obrigatória apenas com `IA_PROVIDER=gemini`), `GEMINI_MODEL` (default `gemini-3.5-flash-lite`),
 `IGNORE_SSL_ERRORS=true` para desligar verificação TLS (uso local), `TICKET_CYCLE_SECONDS` (default 60,
 piso 15) para o ciclo da fila por tickets. `win-ca` carrega os certificados do Windows.
 O `.env` ainda tem `TGG_API_URL`, `TGG_API_KEY` e `GUILD_ACTIVITY_CHANNEL_ID` — sobras dos módulos removidos,
@@ -847,8 +849,11 @@ quantos zeraram, média e mediana da semana — que é o que responde "a semana 
 Quem decide o roteamento é a `description` de cada ferramenta, então mexer numa pode roubar
 pergunta da vizinha. Depois de qualquer edição ali, rode
 `node .claude/skills/checar/perguntas.mjs` — a lista de perguntas de referência é o que separa
-"consertei" de "troquei um erro por outro". A segunda chamada precisa devolver o `thoughtSignature`
-da primeira; sem ele os modelos Gemini 3 recusam com 400 e a frase some do embed sem erro visível.
+"consertei" de "troquei um erro por outro". Com Gemini, a segunda chamada precisa devolver o
+`thoughtSignature` da primeira; sem ele os modelos Gemini 3 recusam com 400 e a frase some do embed.
+Com Ollama, a escolha usa tool calling com alternativa por JSON Schema; a redação recebe o resultado
+como mensagem `tool`. O tom da Lady Vera fica só em `INSTRUCAO_RESPOSTA`, sem interferir no roteamento.
+Ver [docs/ia-ollama.md](docs/ia-ollama.md) para o Qwen 4B e a conexão privada do PC à VPS.
 
 Mexeu no **executor**, rode `node .claude/skills/checar/executores.mjs`, que é outra pergunta e
 outro script: um mede qual ferramenta a IA escolhe, o outro o que a ferramenta produz. Os dois

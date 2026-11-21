@@ -65,20 +65,23 @@ export const brawlhalla = {
 
 // Consulta em linguagem natural (`.ia`) - ver src/services/iaProvider.js.
 // A IA só escolhe qual função do bot responde a pergunta e escreve a frase; todo número sai do
-// código, das mesmas funções que decidem o MVP e a inativação. Sem `GEMINI_API_KEY` o comando
-// avisa que está desligado e nada mais no bot muda.
+// código, das mesmas funções que decidem o MVP e a inativação.
+const iaProvider = (process.env.IA_PROVIDER || 'gemini').trim().toLowerCase();
+const iaTimeout = Number(process.env.IA_TIMEOUT_MS);
 export const ia = {
+  provedor: iaProvider,
   apiKey: process.env.GEMINI_API_KEY,
+  ollamaUrl: process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434',
   // Flash Lite, não Flash: o free tier do `gemini-3.6-flash` dá 20 requisições por dia e cada
   // pergunta gasta duas (escolher a ferramenta + redigir), então eram 10 perguntas por dia. O
   // 3.5-flash-lite dá 500 (medido em 11/08/2026), e a tarefa aqui é roteamento, não raciocínio.
   // Precisa ser um modelo com function calling - Gemma e os de embedding/tradução não servem.
   // Modelo aposentado devolve 404: conferir em ai.google.dev/gemini-api/docs/models e trocar por
   // env, sem mexer no código.
-  modelo: process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
+  modelo: iaProvider === 'ollama' ? process.env.OLLAMA_MODEL || 'qwen3.5:4b' : process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
   // A leitura de contribuição já gasta alguns segundos antes da IA entrar; 20s é o teto de cada
   // uma das duas chamadas, para o comando não ficar pendurado se o provedor engasgar.
-  timeoutMs: 20_000,
+  timeoutMs: Number.isFinite(iaTimeout) && iaTimeout >= 1000 && iaTimeout <= 120000 ? iaTimeout : iaProvider === 'ollama' ? 60_000 : 20_000,
   maxPergunta: 300,
 };
 

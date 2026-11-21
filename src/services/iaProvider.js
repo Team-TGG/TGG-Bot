@@ -1,107 +1,153 @@
 import { ia as config } from '../../config/index.js';
 
-/**
- * Cliente da API do Gemini — a única parte do `.ia` que sabe qual provedor de IA está em uso.
- * Trocar de provedor (Groq, OpenRouter, Claude) é reescrever este arquivo e mais nada: o catálogo
- * de ferramentas e a montagem do embed ficam em [iaHandlers.js](../handlers/iaHandlers.js).
- *
- * **A IA não calcula nada.** Ela faz duas coisas: escolhe qual função do bot responde a pergunta
- * (`escolherFerramenta`) e escreve a frase em português a partir do resultado (`redigirResposta`).
- * Os números saem do mesmo código que decide o MVP e a inativação na quarta-feira — se a IA
- * somasse por conta própria, o `.ia` daria um número que discorda do cron, que é exatamente o que
- * [contribuicaoSemanal.js](./contribuicaoSemanal.js) existe para evitar.
- *
- * Escolhido pelo free tier: o AI Studio libera um volume diário que este bot não chega perto de
- * gastar, e a rota é um POST com `fetch` — sem dependência nova.
- */
+const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
+const object = value => value != null && typeof value === 'object' && !Array.isArray(value);
 
-const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
+/** O catálogo continua independente do provedor; a IA seleciona consultas, não calcula os dados. */
+export function createIaProvider(settings, { fetchImpl = (...args) => globalThis.fetch(...args) } = {}) {
+  const provider = settings.provedor || 'gemini';
+  const ollama = provider === 'ollama';
+  const configured = () => ollama
+    ? Boolean(settings.modelo && settings.ollamaUrl && /^https?:\/\//.test(settings.ollamaUrl))
+    : provider === 'gemini' && Boolean(settings.apiKey);
 
-/** Se está configurado. Sem chave o comando avisa que está desligado; o resto do bot não muda. */
-export function iaConfigurada() {
-  return Boolean(config.apiKey);
-}
-
-async function chamar(body) {
-  const url = `${ENDPOINT}/${config.modelo}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
-
-  const resposta = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(config.timeoutMs),
-  });
-
-  if (!resposta.ok) {
-    // O corpo do erro do Gemini diz se é cota, chave inválida ou schema recusado - vale no log
-    const detalhe = await resposta.text().catch(() => '');
-    throw new Error(`Gemini respondeu ${resposta.status}: ${detalhe.slice(0, 300)}`);
+  async function post(url, body) {
+    let response;
+    try {
+      response = await fetchImpl(url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body), signal: AbortSignal.timeout(settings.timeoutMs),
+      });
+    } catch (cause) {
+      const error = new Error(ollama
+        ? 'Ollama local indisponível. Confira se o PC, o Ollama e a conexão com a VPS estão ativos.'
+        : 'Não foi possível consultar o serviço de IA.', { cause });
+      if (ollama) error.iaLocalIndisponivel = true;
+      throw error;
+    }
+    if (!response.ok) {
+      // Não repassar corpo ou URL autenticada para mensagens do Discord.
+      await response.body?.cancel().catch(() => {});
+      throw new Error(`${ollama ? 'Ollama' : 'Gemini'} respondeu HTTP ${response.status}.`);
+    }
+    try { return await response.json(); }
+    catch { throw new Error('O serviço de IA retornou uma resposta inválida.'); }
   }
 
-  return resposta.json();
-}
-
-function partesDaResposta(dados) {
-  return dados?.candidates?.[0]?.content?.parts ?? [];
-}
-
-/**
- * Traduz a pergunta em uma chamada de função. Devolve `null` quando o modelo não escolheu nada —
- * quem chama trata isso como "não entendi", nunca como erro.
- *
- * `mode: 'ANY'` obriga o modelo a escolher uma ferramenta em vez de responder de cabeça. Sem isso
- * ele às vezes devolve texto inventado sobre a guilda, que é o pior resultado possível aqui.
- */
-export async function escolherFerramenta({ pergunta, ferramentas, instrucao }) {
-  const dados = await chamar({
-    system_instruction: { parts: [{ text: instrucao }] },
-    contents: [{ role: 'user', parts: [{ text: pergunta }] }],
-    tools: [{ function_declarations: ferramentas }],
-    tool_config: { function_calling_config: { mode: 'ANY' } },
+  const gemini = body => post(`${GEMINI_ENDPOINT}/${settings.modelo}:generateContent?key=${encodeURIComponent(settings.apiKey)}`, body);
+  const chat = body => post(`${settings.ollamaUrl.replace(/\/+$/, '')}/api/chat`, {
+    model: settings.modelo, stream: false, think: false, keep_alive: '10m',
+    options: { temperature: 0, num_ctx: 8192, num_predict: 512 }, ...body,
   });
+  const parts = data => data?.candidates?.[0]?.content?.parts ?? [];
 
-  const parte = partesDaResposta(dados).find(p => p.functionCall);
+  // Gemini descreve os tipos em maiúsculas; Ollama recebe JSON Schema padrão.
+  function schemaForOllama(value) {
+    if (Array.isArray(value)) return value.map(schemaForOllama);
+    if (!object(value)) return value;
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key,
+      key === 'type' && typeof item === 'string' ? item.toLowerCase() : schemaForOllama(item),
+    ]));
+  }
 
-  if (!parte?.functionCall?.name) return null;
+  function validArgs(args, schema) {
+    if (!object(args)) return false;
+    const properties = schema?.properties || {};
+    if ((schema?.required || []).some(key => args[key] == null)) return false;
+    return Object.entries(args).every(([key, value]) => {
+      if (!Object.hasOwn(properties, key)) return false;
+      const rule = properties[key];
+      if (value == null && !(schema?.required || []).includes(key)) return true;
+      const type = rule.type?.toLowerCase();
+      if (type === 'string' && typeof value !== 'string') return false;
+      if (type === 'integer' && !Number.isSafeInteger(value)) return false;
+      if (type === 'number' && (typeof value !== 'number' || !Number.isFinite(value))) return false;
+      if (type === 'boolean' && typeof value !== 'boolean') return false;
+      if (rule.enum && !rule.enum.includes(value)) return false;
+      return true;
+    });
+  }
 
-  // `assinatura` só existe para ser devolvida em `redigirResposta` - ver o comentário de lá.
-  return {
-    nome: parte.functionCall.name,
-    args: parte.functionCall.args ?? {},
-    assinatura: parte.thoughtSignature ?? null,
-  };
+  function normalizeChoice(name, args, tools) {
+    const tool = tools.find(item => item.name === name);
+    if (!tool) return null;
+    if (typeof args === 'string') { try { args = JSON.parse(args); } catch { return null; } }
+    args ??= {};
+    if (!validArgs(args, tool.parameters)) return null;
+    return { nome: name, args: Object.fromEntries(Object.entries(args).filter(([, value]) => value != null)), assinatura: null };
+  }
+
+  async function escolherFerramenta({ pergunta, ferramentas, instrucao }) {
+    if (!ollama) {
+      const data = await gemini({
+        system_instruction: { parts: [{ text: instrucao }] },
+        contents: [{ role: 'user', parts: [{ text: pergunta }] }],
+        tools: [{ function_declarations: ferramentas }],
+        tool_config: { function_calling_config: { mode: 'ANY' } },
+      });
+      const part = parts(data).find(item => item.functionCall);
+      if (!part?.functionCall?.name) return null;
+      return { nome: part.functionCall.name, args: part.functionCall.args ?? {}, assinatura: part.thoughtSignature ?? null };
+    }
+    const messages = [
+      { role: 'system', content: `${instrucao} Retorne exatamente uma chamada de função. Não responda à pergunta em texto.` },
+      { role: 'user', content: pergunta },
+    ];
+    const data = await chat({
+      messages,
+      tools: ferramentas.map(tool => ({ type: 'function', function: { ...tool, parameters: schemaForOllama(tool.parameters) } })),
+    });
+    const calls = data?.message?.tool_calls;
+    if (Array.isArray(calls) && calls.length === 1) {
+      const choice = normalizeChoice(calls[0].function?.name, calls[0].function?.arguments, ferramentas);
+      if (choice) return choice;
+    }
+    // O Ollama não força tool_choice=ANY: uma saída estruturada garante uma única escolha válida.
+    const format = { oneOf: ferramentas.map(tool => ({
+      type: 'object', properties: {
+        nome: { type: 'string', const: tool.name },
+        args: { ...schemaForOllama(tool.parameters), additionalProperties: false },
+      }, required: ['nome', 'args'], additionalProperties: false,
+    })) };
+    const retry = await chat({
+      messages: [
+        { role: 'system', content: `${instrucao}\nEscolha uma função do catálogo e responda apenas com JSON no formato {"nome":"funcao","args":{}}.\nCatálogo: ${JSON.stringify(ferramentas)}` },
+        { role: 'user', content: pergunta },
+      ], format,
+    });
+    try {
+      const choice = JSON.parse(retry?.message?.content || '');
+      return normalizeChoice(choice.nome, choice.args, ferramentas);
+    } catch { return null; }
+  }
+
+  async function redigirResposta({ pergunta, escolha, resultado, instrucao }) {
+    if (ollama) {
+      const data = await chat({ think: true, options: { temperature: 0, num_ctx: 8192, num_predict: 4096 }, messages: [
+        { role: 'system', content: instrucao },
+        { role: 'user', content: pergunta },
+        { role: 'assistant', content: '', tool_calls: [{ function: { name: escolha.nome, arguments: escolha.args } }] },
+        { role: 'tool', tool_name: escolha.nome, content: JSON.stringify(resultado) },
+      ] });
+      return String(data?.message?.content || '').replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
+    }
+    const call = { functionCall: { name: escolha.nome, args: escolha.args } };
+    // Gemini 3 exige reenviar a assinatura do turno original.
+    if (escolha.assinatura) call.thoughtSignature = escolha.assinatura;
+    const data = await gemini({
+      system_instruction: { parts: [{ text: instrucao }] },
+      contents: [
+        { role: 'user', parts: [{ text: pergunta }] },
+        { role: 'model', parts: [call] },
+        { role: 'user', parts: [{ functionResponse: { name: escolha.nome, response: resultado } }] },
+      ],
+    });
+    return parts(data).map(part => part.text).filter(Boolean).join('').trim();
+  }
+  return { iaConfigurada: configured, escolherFerramenta, redigirResposta };
 }
 
-/**
- * Escreve a resposta em português a partir do resultado da ferramenta.
- *
- * O `contents` reconstrói o turno inteiro (pergunta → chamada → resultado) porque a API é sem
- * estado. `functionResponse.response` precisa ser objeto, nunca array.
- *
- * O `thoughtSignature` que veio na primeira chamada tem que voltar junto do `functionCall`: sem ele
- * os modelos Gemini 3 recusam o turno reconstruído com **400** (`Function call is missing a
- * thought_signature`) e a resposta nunca é escrita — como o erro cai no `.catch` de quem chama, o
- * comando continua respondendo com os dados e a falha passa despercebida. Medido em 11/08/2026 no
- * `gemini-3.5-flash-lite`. Mandar o resultado como texto simples também contorna o 400, mas aí o
- * modelo perde o contexto da ferramenta e inventa a unidade (chamou guild points de "XP" no teste).
- */
-export async function redigirResposta({ pergunta, escolha, resultado, instrucao }) {
-  const chamadaDoModelo = { functionCall: { name: escolha.nome, args: escolha.args } };
-
-  if (escolha.assinatura) chamadaDoModelo.thoughtSignature = escolha.assinatura;
-
-  const dados = await chamar({
-    system_instruction: { parts: [{ text: instrucao }] },
-    contents: [
-      { role: 'user', parts: [{ text: pergunta }] },
-      { role: 'model', parts: [chamadaDoModelo] },
-      { role: 'user', parts: [{ functionResponse: { name: escolha.nome, response: resultado } }] },
-    ],
-  });
-
-  return partesDaResposta(dados)
-    .map(p => p.text)
-    .filter(Boolean)
-    .join('')
-    .trim();
-}
+const client = createIaProvider(config);
+export const iaConfigurada = (...args) => client.iaConfigurada(...args);
+export const escolherFerramenta = (...args) => client.escolherFerramenta(...args);
+export const redigirResposta = (...args) => client.redigirResposta(...args);

@@ -2995,8 +2995,7 @@ export const handleIa = adminOnly(async (message, args) => {
     return message.reply({
       embeds: [createErrorEmbed(
         'IA desligada',
-        'Falta a `GEMINI_API_KEY` no `.env`. Pegue uma chave gratuita em ' +
-        'https://aistudio.google.com/apikey e reinicie o bot.'
+        'A IA ainda não está disponível. Peça à administração para conferir a configuração.'
       )]
     });
   }
@@ -3056,6 +3055,7 @@ export const handleIa = adminOnly(async (message, args) => {
     const embed = new EmbedBuilder()
       .setColor(0x5865f2)
       .setTitle(titulo)
+      .setAuthor({ name: 'Lady Vera • A Luminária' })
       .setDescription(texto ? texto.slice(0, 4000) : '_Os números estão abaixo._')
       .addFields(campos)
       .setFooter({ text: `${rodape} • ${escolha.nome} • números do bot, texto por IA` })
@@ -3064,9 +3064,11 @@ export const handleIa = adminOnly(async (message, args) => {
     await sendCleanMessage(loading, { embeds: [embed] });
 
   } catch (err) {
-    console.error('[IA]', err);
+    if (!err.iaLocalIndisponivel) console.error('[IA]', err);
     await sendCleanMessage(loading, {
-      embeds: [createErrorEmbed('Erro na consulta', err.message)]
+      embeds: [err.iaLocalIndisponivel
+        ? createWarningEmbed('Lady Vera está em repouso', 'A IA local é ativada manualmente. Ative a conexão no PC para consultar os registros.')
+        : createErrorEmbed('Erro na consulta', err.message)]
     });
   }
 });

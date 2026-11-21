@@ -15,6 +15,13 @@ import { pathToFileURL } from 'node:url';
 
 const ROOT = process.cwd();
 const importar = (rel) => import(pathToFileURL(join(ROOT, rel)).href);
+// O catálogo importa módulos que criam intervalos. Eles não devem manter o teste vivo.
+const setIntervalOriginal = globalThis.setInterval;
+globalThis.setInterval = (...args) => {
+  const timer = setIntervalOriginal(...args);
+  timer.unref?.();
+  return timer;
+};
 
 const { FERRAMENTAS, INSTRUCAO_ESCOLHA, INSTRUCAO_RESPOSTA } = await importar('src/handlers/iaHandlers.js');
 const { escolherFerramenta, redigirResposta, iaConfigurada } = await importar('src/services/iaProvider.js');
@@ -70,6 +77,8 @@ const CASOS = [
   ['quais as próximas missões?', 'missoes_da_semana', { quando: 'proxima' }],
 ];
 
+const CASOS_EM_TESTE = process.argv.includes('--somente-respostas') ? [] : CASOS;
+
 /**
  * A segunda chamada do `.ia`: a que escreve a frase. Cada caso é um resultado inventado, com a
  * forma que o executor devolve, e o que a frase precisa (ou não pode) dizer sobre ele — dá para
@@ -108,6 +117,11 @@ const RESPOSTAS = [
         rotulo: 'a unidade sai certa (guild points, não XP)',
         erro: 'a resposta chamou os guild points de "XP" - XP é a medida que não conta como contribuição',
         ok: (texto) => !/\bxp\b/i.test(texto),
+      },
+      {
+        rotulo: 'ranking coletivo não atribui a primeira linha a quem perguntou',
+        erro: 'a resposta inventou contribuição pessoal do leitor a partir de uma lista coletiva',
+        ok: (texto) => !/sua contribui|você contribuiu|seus (guild points|pontos)/i.test(texto),
       },
       {
         // Os dois totais da semana medem coisas diferentes e o dos membros é sempre o maior. A
@@ -154,6 +168,11 @@ const RESPOSTAS = [
         erro: 'a resposta chamou a previsão do ciclo de "missões cadastradas" - elas só são cadastradas na quinta 06:00',
         ok: (texto) => !/missões cadastradas/i.test(texto) || /não (foram|estão|são)/i.test(texto),
       },
+      {
+        rotulo: 'a origem prevista da lista fica explícita',
+        erro: 'a resposta omitiu que as missões são previstas pelo ciclo',
+        ok: (texto) => /previst|previsão|pelo ciclo/i.test(texto),
+      },
     ],
   },
 ];
@@ -161,7 +180,7 @@ const RESPOSTAS = [
 // O free tier limita por minuto, não só por dia: 16 perguntas seguidas levam 429 no fim da lista
 // (medido em 11/08/2026 — um minuto depois a mesma chave responde 200). O intervalo mantém o ritmo
 // abaixo do teto e o retry cobre o caso de a lista crescer ou de o bot estar sendo usado junto.
-const INTERVALO_MS = 5_000;
+const INTERVALO_MS = config.provedor === 'ollama' ? 0 : 5_000;
 const ESPERA_APOS_429_MS = 65_000;
 const ESPERA_APOS_FALHA_MS = 3_000;
 
@@ -197,7 +216,7 @@ async function comRetry(fn) {
 }
 
 if (!iaConfigurada()) {
-  console.error('\n  Falta a GEMINI_API_KEY no .env. Sem ela não dá para medir o roteamento.\n');
+  console.error('\n  Provedor de IA não configurado. Confira IA_PROVIDER e as variáveis do provedor no .env.\n');
   process.exit(2);
 }
 
@@ -216,9 +235,9 @@ function argumentosBatem(esperados, recebidos = {}) {
   });
 }
 
-console.log(`\n${linha}\n  PERGUNTAS DE REFERÊNCIA DO .ia  —  ${config.modelo}\n${linha}`);
+console.log(`\n${linha}\n  PERGUNTAS DE REFERÊNCIA DO .ia  —  ${config.provedor}: ${config.modelo}\n${linha}`);
 
-for (const [indice, [pergunta, ferramenta, argsEsperados]] of CASOS.entries()) {
+for (const [indice, [pergunta, ferramenta, argsEsperados]] of CASOS_EM_TESTE.entries()) {
   let escolha = null;
   let erro = null;
 
@@ -275,7 +294,7 @@ for (const { pergunta, resultado, checagens } of RESPOSTAS) {
       continue;
     }
 
-    console.log(`  ok    ${JSON.stringify(pergunta)}: "${texto.slice(0, 80)}${texto.length > 80 ? '…' : ''}"`);
+    console.log(`  ok    ${JSON.stringify(pergunta)}: ${JSON.stringify(texto)}`);
 
     for (const { rotulo, erro, ok } of checagens) {
       if (ok(texto)) {
@@ -294,10 +313,9 @@ for (const { pergunta, resultado, checagens } of RESPOSTAS) {
 // O par declaração + executor é conferido pelo executores.mjs, que roda sem gastar cota.
 
 console.log(linha);
-console.log(`  ${CASOS.length - falhas.filter(f => f.startsWith('"')).length}/${CASOS.length} perguntas, ${gastas} requisições gastas`);
+console.log(`  ${CASOS_EM_TESTE.length - falhas.filter(f => f.startsWith('"')).length}/${CASOS_EM_TESTE.length} perguntas, ${gastas} requisições gastas`);
 for (const f of falhas) console.log(`  ERRO  ${f}`);
 console.log(`${linha}\n`);
 
-// O grafo de imports deixa handle aberto (rate limiter do brawlhalla.js), então o processo não
-// fecha sozinho.
-process.exit(falhas.length ? 1 : 0);
+globalThis.setInterval = setIntervalOriginal;
+process.exitCode = falhas.length ? 1 : 0;
