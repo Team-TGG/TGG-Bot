@@ -16,6 +16,7 @@ Node >= 18 (usa `fetch` nativo), ESM (`"type": "module"` — todo import precisa
 `.env` obrigatório (não versionado): `DISCORD_TOKEN`, `DISCORD_GUILD_ID`, `SUPABASE_URL`,
 `SUPABASE_SERVICE_ROLE_KEY` (ou `SUPABASE_ANON_KEY`), `BRAWLHALLA_API_KEY`.
 Opcionais: `BRAWLHALLA_CLAN_ID` (default `'396943'` no código),
+`BOT_ADMIN_USER_IDS` (IDs do Discord separados por vírgula/espaço; acesso admin no bot, nível 4),
 `GEMINI_API_KEY` (sem ela só o `.ia` fica desligado), `GEMINI_MODEL` (default `gemini-3.5-flash-lite`),
 `IGNORE_SSL_ERRORS=true` para desligar verificação TLS (uso local), `TICKET_CYCLE_SECONDS` (default 60,
 piso 15) para o ciclo da fila por tickets. `win-ca` carrega os certificados do Windows.
@@ -104,6 +105,12 @@ Brraga, Korch, Wamaala e Kay ficaram com `discord_id` vazio, sem cadastro que ba
    `Math.max`, então empate não é problema.
 
 `LEADER_ID` e `ALLOWED_USER_IDS` são IDs fixos no código. `ALLOWED_USER_IDS` está marcado como deprecated.
+
+`BOT_ADMIN_USER_IDS` é a exceção explícita do operador para administradores do bot. Os IDs configurados
+passam em `isAdmin` e têm nível mínimo 4 em `getMemberLevel`, mesmo sem cargo de staff. Cargos mais altos
+continuam valendo, e `leaderOnly` mantém sua checagem independente. A lista vazia preserva as regras
+anteriores. Essa configuração só afeta as checagens internas; a visibilidade dos slash commands ainda
+segue as permissões do Discord. Use o prefixo `.` se o Discord não exibir um comando restrito.
 
 ### Idioma por cargo (pt/en)
 

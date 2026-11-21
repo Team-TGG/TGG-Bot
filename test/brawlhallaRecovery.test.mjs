@@ -26,7 +26,7 @@ test('comandos, fallback e capturas semanais durante queda e recuperação da v1
   const member = { brawlhalla_id: 4165486, name: 'Offline Player', rank: 'Member', join_date: 1000, xp: 500 };
   const user = () => ({ discord_id: '100000000000000001', brawlhalla_id: playerId, role: 'member', active: true });
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
-  Object.assign(process.env, { SUPABASE_URL: 'https://review.invalid', SUPABASE_SERVICE_ROLE_KEY: 'offline', SUPABASE_ANON_KEY: 'offline', BRAWLHALLA_API_KEY: 'offline', DISCORD_TOKEN: '', GEMINI_API_KEY: '', BOT_MODE: 'dev', DOTENV_CONFIG_PATH: join(dir, 'absent.env') });
+  Object.assign(process.env, { SUPABASE_URL: 'https://review.invalid', SUPABASE_SERVICE_ROLE_KEY: 'offline', SUPABASE_ANON_KEY: 'offline', BRAWLHALLA_API_KEY: 'offline', DISCORD_TOKEN: '', GEMINI_API_KEY: '', BOT_MODE: 'dev', BOT_ADMIN_USER_IDS: user().discord_id, DOTENV_CONFIG_PATH: join(dir, 'absent.env') });
   Date.now = () => time;
   globalThis.setInterval = (...args) => {
     const timer = originalSetInterval(...args);
@@ -81,6 +81,21 @@ test('comandos, fallback e capturas semanais durante queda e recuperação da v1
     const { calcularContribuicoes, MOTIVOS } = await import('../src/services/contribuicaoSemanal.js');
     const { calcularGanhoDaGuildaNaSemana, calcularDueloDaSemana } = await import('../src/services/dueloSemanal.js');
     const { EXECUTORES } = await import('../src/handlers/iaHandlers.js');
+    const { handleWam } = await import('../src/admin.js');
+
+    await t.test('.wam aceita admin configurado sem cargo e não grava punição', async () => {
+      const msg = message();
+      msg.member = { id: msg.author.id, roles: { cache: new Map() } };
+      msg.content = '.wam <@100000000000000002> Teste offline';
+      const before = inserts.length;
+      const client = { guilds: { cache: { get: () => ({ members: { fetch: async () => ({ user: { tag: 'Offline Target' } }) } }) } } };
+      await handleWam(msg, ['<@100000000000000002>', 'Teste', 'offline'], client);
+      assert.equal(msg.replies.length, 1);
+      const embed = msg.replies[0].embeds[0].toJSON();
+      assert.match(embed.title, /Aviso Adicionado/);
+      assert.match(embed.footer.text, /comando é fake/);
+      assert.equal(inserts.length, before);
+    });
 
     await t.test('.stats edita o loading e mantém quatro abas com GP desconhecido', async () => {
       const msg = message();

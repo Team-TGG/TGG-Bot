@@ -13,6 +13,12 @@ export const STAFF_ROLE_IDS = {
   leader: '1437427830286717009',
 }
 
+// Admins do bot definidos pelo operador: acesso administrativo sem depender de cargo no Discord.
+// O ID fica no ambiente da instalação, nunca fixado no código.
+export const BOT_ADMIN_USER_IDS = new Set(
+  (process.env.BOT_ADMIN_USER_IDS || '').split(/[\s,]+/).filter(id => /^\d{17,20}$/.test(id)),
+);
+
 // Idioma das respostas por cargo do Discord (ver src/i18n/index.js). Quem não tem nenhum destes recebe português.
 export const idiomas = {
   en: [

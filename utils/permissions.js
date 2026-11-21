@@ -1,6 +1,6 @@
 import { getUserByDiscordId } from '../src/db.js';
 import { createErrorEmbed, createSuccessEmbed, sendCleanMessage } from './discordUtils.js';
-import { STAFF_ROLE_IDS } from '../config/index.js';
+import { STAFF_ROLE_IDS, BOT_ADMIN_USER_IDS } from '../config/index.js';
 import { MessageFlags } from 'discord.js';
 
 export const ROLE_HIERARCHY = {
@@ -96,6 +96,7 @@ export async function checkInteractionChannelPermission(interaction) {
 }
 
 export async function isAdmin(userId) {
+  if (BOT_ADMIN_USER_IDS.has(String(userId))) return true;
   try {
     const user = await getUserByDiscordId(userId);
     return (user && user.active && (user.role?.toLowerCase() === 'admin' || user.role?.toLowerCase() === 'officer'));
@@ -172,9 +173,10 @@ export function channelOnly(channelId, handler) {
 }
 
 export function getMemberLevel(member) {
-  let level = 0;
+  const userId = member?.id ?? member?.user?.id;
+  let level = BOT_ADMIN_USER_IDS.has(String(userId)) ? ROLE_HIERARCHY[STAFF_ROLE_IDS.administrator] : 0;
 
-  member.roles.cache.forEach(role => {
+  member?.roles?.cache?.forEach(role => {
     if (ROLE_HIERARCHY[role.id]) {
       level = Math.max(level, ROLE_HIERARCHY[role.id]);
     }
