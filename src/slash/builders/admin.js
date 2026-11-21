@@ -173,9 +173,9 @@ export const adminCommands = [
 
   new SlashCommandBuilder()
     .setName('ia')
-    .setDescription('Staff: conversa com Lady Vera e consulta perfis e dados da guilda')
+    .setDescription('Conversa com Lady Vera e consulta perfis e dados da guilda no canal de comandos')
     .addStringOption(o => o.setName('pergunta').setDescription('Ex: quem é o Trinca Ferro? Qual meu elo? Quem são os MVPs?').setRequired(true))
-    // Assistants/helpers não precisam de ModerateMembers; o handler exige staff nos dois formatos.
+    // Público: o handler restringe o canal e verifica conteúdo nos dois formatos.
     .setDefaultMemberPermissions(null),
 
   // Sem permissão padrão: a regra é helper para cima, conferida no handler, e não uma permissão do Discord.

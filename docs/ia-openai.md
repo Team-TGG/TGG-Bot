@@ -26,11 +26,15 @@ processo PM2 e o serviço da API estiverem disponíveis, sem precisar manter o P
 
 ## Comportamento
 
-Somente a staff (Assistant, Helper ou superiores) e administradores já autorizados no bot podem
-usar `.ia` e `/ia`. O handler verifica o acesso antes de consultar a IA ou os dados do jogo.
-O slash não exige uma permissão de moderação do Discord, pois Assistants/Helpers podem não tê-la;
-a restrição é aplicada pelo bot nos dois formatos. As regras de canal continuam valendo.
+Todos os membros do servidor podem usar `.ia`, seus aliases e `/ia`, somente no canal
+`1437416406038872225`. A regra de canal vale também para staff e admins e é conferida antes
+de consultar o filtro, a IA ou os dados do jogo. As regras gerais de canal/cooldown do bot continuam.
 Consultas pessoais usam o cadastro do membro quando ele existe.
+
+Perguntas e respostas completas passam por moderação SFW e verificação contextual das diretrizes
+do Discord. Títulos, nomes, campos de perfis e rodapés também são examinados antes da publicação.
+Se a validação falhar ou o serviço ficar indisponível, o conteúdo não é publicado. O filtro usa
+`OPENAI_API_KEY` também quando a geração usa outro provedor. Veja [a política de conteúdo](ia-content-policy.md).
 
 Perguntas como `.ia quem é o Trinca Ferro?`, `.ia qual o elo do Trinca Ferro?` ou
 `.ia qual lenda o Trinca Ferro mais joga?` usam `perfil_de_jogador`.
@@ -44,13 +48,15 @@ pública por nome do ranking 1v1. Nomes sem ranking podem não aparecer nessa bu
 informe o ID do Brawlhalla. Nomes ambíguos pedem uma identificação mais específica. A IA recebe
 somente o resumo do perfil, sem os IDs do cadastro, e não inventa uma biografia do jogador.
 
-A chave vai apenas no cabeçalho de autorização da API. Os erros exibem o provedor e o código
-HTTP, sem repetir o corpo da resposta ou a chave. As chamadas usam `store: false`.
+A chave vai apenas no cabeçalho de autorização da API. Erros no comando exibem mensagens
+genéricas, sem repetir o corpo da resposta ou a chave. As chamadas à Responses API usam `store: false`.
 O roteamento permite uma função conhecida por vez e valida seus argumentos. A redação recebe
 o resultado vinculado ao `call_id`, incluindo o estado retornado pelo modelo quando necessário.
 Perguntas gerais usam o modo de conversa, sem fabricar uma consulta aos dados da guilda.
 
-O limite é de 1.024 tokens de saída no roteamento e 2.048 na redação. `OPENAI_REASONING_EFFORT`
+O limite é de 1.024 tokens de saída no roteamento e 2.048 na redação. O filtro faz chamadas
+adicionais de moderação e classificação, com limite de 256 tokens por decisão estruturada.
+`OPENAI_REASONING_EFFORT`
 pode ser alterado para uma opção suportada pelo modelo, mas `none` é a configuração preparada.
 
 Referências: [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna) e

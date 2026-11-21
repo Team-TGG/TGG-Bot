@@ -803,6 +803,11 @@ entre duas leituras dele é sempre 0. XP que a API não devolveu fica `null` em 
 
 ### `.ia` — pergunta em linguagem natural
 
+Disponível para membros somente no canal `ia.channelId` (`1437416406038872225`), sem exceção para
+staff/admin. O handler verifica o canal e usa [iaSafety.js](src/services/iaSafety.js) na pergunta
+e no embed completo antes de publicar. Filtro indisponível ou decisão inválida não libera conteúdo.
+Veja [a política SFW](docs/ia-content-policy.md). Logs não registram perguntas ou argumentos crus.
+
 Nos relatórios da guilda, a IA **não calcula os indicadores**. Ela escolhe qual função responde e
 escreve a frase em português a partir do resultado. Todo número sai dos mesmos serviços que decidem
 o MVP, a inativação e o `.duel` — se a IA somasse dados crus, o `.ia` daria um número que discorda

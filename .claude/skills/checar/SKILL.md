@@ -63,7 +63,8 @@ consertar uma pergunta não roubou outra da ferramenta vizinha.
   é invisível no Discord: `handleIa` engole a falha e o embed sai só com os números.
 
 Pergunta que a staff errar no uso real vira **linha nova em `CASOS`**, com a ferramenta certa
-anotada. O log `[IA]` do bot grava quem perguntou, o texto e a ferramenta escolhida.
+anotada. O log `[IA]` do bot registra a ferramenta escolhida e categorias de bloqueio, sem
+perguntas ou argumentos crus; o exemplo deve ser anotado manualmente para virar teste.
 
 ## Como interpretar
 

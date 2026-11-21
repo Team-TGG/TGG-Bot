@@ -1,5 +1,9 @@
 # IA local: Qwen 4B e Lady Vera
 
+O filtro de conteúdo exige `OPENAI_API_KEY` também neste modo. Perguntas e respostas precisam
+passar pela moderação; sem a chave ou com o filtro indisponível, a IA não publica conteúdo.
+O acesso é público para membros, somente no canal `1437416406038872225`.
+
 O `.ia` pode usar `IA_PROVIDER=ollama`. Cumprimentos, dúvidas e assuntos gerais usam conversa livre,
 sem banco ou API do jogo. Quando a pergunta pede dados da guilda, o modelo seleciona uma consulta
 e os executores do bot buscam os registros. A segunda chamada escreve a resposta no tom

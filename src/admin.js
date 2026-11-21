@@ -19,6 +19,7 @@ import { getBlindagensAprovadas, getBlindagensPendentes, cobreSemana, ehPermanen
 import { calcularInativosDaSemana, inativarSemana, CONTRIBUICAO_MINIMA, LIMIAR_INATIVACAO, TOLERANCIA_INATIVACAO } from './services/weeklyInactiveService.js';
 import { calcularMediaHistorica } from './services/mediaHistorica.js';
 import { escolherFerramenta, redigirResposta, iaConfigurada } from './services/iaProvider.js';
+import { checkIaContent, IA_SAFETY_INSTRUCTIONS } from './services/iaSafety.js';
 import { FERRAMENTAS, EXECUTORES, executarConsultaIa, INSTRUCAO_ESCOLHA, INSTRUCAO_RESPOSTA, INSTRUCAO_CONVERSA } from './handlers/iaHandlers.js';
 import { escanearTickets, reconciliarTickets, CATEGORIA_TICKETS_ID } from './services/ticketQueue.js';
 import { definirResponsavel, getTicket } from './tickets.js';
@@ -2974,11 +2975,12 @@ export const handleScan = adminOnly(async (message, args, client) => {
 // frase — todo número vem de `EXECUTORES`, que chamam as mesmas funções do cron de quarta. O embed
 // mostra os dados de verdade abaixo do texto, então dá para conferir a resposta sem confiar nela.
 export const handleIa = async (message, args) => {
-  if (!hasPermission(message.member, 1) && !await isAdmin(message.author.id)) {
-    return message.reply({ embeds: [createErrorEmbed(
-      'Acesso Negado',
-      'Apenas assistants, helpers ou superiores da staff podem usar a IA.'
-    )] });
+  if ((message.channelId ?? message.channel?.id) !== iaConfig.channelId) {
+    return message.reply({
+      embeds: [createErrorEmbed('Canal da IA', `Use a IA apenas no canal <#${iaConfig.channelId}>.`)],
+      allowedMentions: { parse: [], repliedUser: false },
+      ...(message.interaction ? { ephemeral: true } : {}),
+    });
   }
 
   const pergunta = String(
@@ -3020,10 +3022,20 @@ export const handleIa = async (message, args) => {
   }
 
   const loading = await message.reply({
-    embeds: [createLoadingEmbed(`${EMOJIS.loading} Lady Vera`, 'Um instante, os sigilos estão se alinhando.')]
+    embeds: [createLoadingEmbed(`${EMOJIS.loading} Lady Vera`, 'Um instante, os sigilos estão se alinhando.')],
+    allowedMentions: { parse: [], repliedUser: false },
   });
 
   try {
+    const inputSafety = await checkIaContent(pergunta, { direction: 'input' });
+    if (!inputSafety.allowed) {
+      console.warn(`[IA] conteúdo bloqueado: input/${inputSafety.reason}`);
+      return await sendCleanMessage(loading, {
+        embeds: [createWarningEmbed('Conteúdo bloqueado', 'Esse pedido não é permitido na IA do servidor. Faça uma pergunta sem conteúdo explícito e de acordo com as diretrizes do Discord.')],
+        allowedMentions: { parse: [], repliedUser: false },
+      });
+    }
+
     const roteada = await escolherFerramenta({
       pergunta,
       ferramentas: FERRAMENTAS,
@@ -3032,7 +3044,7 @@ export const handleIa = async (message, args) => {
 
     const escolha = roteada && EXECUTORES[roteada.nome] ? roteada : { nome: 'conversa_livre', args: {} };
 
-    console.log(`[IA] ${message.author.tag}: "${pergunta}" -> ${escolha.nome}(${JSON.stringify(escolha.args)})`);
+    console.log(`[IA] consulta: ${escolha.nome}`);
 
     // O autor vai junto para as ferramentas de membro resolverem "quanto eu contribuí?" sem nome
     const mencoes = [...new Set([...pergunta.matchAll(/<@!?(\d+)>/g)].map(match => match[1]))];
@@ -3046,10 +3058,10 @@ export const handleIa = async (message, args) => {
       pergunta,
       escolha,
       resultado: dados,
-      instrucao: conversaLivre ? INSTRUCAO_CONVERSA : INSTRUCAO_RESPOSTA,
+      instrucao: `${IA_SAFETY_INSTRUCTIONS}\n\n${conversaLivre ? INSTRUCAO_CONVERSA : INSTRUCAO_RESPOSTA}`,
       conversaLivre,
     }).catch(err => {
-      console.warn(`[IA] falha ao redigir: ${err.message}`);
+      console.warn('[IA] falha ao redigir a resposta');
       return '';
     });
 
@@ -3062,14 +3074,27 @@ export const handleIa = async (message, args) => {
       .setFooter({ text: conversaLivre ? rodape : `${rodape} • ${escolha.nome} • dados do bot, texto por IA` })
       .setTimestamp();
 
-    await sendCleanMessage(loading, { embeds: [embed] });
+    // Examina também títulos, campos do banco/API, nomes e rodapé; nenhum dado bruto pode furar o filtro.
+    const outputSafety = await checkIaContent(JSON.stringify({ resposta: texto, embed: embed.toJSON() }), { direction: 'output' });
+    if (!outputSafety.allowed) {
+      console.warn(`[IA] conteúdo bloqueado: output/${outputSafety.reason}`);
+      return await sendCleanMessage(loading, {
+        embeds: [createWarningEmbed('Resposta bloqueada', 'A resposta foi retida pelo filtro de conteúdo. Reformule a pergunta ou consulte outro assunto.')],
+        allowedMentions: { parse: [], repliedUser: false },
+      });
+    }
+
+    await sendCleanMessage(loading, { embeds: [embed], allowedMentions: { parse: [], repliedUser: false } });
 
   } catch (err) {
-    if (!err.iaLocalIndisponivel) console.error('[IA]', err);
+    if (!err.iaLocalIndisponivel) console.error(`[IA] consulta não concluída${err.iaSafetyUnavailable ? ': filtro indisponível' : ''}`);
     await sendCleanMessage(loading, {
-      embeds: [err.iaLocalIndisponivel
+      embeds: [err.iaSafetyUnavailable
+        ? createWarningEmbed('Filtro de conteúdo indisponível', 'A IA está temporariamente indisponível porque não foi possível validar o conteúdo. Tente novamente em instantes.')
+        : err.iaLocalIndisponivel
         ? createWarningEmbed('Lady Vera está em repouso', 'A IA local é ativada manualmente. Ative a conexão no PC para consultar os registros.')
-        : createErrorEmbed('Erro na consulta', err.message)]
+        : createErrorEmbed('Erro na consulta', 'Não consegui concluir a consulta agora. Tente novamente em instantes.')],
+      allowedMentions: { parse: [], repliedUser: false },
     });
   }
 };

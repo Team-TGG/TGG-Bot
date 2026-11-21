@@ -69,6 +69,7 @@ export const brawlhalla = {
 const iaProvider = (process.env.IA_PROVIDER || 'gemini').trim().toLowerCase();
 const iaTimeout = Number(process.env.IA_TIMEOUT_MS);
 export const ia = {
+  channelId: '1437416406038872225', // IA somente em #comandos, inclusive staff e admins.
   provedor: iaProvider,
   apiKey: process.env.GEMINI_API_KEY,
   openaiApiKey: process.env.OPENAI_API_KEY,
