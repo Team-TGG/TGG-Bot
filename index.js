@@ -24,6 +24,7 @@ import { avisarEntradaNaFila } from './src/services/filaDeEspera.js';
 import { restoreMutes } from './src/services/muteManager.js';
 import { restoreTemporaryWarnings } from './src/services/warningManager.js';
 import { iniciarSorteios } from './src/services/sorteiosRuntime.js';
+import { iniciarRankedQueue } from './src/services/rankedQueueRuntime.js';
 // Commands
 import { COMMAND_ALIASES, commands } from './src/commands.js';
 import { carregarAliasesDoDaily, ehAliasDoDaily, definirComandosExistentes } from './src/dailyAliases.js';
@@ -109,6 +110,7 @@ async function main() {
     if (runtime.isDev) return;
 
     iniciarSorteios(client).catch(() => console.error('[GIVEAWAY] Startup failed; saved state preserved.'));
+    iniciarRankedQueue().catch(() => console.error('[QUEUE] Startup failed; check configuration and saved state.'));
 
     // Contador de mensagens e call das insígnias. Depois do retorno de dev, ao contrário do ciclo dos
     // tickets: a contagem é permanente, e dois processos com o mesmo token contariam tudo em dobro.

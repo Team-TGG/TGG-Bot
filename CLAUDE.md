@@ -37,6 +37,15 @@ antes de subir local**, senão cada comando é respondido duas vezes.
 
 ## Arquitetura
 
+### Queue ranqueada
+
+`/queue` e `.queue [1v1|2v2]` mostram atividade estimada no top 500 BRZ, por aumento de partidas
+entre leituras do ranking v0. O monitor de `rankedQueueRuntime.js` inicia só em produção e lê
+ambas as modalidades a cada cinco minutos; `rankedQueueService.js` mantém sessões de dez minutos
+sem atividade nova. O comando lê o cache, não consulta a API nem usa Discord Presence Intent.
+Preserve `data/ranked-queue.json`, independente dos sorteios. Falhas de consulta devem aparecer
+como dados indisponíveis/atrasados, sem confirmar uma fila vazia. [Uso e limites](docs/queue.md).
+
 ### Sorteios
 
 `.sorteio` e `/sorteio` usam [sorteiosHandlers.js](src/handlers/sorteiosHandlers.js), com modais

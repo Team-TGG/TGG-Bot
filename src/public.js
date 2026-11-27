@@ -17,11 +17,16 @@ import { addTransaction, updateBalance } from './tggCoins.js';
 import { registrarUsoDoHelp } from './insignias.js';
 import { lerAlvoDoArgumento, montarRespostaDoCartao } from './handlers/perfilHandlers.js';
 import { tradutor } from './i18n/index.js';
+import { handleQueueCommand } from './handlers/queueHandlers.js';
 
 import { createErrorEmbed, createSuccessEmbed, createLoadingEmbed, sendCleanMessage, createPagination } from '../utils/discordUtils.js';
 import { isAdmin, adminOnly, channelOnly, hasPermission } from '../utils/permissions.js';
 import { EMOJIS } from '../config/emojis.js';
 import { SOCIALS } from '../config/socials.js';
+
+export async function handleQueue(message, args, client) {
+  return handleQueueCommand(message, args, client);
+}
 
 // .profile [@membro]
 // Em teste, assistant para cima e só em comandos-staff (ver `perfil` na config). O canal é checado aqui e
@@ -77,6 +82,7 @@ export async function handleHelp(message, args, client) {
     .addFields(
       { name: `${EMOJIS.arrowRight} .missoes`, value: 'Mostrar as missões da semana atual', inline: false },
       { name: `${EMOJIS.arrowRight} .stats`, value: 'Trazer seus status atualizados do jogo', inline: false },
+      { name: `${EMOJIS.arrowRight} .queue [1v1|2v2]`, value: 'Atividade recente no ranking BRZ, com ELO e duplas', inline: false },
       { name: `${EMOJIS.arrowRight} .games`, value: 'Mostra a quantidade de jogos jogados durante a SEMANA', inline: false },
       { name: `${EMOJIS.arrowRight} .guild`, value: 'Ver informações da guilda Team TGG', inline: false },
       { name: `${EMOJIS.arrowRight} .duel`, value: 'Ver informações do duelo atual contra outra guilda', inline: false },

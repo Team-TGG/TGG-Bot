@@ -5,6 +5,26 @@ import { createApiFetch } from '../src/services/brawlhallaHttp.js';
 const logger = { warn() {} };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
+test('monitor em segundo plano preserva 60 consultas v0 para os comandos e não espera a janela de cota', async () => {
+  let calls = 0, time = 1000;
+  const request = createApiFetch({ logger, now: () => time, wait: async () => assert.fail('monitor não deve aguardar a janela de 15 minutos'), fetchImpl: async () => { calls++; return json({ ok: true }); } });
+  for (let i = 0; i < 120; i++) await request(`https://api.brawlhalla.com/player/${i}/stats`);
+  const ranking = 'https://api.brawlhalla.com/rankings/1v1/brz/1';
+  await assert.rejects(request(ranking, { background: true }), error => error.apiQuotaDeferred && error.status === 429);
+  assert.equal(calls, 120);
+  assert.deepEqual(await request(ranking), { ok: true }); assert.equal(calls, 121);
+  time += 15 * 60_000;
+  assert.deepEqual(await request(ranking, { background: true }), { ok: true }); assert.equal(calls, 122);
+});
+
+test('deferir ranking em segundo plano não interfere com a cota v1', async () => {
+  let calls = 0;
+  const request = createApiFetch({ logger, fetchImpl: async () => { calls++; return json({ ok: true }); } });
+  for (let i = 0; i < 120; i++) await request(`https://api.brawlhalla.com/player/${i}/stats`);
+  assert.deepEqual(await request('https://api.brawlhalla.com/v1/guild/stats?guild_id=3', { background: true }), { ok: true });
+  assert.equal(calls, 121);
+});
+
 test('uma falha transitória é repetida e uma resposta boa é preservada', async () => {
   let calls = 0;
   const request = createApiFetch({ logger, wait: async () => {}, fetchImpl: async () => ++calls === 1 ? json({}, 502) : json({ guild_points: 10 }) });

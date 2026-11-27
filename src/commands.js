@@ -1,12 +1,14 @@
 // Handlers
 import { handleLimparPerfil, handleSync, handleSyncAll, handleSyncNick, handleRefreshCache, handleWarn, handleUnwarn, handleWarns, handleEditWarn, handleMute, handleUnmute, handleBan, handleKick, handleBam, handleInacAll, handleInacList, handleInativar, handleConcluida, handleCadastrarMissao, handleEntrou, handleEscrever, handleOrganizeTickets, handleScanTickets, handleImportarTickets, handleAbrirTickets, handleFecharTickets, handleWam, handleJustificativas, handleScan, handleBlindagens, handleIa } from './admin.js';
-import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes, handleDuel, handleCrz, handleVideoGuilda, handleAlts, handleJustificativa, handleResumo, handleLbGuilda, handleProfile } from './public.js';
+import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes, handleDuel, handleCrz, handleVideoGuilda, handleAlts, handleJustificativa, handleResumo, handleLbGuilda, handleProfile, handleQueue } from './public.js';
 import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins, handleAddAccount, handleQuiz, handleInventory } from './tggCoinsCommands.js';
 import { handleCargoPersonalizado } from './handlers/cargoPersonalizadoHandlers.js';
 import { handleSorteio } from './admin.js';
 
 // Command Aliases
 export const COMMAND_ALIASES = {
+  'queue': 'queue',
+  'fila-ranked': 'queue',
   'sorteio': 'sorteio',
   'sorteios': 'sorteio',
   'giveaway': 'sorteio',
@@ -246,6 +248,7 @@ export const commands = {
   guild: handleGuild,
   'lb-guilda': handleLbGuilda,
   profile: handleProfile,
+  queue: handleQueue,
   missoes: handleMissoes,
   active: handleActive,
   justificativa: handleJustificativa,

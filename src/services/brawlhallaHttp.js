@@ -36,13 +36,17 @@ export function createApiFetch({
     };
   }
 
-  async function request(url, version, limit) {
+  async function request(url, version, limit, background) {
+    const deferBackground = () => background && version === 'v0' && limit.log.filter(time => now() - time < limit.window).length >= limit.max - 60;
+    const deferredQuota = () => Object.assign(new Error('Background API quota reserved for commands.'), { status: 429, apiQuotaDeferred: true });
+    if (deferBackground()) throw deferredQuota();
     const release = await acquire(limit);
     let timer;
     try {
       if ((retriesAfter.get(url.pathname) || 0) > now()) throw unavailable(version);
       while (true) {
         while (limit.log.length && now() - limit.log[0] >= limit.window) limit.log.shift();
+        if (deferBackground()) throw deferredQuota();
         if (limit.log.length < limit.max) break;
         const delay = Math.max(1, limit.window - (now() - limit.log[0]) + 50);
         logger.warn(`[Brawlhalla] Rate limit ${version} atingido, aguardando ${Math.ceil(delay / 1000)}s`);
@@ -84,10 +88,10 @@ export function createApiFetch({
     }
   }
 
-  async function execute(url, version, limit) {
+  async function execute(url, version, limit, background) {
     for (let attempt = 0; attempt < attempts; attempt++) {
       if ((retriesAfter.get(url.pathname) || 0) > now()) throw unavailable(version);
-      try { return await request(url, version, limit); }
+      try { return await request(url, version, limit, background); }
       catch (err) {
         if (!err.apiForaDoAr) throw err;
         if (attempt + 1 === attempts) {
@@ -100,12 +104,12 @@ export function createApiFetch({
     }
   }
 
-  return function apiFetch(input) {
+  return function apiFetch(input, { background = false } = {}) {
     const url = new URL(input);
     const version = url.pathname.startsWith('/v1/') ? 'v1' : 'v0';
-    const key = url.href;
+    const key = `${background ? 'background:' : ''}${url.href}`;
     if (pending.has(key)) return pending.get(key);
-    const task = execute(url, version, limits[version]).finally(() => pending.delete(key));
+    const task = execute(url, version, limits[version], background).finally(() => pending.delete(key));
     pending.set(key, task);
     return task;
   };

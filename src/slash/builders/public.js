@@ -3,6 +3,12 @@ import { SlashCommandBuilder, AttachmentBuilder } from 'discord.js';
 // Comandos públicos
 export const publicCommands = [
   new SlashCommandBuilder()
+    .setName('queue')
+    .setDescription('Mostra jogadores e duplas com atividade recente no ranking BRZ')
+    .setDescriptionLocalizations({ 'en-US': 'Shows players and teams recently active in BRZ ranked', 'en-GB': 'Shows players and teams recently active in BRZ ranked' })
+    .addStringOption(o => o.setName('modo').setDescription('Modalidade ranqueada (padrão: 1v1)')
+      .addChoices({ name: 'Ranked 1v1', value: '1v1' }, { name: 'Ranked 2v2', value: '2v2' })),
+  new SlashCommandBuilder()
     .setName('help')
     .setDescription('Mostra a lista de comandos disponíveis'),
 

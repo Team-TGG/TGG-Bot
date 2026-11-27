@@ -64,6 +64,7 @@ export async function createPagination(message, {
   nextId = 'pg_next',
   extraButtons = null,
   onExtra = null,
+  disableOnEnd = false,
 }) {
   let page = 1;
 
@@ -108,6 +109,12 @@ export async function createPagination(message, {
     } catch (err) {
       console.error('[PAGINATION ERROR]', err);
     }
+  });
+
+  if (disableOnEnd) collector.on('end', async () => {
+    const row = buildRow(page, await getTotalPages());
+    row.components.forEach(component => component.setDisabled(true));
+    await msg.edit({ components: [row] }).catch(() => {});
   });
 
   return msg;

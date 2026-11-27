@@ -1,0 +1,39 @@
+import { ButtonBuilder, ButtonStyle } from 'discord.js';
+import { createErrorEmbed, createPagination } from '../../utils/discordUtils.js';
+import { tradutor } from '../i18n/index.js';
+import { getRankedQueueService } from '../services/rankedQueueRuntime.js';
+import { buildQueueEmbed, queuePages } from '../queueViews.js';
+
+export function createQueueHandler({ getService = getRankedQueueService, paginate = createPagination } = {}) {
+  return async function handleQueue(message, args = []) {
+    const t = tradutor(message);
+    if (!message.guild) return message.reply({ embeds: [createErrorEmbed(t('Queue indisponível'), t('Use este comando dentro do servidor.'))] });
+    let mode = String(message.interaction?.options.getString('modo') || args[0] || '1v1').toLowerCase();
+    if (!['1v1', '2v2'].includes(mode)) return message.reply({ embeds: [createErrorEmbed(t('Modalidade inválida'), t('Use /queue modo:1v1 ou /queue modo:2v2.'))] });
+    let service, view;
+    try { service = getService(); view = await service.snapshot(mode); }
+    catch (error) {
+      if (!error.queueCode) throw error;
+      return message.reply({ embeds: [createErrorEmbed(t('Queue indisponível'), t('O monitor está indisponível. Tente novamente em alguns minutos.'))] });
+    }
+    return paginate(message, {
+      getEmbed: page => buildQueueEmbed(view, page, t, message.guild.iconURL?.({ size: 128 })),
+      getTotalPages: () => queuePages(view),
+      time: 15 * 60_000, idle: 6 * 60_000, disableOnEnd: true, prevId: 'queue_prev', nextId: 'queue_next',
+      extraButtons: () => [
+        new ButtonBuilder().setCustomId('queue_1v1').setLabel('1v1').setStyle(mode === '1v1' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('queue_2v2').setLabel('2v2').setStyle(mode === '2v2' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('queue_refresh').setLabel(t('Atualizar lista')).setStyle(ButtonStyle.Secondary),
+      ],
+      onExtra: async (interaction, page) => {
+        const selected = interaction.customId === 'queue_1v1' ? '1v1' : interaction.customId === 'queue_2v2' ? '2v2' : mode;
+        const changed = selected !== mode;
+        const next = await service.snapshot(selected);
+        mode = selected; view = next;
+        return changed ? 1 : page;
+      },
+    });
+  };
+}
+
+export const handleQueueCommand = createQueueHandler();
