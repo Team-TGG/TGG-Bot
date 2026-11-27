@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { readFile } from 'node:fs/promises';
 
 test('queue usa o adapter de slash, paginação e embeds válidos sem rede', async t => {
   const env = { ...process.env };
@@ -29,10 +30,14 @@ test('queue usa o adapter de slash, paginação e embeds válidos sem rede', asy
       await runAsSlash(handler, interaction, {});
       assert.equal(interaction.deferred, true); assert.equal(reads, 1);
       assert.equal(pagination.getEmbed(1).toJSON().title, '🇧🇷 BRZ • Ranked 2v2');
+      assert.equal(pagination.getEmbed(1).toJSON().thumbnail.url, 'attachment://ranked-mascot.png');
+      assert.equal(pagination.files[0].name, 'ranked-mascot.png');
+      assert.equal((await readFile(pagination.files[0].attachment)).subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
       assert.equal(pagination.extraButtons().length, 3);
       await pagination.onExtra({ customId: 'queue_refresh' }, 2); assert.equal(reads, 2);
       assert.equal(await pagination.onExtra({ customId: 'queue_1v1' }, 2), 1);
       assert.equal(pagination.getEmbed(1).toJSON().title, '🇧🇷 BRZ • Ranked 1v1');
+      assert.equal(pagination.getEmbed(1).toJSON().thumbnail.url, 'attachment://ranked-mascot.png');
       await handler(message(), ['2v2']); assert.equal(pagination.getEmbed(1).toJSON().title, '🇧🇷 BRZ • Ranked 2v2');
       await handler(message()); assert.equal(pagination.getEmbed(1).toJSON().title, '🇧🇷 BRZ • Ranked 1v1');
     });
@@ -84,13 +89,19 @@ test('queue usa o adapter de slash, paginação e embeds válidos sem rede', asy
       const source = message(); let initial, changed = 0;
       const sent = { createMessageComponentCollector: () => collector, edit: async payload => edits.push(payload) };
       source.reply = async payload => { initial = payload; return sent; };
-      await createPagination(source, { getEmbed: () => buildQueueEmbed(view(), 1, tradutor('pt')), getTotalPages: () => 1, disableOnEnd: true, onExtra: async () => { changed++; } });
+      const files = [{ attachment: Buffer.from('image'), name: 'ranked-mascot.png' }];
+      await createPagination(source, { getEmbed: () => buildQueueEmbed(view(), 1, tradutor('pt')), getTotalPages: () => 1, files, disableOnEnd: true, onExtra: async () => { changed++; } });
       assert.equal(initial.components[0].components.length, 2);
+      assert.equal(initial.files, files);
       const rejected = [];
       await collector.listeners('collect')[0]({ user: { id: 'another-user' }, reply: async payload => rejected.push(payload) });
       assert.equal(changed, 0); assert.equal(rejected.length, 1);
+      await collector.listeners('collect')[0]({ user: source.author, customId: 'queue_refresh', deferUpdate: async () => {}, editReply: async payload => edits.push(payload) });
+      assert.equal(changed, 1);
+      assert.equal(edits[0].embeds[0].toJSON().thumbnail.url, 'attachment://ranked-mascot.png');
+      assert.ok(!Object.hasOwn(edits[0], 'files') && !Object.hasOwn(edits[0], 'attachments'), 'atualizações preservam o anexo original');
       await collector.listeners('end')[0]();
-      assert.ok(edits[0].components[0].components.every(button => button.data.disabled));
+      assert.ok(edits.at(-1).components[0].components.every(button => button.data.disabled));
     });
   } finally {
     for (const key of Object.keys(process.env)) if (!(key in env)) delete process.env[key];

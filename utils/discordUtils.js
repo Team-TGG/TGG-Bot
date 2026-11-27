@@ -65,6 +65,7 @@ export async function createPagination(message, {
   extraButtons = null,
   onExtra = null,
   disableOnEnd = false,
+  files = undefined,
 }) {
   let page = 1;
 
@@ -80,6 +81,7 @@ export async function createPagination(message, {
   const msg = await message.reply({
     embeds: [await getEmbed(page)],
     components: [buildRow(page, initialTp)],
+    ...(files?.length ? { files } : {}),
   });
 
   const collector = msg.createMessageComponentCollector(idle ? { time, idle } : { time });

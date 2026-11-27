@@ -2,6 +2,7 @@ import { EmbedBuilder, escapeMarkdown } from 'discord.js';
 import { EMOJIS } from '../config/emojis.js';
 
 export const QUEUE_PER_PAGE = 8;
+export const QUEUE_IMAGE_NAME = 'ranked-mascot.png';
 export const queuePages = view => Math.max(1, Math.ceil(view.entries.length / QUEUE_PER_PAGE));
 const timestamp = value => Math.floor(value / 1000);
 const safeName = value => escapeMarkdown(value.replace(/</g, '‹').replace(/>/g, '›')).slice(0, 180).replace(/[\uD800-\uDBFF]$/, '');
@@ -10,13 +11,12 @@ const rankBadge = tier => {
   return EMOJIS[`rank${key}`] || EMOJIS.trophy;
 };
 
-export function buildQueueEmbed(view, page, t, icon) {
+export function buildQueueEmbed(view, page, t) {
   const color = view.status === 'unavailable' ? 0xed4245 : view.status === 'stale' ? 0xfee75c : 0x5865f2;
   const author = { name: t('TGG • MONITOR DE RANQUEADA') };
-  if (icon) author.iconURL = icon;
   const embed = new EmbedBuilder().setColor(color).setAuthor(author)
-    .setTitle(`${EMOJIS.brazil} ${view.region} • Ranked ${view.mode}`).setTimestamp(view.observedAt);
-  if (icon) embed.setThumbnail(icon);
+    .setTitle(`${EMOJIS.brazil} ${view.region} • Ranked ${view.mode}`).setTimestamp(view.observedAt)
+    .setThumbnail(`attachment://${QUEUE_IMAGE_NAME}`);
   const status = view.status === 'ready' ? `${EMOJIS.success} **${t('ATIVIDADE RECENTE')}**`
     : view.status === 'warming' ? `${EMOJIS.loading} **${t('COLETANDO ATIVIDADE')}**`
       : `${EMOJIS.hourglass} **${t('AGUARDANDO ATUALIZAÇÃO')}**`;

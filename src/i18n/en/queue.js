@@ -1,4 +1,5 @@
 export default {
+  'Imagem do monitor de ranqueada da TGG.': 'TGG ranked activity monitor illustration.',
   'TGG • MONITOR DE RANQUEADA': 'TGG • RANKED TRACKER',
   'ATIVIDADE RECENTE': 'RECENT ACTIVITY',
   'COLETANDO ATIVIDADE': 'COLLECTING ACTIVITY',
