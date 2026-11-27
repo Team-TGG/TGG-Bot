@@ -8,25 +8,45 @@ Aliases: `.sorteios`, `.giveaway` e `.raffle`.
 
 `/sorteio` abre o formulário; `.sorteio` mostra um exemplo de embed com o botão para preenchê-lo.
 O formulário pede prêmio/título, descrição/regras, quantidade de vencedores, duração e público.
-Exemplos nos campos mostram como preencher. Ao enviar, aparece uma prévia real do embed; a
-mensagem pública só é enviada quando o organizador clica em **Publicar sorteio**.
+Exemplos nos campos mostram como preencher. **Enviar** abre a tela **PRÉVIA — ainda não publicado**,
+com o embed, uma amostra dos botões, o canal e o cargo escolhido. Os botões de participação da
+amostra ficam desativados; a mensagem pública só é enviada ao clicar em **Publicar sorteio**.
 
 Na prévia, é possível:
 
 - Editar os dados principais, preservando o que já foi preenchido.
+- Abrir **Textos e estilo** para personalizar o título, a descrição com Markdown, o rodapé e os
+  textos dos botões de entrada e saída. A descrição aceita **negrito**, *itálico*, listas, links e
+  emojis; o Discord exibe título, rodapé e rótulos dos botões como texto simples.
+- Abrir **Cor e imagens** para escolher a cor hexadecimal do embed, o banner e a miniatura por
+  URLs HTTPS. Por exemplo, `#8B5CF6` aplica uma cor roxa à borda do embed.
 - Abrir **Duração e aparência** para informar dias, horas e minutos separados, cor hexadecimal e
   uma imagem por URL HTTPS.
-- Escolher outro canal de texto ou anúncios pelo seletor **Alterar canal**.
+- Escolher outro canal de texto ou anúncios e um cargo opcional no seletor **Canal e cargo**.
+  Limpar a seleção de cargo permite publicar sem marcação.
 - Descartar a prévia sem publicar nada.
 
 O Discord não envia eventos a cada tecla do formulário. Por isso a prévia é atualizada após
 **Enviar**; o organizador pode editar e revisar quantas vezes precisar antes de publicar.
-O canal também pode ser escolhido na opção `canal` do slash ou em `.sorteio criar #canal`.
+Canal e cargo também podem ser escolhidos nas opções `canal` e `cargo` do slash ou em
+`.sorteio criar #canal @cargo`. É possível configurar a aparência e o destino mesmo antes de
+preencher o prêmio; a publicação exige o preenchimento dos dados obrigatórios.
+
+Limites dos textos: prêmio de até 150 caracteres, título e rodapé de até 200 cada, descrição de
+até 4000 e cada botão de até 40. Deixar uma opção de estilo vazia restaura o texto padrão.
+
+O cargo é marcado somente no anúncio inicial. Prévias e atualizações do resultado não disparam
+novas marcações. A seleção não aceita `@everyone`: o cargo precisa permitir menções ou tanto o
+organizador quanto o bot precisam ter permissão para mencioná-lo no canal escolhido. A entrega
+de notificações segue as preferências de cada usuário no Discord.
 
 ## Público e participação
 
 - **Somente membros ativos da TGG:** exige cadastro `users.active = true` com `brawlhalla_id`.
 - **Todos do servidor:** aceita visitantes e membros, sem exigir cadastro no bot.
+
+O cargo escolhido serve para anunciar o sorteio; quem pode participar continua sendo definido
+pelo seletor de público acima.
 
 Nos dois modos, a pessoa precisa estar no servidor e não pode ser bot. Há uma participação por
 ID do Discord; clicar várias vezes não aumenta as chances. O botão **Sair do sorteio** permite
@@ -67,6 +87,8 @@ e o arquivo com `0600` no Linux. As transações são serializadas; a escrita us
 Mantenha **um processo PM2** do bot, conforme a regra do projeto. Preserve `data/` nos deploys e
 inclua o diretório nos backups da VPS. Não copie dados reais para testes nem comite esse arquivo.
 Não há migração SQL nova: o modo TGG consulta o cadastro já existente no Supabase.
+Os campos de aparência e cargo são opcionais; sorteios e prévias salvos antes dessa atualização
+continuam sendo lidos com os padrões anteriores.
 
 No boot de produção, o agendador retoma sorteios vencidos e apurações pendentes. Falhas de edição
 da mensagem são tentadas novamente após 60 segundos, com os mesmos vencedores. Botões não dependem

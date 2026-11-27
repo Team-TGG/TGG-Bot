@@ -41,7 +41,7 @@ test('duração aceita dias/horas/minutos e rejeita zero, texto solto, frações
 
 test('validação exige prêmio, limites de vencedores, público e imagem/cor seguros', () => {
   assert.equal(validateSorteioFields(fields).prize, fields.prize);
-  for (const [patch, code] of [[{ prize: '' }, 'TEXT'], [{ description: 'a'.repeat(1501) }, 'TEXT'], [{ winnerCount: 0 }, 'WINNERS'], [{ winnerCount: 21 }, 'WINNERS'], [{ audience: 'qualquer' }, 'AUDIENCE'], [{ color: 'red' }, 'COLOR'], [{ image: 'javascript:alert(1)' }, 'IMAGE'], [{ image: 'https://user:password@example.com/a.png' }, 'IMAGE'], [{ channelId: '../x' }, 'CHANNEL']]) {
+  for (const [patch, code] of [[{ prize: '' }, 'TEXT'], [{ description: 'a'.repeat(4001) }, 'TEXT'], [{ title: 't'.repeat(201) }, 'STYLE'], [{ joinLabel: 'b'.repeat(41) }, 'STYLE'], [{ thumbnail: 'http://example.com/x.png' }, 'IMAGE'], [{ roleId: '@everyone' }, 'ROLE'], [{ winnerCount: 0 }, 'WINNERS'], [{ winnerCount: 21 }, 'WINNERS'], [{ audience: 'qualquer' }, 'AUDIENCE'], [{ color: 'red' }, 'COLOR'], [{ image: 'javascript:alert(1)' }, 'IMAGE'], [{ image: 'https://user:password@example.com/a.png' }, 'IMAGE'], [{ channelId: '../x' }, 'CHANNEL']]) {
     assert.throws(() => validateSorteioFields({ ...fields, ...patch }), { sorteioCode: code });
   }
 });

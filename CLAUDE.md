@@ -40,7 +40,9 @@ antes de subir local**, senão cada comando é respondido duas vezes.
 ### Sorteios
 
 `.sorteio` e `/sorteio` usam [sorteiosHandlers.js](src/handlers/sorteiosHandlers.js), com modais
-de cinco campos, seletor de público e prévia antes de publicar. Abertura do slash não pode ser
+de até cinco campos, seletor de público e prévia antes de publicar. Textos, botões, cor, banner e
+miniatura são personalizáveis. Canal e cargo opcional ficam visíveis na prévia; a menção do cargo
+é permitida somente na publicação inicial. Abertura do slash não pode ser
 deferida pelo adapter: a primeira resposta é `showModal`. O router recebe `sorteio_*` antes dos
 modais genéricos. Criação/gerenciamento exigem staff; participação depende do público escolhido.
 

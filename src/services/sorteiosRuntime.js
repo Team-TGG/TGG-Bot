@@ -22,12 +22,22 @@ export function getSorteiosService(client) {
     const [bot, organizer] = await Promise.all([channel.guild.members.fetchMe(), channel.guild.members.fetch(record.ownerId)]);
     const required = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory];
     if (!channel.permissionsFor(bot)?.has(required) || !channel.permissionsFor(organizer)?.has(PermissionFlagsBits.ViewChannel)) throw sorteioError('CHANNEL_PERMISSIONS');
+    if (record.roleId) {
+      let role;
+      try { role = await channel.guild.roles.fetch(record.roleId); }
+      catch (error) { if (error.code === 10011) throw sorteioError('ROLE'); throw error; }
+      if (!role || role.id === channel.guildId || role.guild.id !== record.guildId) throw sorteioError('ROLE');
+      if (!role.mentionable && (!channel.permissionsFor(bot)?.has(PermissionFlagsBits.MentionEveryone) || !channel.permissionsFor(organizer)?.has(PermissionFlagsBits.MentionEveryone))) throw sorteioError('ROLE_PERMISSIONS');
+    }
     return channel;
   };
   service = createSorteiosService({
     store: createSorteiosStore(resolve(process.cwd(), 'data', 'sorteios.json')),
     validateChannel,
-    publish: async record => (await validateChannel(record)).send({ ...buildSorteioMessage(record), nonce: record.id.replaceAll('-', '').slice(0, 24), enforceNonce: true }),
+    publish: async record => (await validateChannel(record)).send({ ...buildSorteioMessage(record),
+      ...(record.roleId ? { content: `<@&${record.roleId}>` } : {}),
+      allowedMentions: { parse: [], roles: record.roleId ? [record.roleId] : [], users: [], repliedUser: false },
+      nonce: record.id.replaceAll('-', '').slice(0, 24), enforceNonce: true }),
     findPublished: async record => {
       const channel = await getChannel(record);
       const messages = await channel.messages.fetch({ limit: 100 });

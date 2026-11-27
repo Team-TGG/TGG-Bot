@@ -16,6 +16,7 @@ export const adminCommands = [
       { name: 'Cancelar sorteio', value: 'cancelar' }, { name: 'Sortear novamente', value: 'refazer' }))
     .addStringOption(o => o.setName('id').setDescription('ID do sorteio, ID da mensagem ou link da mensagem'))
     .addChannelOption(o => o.setName('canal').setDescription('Canal de publicação; também pode ser alterado na prévia').addChannelTypes(0, 5))
+    .addRoleOption(o => o.setName('cargo').setDescription('Cargo a marcar na publicação; deixe vazio para não marcar'))
     .addIntegerOption(o => o.setName('pagina').setDescription('Página da lista de sorteios').setMinValue(1).setMaxValue(10000)),
   // ── Sincronização ──
   new SlashCommandBuilder()

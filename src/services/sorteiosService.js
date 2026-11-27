@@ -16,25 +16,31 @@ export function parseSorteioDuration(value) {
   return total;
 }
 
-export function validateSorteioFields(fields) {
+export function validateSorteioFields(fields, { allowEmptyPrize = false } = {}) {
   const prize = String(fields.prize ?? '').trim();
   const description = String(fields.description ?? '').trim();
   const winnerCount = Number(fields.winnerCount);
   const durationMs = Number(fields.durationMs);
-  if (!prize || prize.length > 150 || description.length > 1500) throw sorteioError('TEXT');
+  if ((!prize && !allowEmptyPrize) || prize.length > 150 || description.length > 4000) throw sorteioError('TEXT');
+  const title = String(fields.title || '').trim(), footer = String(fields.footer || '').trim();
+  const joinLabel = String(fields.joinLabel || '').trim(), leaveLabel = String(fields.leaveLabel || '').trim();
+  if (title.length > 200 || footer.length > 200 || joinLabel.length > 40 || leaveLabel.length > 40) throw sorteioError('STYLE');
   if (!Number.isInteger(winnerCount) || winnerCount < 1 || winnerCount > SORTEIO_LIMITS.maxWinners) throw sorteioError('WINNERS');
   if (!['members', 'all'].includes(fields.audience)) throw sorteioError('AUDIENCE');
   if (!Number.isSafeInteger(durationMs) || durationMs < SORTEIO_LIMITS.minDuration || durationMs > SORTEIO_LIMITS.maxDuration) throw sorteioError('DURATION');
   const color = String(fields.color || '#5865F2');
   if (!/^#[0-9a-f]{6}$/i.test(color)) throw sorteioError('COLOR');
   const image = String(fields.image || '').trim();
-  if (image) {
+  const thumbnail = String(fields.thumbnail || '').trim();
+  for (const address of [image, thumbnail].filter(Boolean)) {
     let url;
-    try { url = new URL(image); } catch { throw sorteioError('IMAGE'); }
-    if (url.protocol !== 'https:' || url.username || url.password || image.length > 1000) throw sorteioError('IMAGE');
+    try { url = new URL(address); } catch { throw sorteioError('IMAGE'); }
+    if (url.protocol !== 'https:' || url.username || url.password || address.length > 1000) throw sorteioError('IMAGE');
   }
   if (!/^\d{17,20}$/.test(String(fields.channelId))) throw sorteioError('CHANNEL');
-  return { prize, description, winnerCount, durationMs, audience: fields.audience, color, image, channelId: String(fields.channelId) };
+  const roleId = fields.roleId == null || fields.roleId === '' ? null : String(fields.roleId);
+  if (roleId && !/^\d{17,20}$/.test(roleId)) throw sorteioError('ROLE');
+  return { prize, description, title, footer, joinLabel, leaveLabel, winnerCount, durationMs, audience: fields.audience, color, image, thumbnail, channelId: String(fields.channelId), roleId };
 }
 
 function touch(record) { record.revision++; record.dirty = true; record.retryAt = 0; }
@@ -54,11 +60,11 @@ export function createSorteiosService({ store, now = Date.now, random = randomIn
     return draft;
   };
   const service = {
-    async createDraft({ guildId, ownerId, channelId, locale = 'pt' }) {
+    async createDraft({ guildId, ownerId, channelId, roleId = null, locale = 'pt' }) {
       return store.transaction(state => {
         for (const [id, draft] of Object.entries(state.drafts)) if (draft.expiresAt <= now()) delete state.drafts[id];
         if (Object.values(state.drafts).filter(draft => draft.ownerId === ownerId && draft.status === 'editing').length >= 10) throw sorteioError('DRAFT_LIMIT');
-        const draft = { id: randomUUID(), guildId, ownerId, channelId, locale, prize: '', description: '', winnerCount: 1, durationMs: 86400000, audience: 'members', color: '#5865F2', image: '', status: 'editing', expiresAt: now() + SORTEIO_LIMITS.draftTtl };
+        const draft = { id: randomUUID(), guildId, ownerId, channelId, roleId, locale, prize: '', description: '', winnerCount: 1, durationMs: 86400000, audience: 'members', color: '#5865F2', image: '', status: 'editing', expiresAt: now() + SORTEIO_LIMITS.draftTtl };
         state.drafts[draft.id] = draft;
         return draft;
       });
@@ -68,7 +74,7 @@ export function createSorteiosService({ store, now = Date.now, random = randomIn
       return store.transaction(state => {
         const draft = draftIn(state, id, ownerId, guildId);
         if (draft.status !== 'editing') throw sorteioError('ALREADY_PUBLISHED');
-        const next = validateSorteioFields({ ...draft, ...patch });
+        const next = validateSorteioFields({ ...draft, ...patch }, { allowEmptyPrize: true });
         Object.assign(draft, next, { expiresAt: now() + SORTEIO_LIMITS.draftTtl });
         return draft;
       });
@@ -98,6 +104,7 @@ export function createSorteiosService({ store, now = Date.now, random = randomIn
       const reservation = await store.transaction(state => {
         const current = draftIn(state, id, ownerId, guildId);
         if (current.channelId !== draft.channelId) throw sorteioError('CHANNEL');
+        if ((current.roleId || null) !== (draft.roleId || null)) throw sorteioError('ROLE');
         if (state.giveaways[id]) return { fresh: false, record: state.giveaways[id] };
         const fields = validateSorteioFields(current);
         if (Object.values(state.giveaways).filter(record => record.guildId === guildId && ['publishing', 'active', 'drawing'].includes(record.status)).length >= SORTEIO_LIMITS.maxActive) throw sorteioError('ACTIVE_LIMIT');

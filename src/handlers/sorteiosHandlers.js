@@ -4,7 +4,7 @@ import { createErrorEmbed, createSuccessEmbed, createWarningEmbed } from '../../
 import { tradutor } from '../i18n/index.js';
 import { getSorteiosService } from '../services/sorteiosRuntime.js';
 import { parseSorteioDuration, sorteioError } from '../services/sorteiosService.js';
-import { buildSorteioForm, buildSorteioVisualForm, buildSorteioChannelForm, buildSorteioPreview, buildSorteioManagement, sorteioLink, sorteioStatusText } from '../sorteiosViews.js';
+import { buildSorteioForm, buildSorteioVisualForm, buildSorteioTextForm, buildSorteioMediaForm, buildSorteioChannelForm, buildSorteioPreview, buildSorteioManagement, sorteioLink, sorteioStatusText } from '../sorteiosViews.js';
 
 const safe = { allowedMentions: { parse: [], repliedUser: false } };
 const actor = source => source.user?.id || source.author?.id;
@@ -23,10 +23,13 @@ export function sorteioErrorEmbed(error, source) {
   const t = tradutor(source);
   const messages = {
     DURATION: t('Use uma duração entre 1 minuto e 30 dias. Exemplo: 2d 3h 30m.'),
-    TEXT: t('Informe um prêmio de até 150 caracteres e uma descrição de até 1500 caracteres.'),
+    TEXT: t('Informe um prêmio de até 150 caracteres e uma descrição de até 4000 caracteres.'),
+    STYLE: t('Use até 200 caracteres no título/rodapé e 40 em cada botão.'),
     WINNERS: t('Escolha de 1 a 20 vencedores.'), AUDIENCE: t('Escolha membros da TGG ou todos do servidor.'),
     COLOR: t('A cor deve estar no formato #RRGGBB, como #5865F2.'), IMAGE: t('Use uma URL de imagem HTTPS válida, sem usuário ou senha.'),
     CHANNEL: t('Escolha um canal de texto deste servidor.'),
+    ROLE: t('Escolha um cargo deste servidor, exceto @everyone, ou deixe sem marcação.'),
+    ROLE_PERMISSIONS: t('Esse cargo precisa permitir menções ou você e o bot precisam poder mencioná-lo no canal escolhido.'),
     CHANNEL_PERMISSIONS: t('O organizador precisa ver o canal; o bot precisa ver, enviar mensagens, incorporar links e ler o histórico.'),
     NOT_FOUND: t('Sorteio não encontrado neste servidor. Use o ID ou o link da mensagem.'),
     DRAFT: t('Essa prévia expirou ou pertence a outra pessoa. Abra um novo formulário com /sorteio.'),
@@ -108,7 +111,8 @@ export function createSorteioHandlers({ getService = getSorteiosService, canMana
       }
       if (['criar', 'novo', 'new'].includes(action)) {
         const chosenChannel = message.interaction?.options.getChannel('canal')?.id || args.find(value => /^<#\d+>$/.test(value))?.replace(/[<#>]/g, '') || channelId(message);
-        const draft = await service.createDraft({ guildId: guildId(message), ownerId: actor(message), channelId: chosenChannel, locale: t.idioma });
+        const roleId = message.interaction?.options.getRole('cargo')?.id || args.find(value => /^<@&\d+>$/.test(value))?.slice(3, -1) || null;
+        const draft = await service.createDraft({ guildId: guildId(message), ownerId: actor(message), channelId: chosenChannel, roleId, locale: t.idioma });
         if (message.interaction) return message.interaction.showModal(buildSorteioForm(draft, t));
         return message.reply(buildSorteioPreview(draft));
       }
@@ -162,13 +166,14 @@ export function createSorteioHandlers({ getService = getSorteiosService, canMana
       const record = await service.get(source.values[0], server);
       return replyInteraction(source, buildSorteioManagement(record, t));
     }
-    if (['edit', 'appearance', 'target'].includes(action)) {
+    if (['edit', 'appearance', 'target', 'styling', 'images'].includes(action)) {
       const draft = await service.getDraft(id, actor(source), server);
       if (draft.status !== 'editing') throw sorteioError('ALREADY_PUBLISHED');
-      const modal = action === 'edit' ? buildSorteioForm(draft, t) : action === 'appearance' ? buildSorteioVisualForm(draft, t) : buildSorteioChannelForm(draft, t);
+      const modal = action === 'edit' ? buildSorteioForm(draft, t) : action === 'appearance' ? buildSorteioVisualForm(draft, t)
+        : action === 'styling' ? buildSorteioTextForm(draft, t) : action === 'images' ? buildSorteioMediaForm(draft, t) : buildSorteioChannelForm(draft, t);
       return source.showModal(modal);
     }
-    if (['form', 'visual', 'channel'].includes(action)) {
+    if (['form', 'visual', 'channel', 'texts', 'media'].includes(action)) {
       await deferPreview(source);
       let patch;
       if (action === 'form') patch = { prize: source.fields.getTextInputValue('prize'), description: source.fields.getTextInputValue('description'),
@@ -179,19 +184,23 @@ export function createSorteioHandlers({ getService = getSorteiosService, canMana
         patch = { durationMs: (Number(values[0]) * 1440 + Number(values[1]) * 60 + Number(values[2])) * 60000,
           color: source.fields.getTextInputValue('color').trim(), image: source.fields.getTextInputValue('image') };
       }
-      if (action === 'channel') patch = { channelId: source.fields.getSelectedChannels('channel', true).first().id };
+      if (action === 'channel') patch = { channelId: source.fields.getSelectedChannels('channel', true).first().id,
+        roleId: source.fields.getSelectedRoles('mention_role', false)?.first()?.id || null };
+      if (action === 'texts') patch = { title: source.fields.getTextInputValue('title'), description: source.fields.getTextInputValue('description'),
+        footer: source.fields.getTextInputValue('footer'), joinLabel: source.fields.getTextInputValue('join_label'), leaveLabel: source.fields.getTextInputValue('leave_label') };
+      if (action === 'media') patch = { color: source.fields.getTextInputValue('color'), image: source.fields.getTextInputValue('image'), thumbnail: source.fields.getTextInputValue('thumbnail') };
       const draft = await service.updateDraft(id, actor(source), server, patch);
       return replyInteraction(source, buildSorteioPreview(draft));
     }
     if (action === 'publish') {
       await deferPreview(source);
       const record = await service.publishDraft(id, actor(source), server);
-      return replyInteraction(source, { embeds: [createSuccessEmbed(t('Sorteio publicado'), t('O sorteio foi publicado: {link}', { link: sorteioLink(record) }))], components: [] });
+      return replyInteraction(source, { content: '', embeds: [createSuccessEmbed(t('Sorteio publicado'), t('O sorteio foi publicado: {link}', { link: sorteioLink(record) }))], components: [] });
     }
     if (action === 'discard') {
       await deferPreview(source);
       await service.discardDraft(id, actor(source), server);
-      return replyInteraction(source, { embeds: [createSuccessEmbed(t('Prévia descartada'), t('Nenhum sorteio foi publicado por esta prévia.'))], components: [] });
+      return replyInteraction(source, { content: '', embeds: [createSuccessEmbed(t('Prévia descartada'), t('Nenhum sorteio foi publicado por esta prévia.'))], components: [] });
     }
     const record = await service.get(id, server);
     if (['askEnd', 'askCancel', 'askReroll'].includes(action)) return confirm(source, record, { askEnd: 'end', askCancel: 'cancel', askReroll: 'reroll' }[action]);
