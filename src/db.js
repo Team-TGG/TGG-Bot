@@ -237,6 +237,19 @@ export async function getActiveUser(discordId) {
   return data;
 }
 
+/** Elegibilidade de sorteios: cadastro ativo da TGG, com ID do jogo, em lotes sem truncar o resultado. */
+export async function getSorteioMembrosAtivos(discordIds) {
+  const active = new Set();
+  const ids = [...new Set(discordIds.map(String))];
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    const { data, error } = await getClient().from('users').select('discord_id, brawlhalla_id')
+      .eq('active', true).in('discord_id', ids.slice(offset, offset + 100));
+    if (error) throw error;
+    for (const user of data ?? []) if (user.brawlhalla_id) active.add(String(user.discord_id));
+  }
+  return active;
+}
+
 
 
 let BRAWLHALLA_ALIASES = null;

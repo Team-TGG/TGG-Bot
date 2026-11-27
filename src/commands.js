@@ -3,9 +3,14 @@ import { handleLimparPerfil, handleSync, handleSyncAll, handleSyncNick, handleRe
 import { handleHelp, handleStats, handleGuild, handleActive, handleRegras, handleMissoes, handleMotd, handleBirthday, handleGames, handleCorrigirID, handleRedes, handleDuel, handleCrz, handleVideoGuilda, handleAlts, handleJustificativa, handleResumo, handleLbGuilda, handleProfile } from './public.js';
 import { handleDaily, handleBalance, handleHistorico, handleLeaderboard, handleShop, handleBuy, handleAddProvider, handleRemoveProvider, handleConquistas, handleStreak, handleAddCoins, handleAddAccount, handleQuiz, handleInventory } from './tggCoinsCommands.js';
 import { handleCargoPersonalizado } from './handlers/cargoPersonalizadoHandlers.js';
+import { handleSorteio } from './admin.js';
 
 // Command Aliases
 export const COMMAND_ALIASES = {
+  'sorteio': 'sorteio',
+  'sorteios': 'sorteio',
+  'giveaway': 'sorteio',
+  'raffle': 'sorteio',
   'help': 'help',
   'ajuda': 'help',
   'comandos': 'help',
@@ -255,6 +260,7 @@ export const commands = {
   resumo: handleResumo,
 
   // Admin
+  sorteio: handleSorteio,
   sync: handleSync,
   'sync-all': handleSyncAll,
   'sync-nick': handleSyncNick,

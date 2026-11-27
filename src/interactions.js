@@ -11,6 +11,7 @@ import { handlePerfilInteracao } from './handlers/perfilHandlers.js';
 import { handleCargoPersonalizadoInteracao } from './handlers/cargoPersonalizadoHandlers.js';
 import { tradutor } from './i18n/index.js';
 import { autocompleteTipoAddCoins } from './tggCoinsCommands.js';
+import { handleSorteioInteraction, sorteioErrorEmbed } from './handlers/sorteiosHandlers.js';
 
 // Comando → função que sugere opções enquanto a pessoa digita (opção com setAutocomplete no builder).
 const AUTOCOMPLETES = {
@@ -85,6 +86,18 @@ export function registerInteractionHandler(client) {
 
     if (interaction.isChatInputCommand()) {
       await handleChatInput(interaction, client);
+      return;
+    }
+
+    // Sorteios persistem no disco: participação e modais não dependem de collectors do processo.
+    if (interaction.customId?.startsWith('sorteio_')) {
+      try { await handleSorteioInteraction(interaction, client); }
+      catch (err) {
+        console.warn(`[GIVEAWAY] Interaction failed: ${err.sorteioCode || err.code || 'unavailable'}`);
+        const payload = { embeds: [sorteioErrorEmbed(err, interaction)], allowedMentions: { parse: [], repliedUser: false } };
+        if (interaction.replied || interaction.deferred) await interaction.editReply(payload).catch(() => {});
+        else await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
       return;
     }
 

@@ -37,6 +37,19 @@ antes de subir local**, senão cada comando é respondido duas vezes.
 
 ## Arquitetura
 
+### Sorteios
+
+`.sorteio` e `/sorteio` usam [sorteiosHandlers.js](src/handlers/sorteiosHandlers.js), com modais
+de cinco campos, seletor de público e prévia antes de publicar. Abertura do slash não pode ser
+deferida pelo adapter: a primeira resposta é `showModal`. O router recebe `sorteio_*` antes dos
+modais genéricos. Criação/gerenciamento exigem staff; participação depende do público escolhido.
+
+O domínio está em [sorteiosService.js](src/services/sorteiosService.js), o armazenamento privado
+em [sorteiosStore.js](src/sorteiosStore.js) e a integração Discord/Supabase em
+[sorteiosRuntime.js](src/services/sorteiosRuntime.js). Preserve `data/sorteios.json` e mantenha um
+processo do bot. O agendador inicia só em produção, retoma prazos após reinício e salva resultados
+antes de editar o anúncio. [Uso e recuperação](docs/sorteios.md).
+
 ### Dois caminhos de entrada, um só conjunto de handlers
 
 Todo comando existe como prefixo `.comando` **e** como `/comando`, executando a **mesma função handler**:

@@ -26,8 +26,13 @@ import { definirResponsavel, getTicket } from './tickets.js';
 import { recalcularOrdemDaFila } from './services/ticketReorder.js';
 import { lerAlvoDoArgumento, limparMensagemDoPerfil } from './handlers/perfilHandlers.js';
 import { tradutor } from './i18n/index.js';
+import { handleSorteioCommand } from './handlers/sorteiosHandlers.js';
 
 // Funções auxiliares
+
+export async function handleSorteio(message, args, client) {
+  return handleSorteioCommand(message, args, client);
+}
 
 // .sync
 export const handleSync = adminOnly(async (message, args, client) => {

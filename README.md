@@ -144,6 +144,7 @@ reconferida contra as perguntas que já funcionavam.
 - [x] Tratar pergunta fora do catálogo com a ferramenta `nao_sei_responder`. Com `mode: 'ANY'` o modelo é obrigado a escolher uma das ferramentas, então antes dela toda pergunta sem ferramenta correspondente virava resposta confiante e errada — 6 de 6 ("quem tem mais TGG Coins?" caía em `ranking_contribuicao` com `limite: 1`). Depois: 14/14, sem perder nenhuma das 8 perguntas que já funcionavam (medido em 11/08/2026).
 
 ### Futuro
+- [x] Sorteios com `.sorteio` e `/sorteio`: formulário, prévia de embed, duração em dias/horas/minutos, público TGG ou servidor, botões de participação, encerramento automático e recuperação após reinício. [Como usar](docs/sorteios.md).
 - [x] Comandos slash.
 - [ ] Criar um Brawdle.
 - [ ] Criar leilões no TGG Coins, com lances para itens pagos ou exclusivos.

@@ -6,6 +6,17 @@ import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 const MOD_DEFAULT_PERMS = PermissionFlagsBits.ModerateMembers;
 
 export const adminCommands = [
+  // Helper/Assistant+ no handler: esses cargos não precisam de ModerateMembers.
+  new SlashCommandBuilder()
+    .setName('sorteio')
+    .setDescription('Staff: cria sorteios por formulário, mostra prévia e gerencia vencedores')
+    .addStringOption(o => o.setName('acao').setDescription('Abra o formulário ou gerencie um sorteio').addChoices(
+      { name: 'Criar sorteio', value: 'criar' }, { name: 'Listar sorteios', value: 'listar' },
+      { name: 'Gerenciar sorteio', value: 'gerenciar' }, { name: 'Encerrar agora', value: 'encerrar' },
+      { name: 'Cancelar sorteio', value: 'cancelar' }, { name: 'Sortear novamente', value: 'refazer' }))
+    .addStringOption(o => o.setName('id').setDescription('ID do sorteio, ID da mensagem ou link da mensagem'))
+    .addChannelOption(o => o.setName('canal').setDescription('Canal de publicação; também pode ser alterado na prévia').addChannelTypes(0, 5))
+    .addIntegerOption(o => o.setName('pagina').setDescription('Página da lista de sorteios').setMinValue(1).setMaxValue(10000)),
   // ── Sincronização ──
   new SlashCommandBuilder()
     .setName('sync')

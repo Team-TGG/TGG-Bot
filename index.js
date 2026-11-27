@@ -23,6 +23,7 @@ import { darBoasVindas } from './src/services/boasVindas.js';
 import { avisarEntradaNaFila } from './src/services/filaDeEspera.js';
 import { restoreMutes } from './src/services/muteManager.js';
 import { restoreTemporaryWarnings } from './src/services/warningManager.js';
+import { iniciarSorteios } from './src/services/sorteiosRuntime.js';
 // Commands
 import { COMMAND_ALIASES, commands } from './src/commands.js';
 import { carregarAliasesDoDaily, ehAliasDoDaily, definirComandosExistentes } from './src/dailyAliases.js';
@@ -106,6 +107,8 @@ async function main() {
     // Daqui pra baixo é tudo efeito no servidor real: cron mexe em cargo e apelido,
     // o lembrete pinga, e restaurar mutes/warns reagenda expiracoes.
     if (runtime.isDev) return;
+
+    iniciarSorteios(client).catch(() => console.error('[GIVEAWAY] Startup failed; saved state preserved.'));
 
     // Contador de mensagens e call das insígnias. Depois do retorno de dev, ao contrário do ciclo dos
     // tickets: a contagem é permanente, e dois processos com o mesmo token contariam tudo em dobro.

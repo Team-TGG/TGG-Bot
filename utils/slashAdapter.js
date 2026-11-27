@@ -8,7 +8,7 @@ import {
 // Adapter monta message-shim a partir de interaction.options. reply() retorna Message real
 // pra collectors e .edit() funcionarem nativos.
 
-const COMMANDS_WITH_INITIAL_INTERACTION_RESPONSE = new Set(['escrever']);
+const COMMANDS_WITH_INITIAL_INTERACTION_RESPONSE = new Set(['escrever', 'sorteio']);
 
 function normalizeInteractionPayload(payload) {
   if (!payload || typeof payload === 'string') return payload;
