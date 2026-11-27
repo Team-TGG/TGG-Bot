@@ -3,6 +3,7 @@ import { createErrorEmbed, createPagination } from '../../utils/discordUtils.js'
 import { tradutor } from '../i18n/index.js';
 import { getRankedQueueService } from '../services/rankedQueueRuntime.js';
 import { buildQueueEmbed, queuePages } from '../queueViews.js';
+import { EMOJIS } from '../../config/emojis.js';
 
 export function createQueueHandler({ getService = getRankedQueueService, paginate = createPagination } = {}) {
   return async function handleQueue(message, args = []) {
@@ -21,9 +22,9 @@ export function createQueueHandler({ getService = getRankedQueueService, paginat
       getTotalPages: () => queuePages(view),
       time: 15 * 60_000, idle: 6 * 60_000, disableOnEnd: true, prevId: 'queue_prev', nextId: 'queue_next',
       extraButtons: () => [
-        new ButtonBuilder().setCustomId('queue_1v1').setLabel('1v1').setStyle(mode === '1v1' ? ButtonStyle.Primary : ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('queue_2v2').setLabel('2v2').setStyle(mode === '2v2' ? ButtonStyle.Primary : ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('queue_refresh').setLabel(t('Atualizar lista')).setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('queue_1v1').setLabel('1v1').setEmoji(EMOJIS.crossedSwords).setStyle(mode === '1v1' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('queue_2v2').setLabel('2v2').setEmoji(EMOJIS.team).setStyle(mode === '2v2' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('queue_refresh').setLabel(t('Atualizar lista')).setEmoji(EMOJIS.refresh).setStyle(ButtonStyle.Success),
       ],
       onExtra: async (interaction, page) => {
         const selected = interaction.customId === 'queue_1v1' ? '1v1' : interaction.customId === 'queue_2v2' ? '2v2' : mode;

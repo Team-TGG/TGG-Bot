@@ -8,6 +8,9 @@ O embed organiza até oito jogadores ou duplas por página, com ELO atual/pico, 
 variação de posição na sessão detectada, partidas da temporada, taxa de vitória e horários da
 sessão/atividade. As duplas permanecem juntas. Em 2v2, o cabeçalho distingue quantidade de duplas
 e quantidade de jogadores únicos.
+O cabeçalho traz a identidade da TGG, status por cor, ELO médio e faixa de ELO dos jogadores
+ativos. Cada bloco tem numeração, ícone de patente, indicadores de posição e métricas em
+destaque. Última e próxima leitura aparecem em colunas separadas; os controles também têm ícones.
 
 Os botões permitem navegar, alternar 1v1/2v2 e atualizar a lista. Os controles pertencem a quem
 abriu o comando e são desativados ao expirar. **Atualizar lista** lê o retrato mais recente do

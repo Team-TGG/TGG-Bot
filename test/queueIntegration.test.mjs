@@ -28,13 +28,13 @@ test('queue usa o adapter de slash, paginação e embeds válidos sem rede', asy
       const interaction = { commandName: 'queue', guild: message().guild, user: message().author, member: null, channel: {}, options: { data: [], getString: () => '2v2' }, async deferReply() { this.deferred = true; } };
       await runAsSlash(handler, interaction, {});
       assert.equal(interaction.deferred, true); assert.equal(reads, 1);
-      assert.equal(pagination.getEmbed(1).toJSON().title, 'BRZ • Ranked 2v2');
+      assert.equal(pagination.getEmbed(1).toJSON().title, '🇧🇷 BRZ • Ranked 2v2');
       assert.equal(pagination.extraButtons().length, 3);
       await pagination.onExtra({ customId: 'queue_refresh' }, 2); assert.equal(reads, 2);
       assert.equal(await pagination.onExtra({ customId: 'queue_1v1' }, 2), 1);
-      assert.equal(pagination.getEmbed(1).toJSON().title, 'BRZ • Ranked 1v1');
-      await handler(message(), ['2v2']); assert.equal(pagination.getEmbed(1).toJSON().title, 'BRZ • Ranked 2v2');
-      await handler(message()); assert.equal(pagination.getEmbed(1).toJSON().title, 'BRZ • Ranked 1v1');
+      assert.equal(pagination.getEmbed(1).toJSON().title, '🇧🇷 BRZ • Ranked 1v1');
+      await handler(message(), ['2v2']); assert.equal(pagination.getEmbed(1).toJSON().title, '🇧🇷 BRZ • Ranked 2v2');
+      await handler(message()); assert.equal(pagination.getEmbed(1).toJSON().title, '🇧🇷 BRZ • Ranked 1v1');
     });
 
     await t.test('argumento inválido, DM e falha do cache recebem resposta adequada', async () => {
@@ -47,11 +47,12 @@ test('queue usa o adapter de slash, paginação e embeds válidos sem rede', asy
     await t.test('embed organiza duplas, ELO, posição, taxa, sessão e atualização em português e inglês', () => {
       for (const language of ['pt', 'en']) {
         const data = buildQueueEmbed(view(), 1, tradutor(language)).toJSON();
-        assert.equal(data.title, 'BRZ • Ranked 2v2'); assert.match(data.fields[0].name, /Alpha \+ Beta/);
-        assert.match(data.fields[0].value, language === 'pt' ? /2\.466/ : /2,466/);
-        assert.match(data.fields[0].value, /\#86 \(\+4\)/);
-        assert.match(data.fields[0].value, language === 'pt' ? /58,9%/ : /58\.9%/);
-        assert.match(data.fields[0].value, /<t:600:R>/); assert.match(data.fields[0].value, /<t:900:R>/);
+        const player = data.fields.find(field => field.name.includes('Alpha'));
+        assert.equal(data.title, '🇧🇷 BRZ • Ranked 2v2'); assert.match(player.name, /Alpha \+ Beta/);
+        assert.match(player.value, language === 'pt' ? /2\.466/ : /2,466/);
+        assert.match(player.value, /\#86 \(\+4\)/);
+        assert.match(player.value, language === 'pt' ? /58,9%/ : /58\.9%/);
+        assert.match(player.value, /<t:600:R>/); assert.match(player.value, /<t:900:R>/);
         assert.match(data.fields.at(-1).value, /<t:1200:R>/);
         assert.match(data.description, language === 'pt' ? /2 jogadores/ : /2 players/);
       }
@@ -68,11 +69,11 @@ test('queue usa o adapter de slash, paginação e embeds válidos sem rede', asy
     });
 
     await t.test('nomes longos e caracteres de formatação ficam dentro dos limites do Discord', () => {
-      const entries = Array.from({ length: 25 }, (_, index) => entry({ id: String(index), name: '**[<@everyone>](https://example.com)🌻'.repeat(20), tier: '**'.repeat(250) }));
+      const entries = Array.from({ length: 25 }, (_, index) => entry({ id: String(index), name: '**[<@everyone>](https://example.com)🌻'.repeat(20), tier: index % 2 ? 'Valhallan' : '**'.repeat(250), rating: Number.MAX_SAFE_INTEGER, peak: Number.MAX_SAFE_INTEGER, games: Number.MAX_SAFE_INTEGER, wins: Number.MAX_SAFE_INTEGER, rank: Number.MAX_SAFE_INTEGER, rankBefore: 1 }));
       const state = view('2v2', entries);
       assert.equal(queuePages(state), 4);
       const data = buildQueueEmbed(state, 1, tradutor('pt')).toJSON();
-      assert.equal(data.fields.length, 9);
+      assert.equal(data.fields.length, 13);
       assert.ok(data.fields.every(field => field.name.length <= 256 && field.value.length <= 1024));
       const size = data.title.length + data.description.length + data.footer.text.length + data.fields.reduce((total, field) => total + field.name.length + field.value.length, 0);
       assert.ok(size <= 6000); assert.doesNotMatch(data.fields[0].name, /<@everyone>/);
