@@ -56,7 +56,7 @@ test('formulário, prévia, publicação, elegibilidade e gerenciamento sem rede
     const service = getSorteiosService(client), handlers = createSorteioHandlers({ getService: () => service });
     function event(userId = host, customId) {
       const event = { customId, user: { id: userId, bot: userId === botId }, member: people.get(userId), guild, guildId: server, channel, channelId,
-        options: { data: [], getString: () => null, getChannel: () => null, getRole: () => null }, commandName: 'sorteio', replies: [], edits: [], modals: [],
+        options: { data: [], getString: () => null, getChannel: () => null, getRole: () => null, getBoolean: () => null }, commandName: 'sorteio', replies: [], edits: [], modals: [],
         deferReply: async () => { event.deferred = true; }, deferUpdate: async () => { event.deferred = true; },
         reply: async payload => { event.replied = true; event.replies.push(payload); return {}; }, fetchReply: async () => ({}),
         editReply: async payload => { event.edits.push(payload); return {}; }, update: async payload => { event.replied = true; event.edits.push(payload); return {}; },
@@ -218,7 +218,7 @@ test('formulário, prévia, publicação, elegibilidade e gerenciamento sem rede
       styledDraft = await service.createDraft({ guildId: server, ownerId: host, channelId });
       const before = sends;
       const target = event(host, `sorteio_channel:${styledDraft.id}`);
-      target.fields = { getSelectedChannels: () => new Collection([[targetChannelId, targetChannel]]), getSelectedRoles: () => new Collection([[roleId, roles.get(roleId)]]) };
+      target.fields = { getSelectedChannels: () => new Collection([[targetChannelId, targetChannel]]), getSelectedRoles: () => new Collection([[roleId, roles.get(roleId)]]), getStringSelectValues: () => ['role'] };
       await handlers.interaction(target, client);
       styledDraft = await service.getDraft(styledDraft.id, host, server);
       assert.equal(styledDraft.channelId, targetChannelId); assert.equal(styledDraft.roleId, roleId);
@@ -229,7 +229,7 @@ test('formulário, prévia, publicação, elegibilidade e gerenciamento sem rede
       assert.equal(sends, before);
       await assert.rejects(service.publishDraft(styledDraft.id, host, server), { sorteioCode: 'TEXT' });
       const modal = buildSorteioChannelForm(styledDraft).toJSON();
-      assert.equal(modal.components.length, 2);
+      assert.equal(modal.components.length, 3);
       assert.equal(modal.components[1].component.required, false);
       assert.deepEqual(modal.components[1].component.default_values, [{ id: roleId, type: 'role' }]);
     });
@@ -276,30 +276,88 @@ test('formulário, prévia, publicação, elegibilidade e gerenciamento sem rede
     await t.test('limpar o seletor remove o cargo e a prévia volta a indicar sem marcação', async () => {
       const draft = await service.createDraft({ guildId: server, ownerId: host, channelId, roleId });
       const target = event(host, `sorteio_channel:${draft.id}`);
-      target.fields = { getSelectedChannels: () => new Collection([[channelId, channel]]), getSelectedRoles: () => new Collection() };
+      target.fields = { getSelectedChannels: () => new Collection([[channelId, channel]]), getSelectedRoles: () => new Collection(), getStringSelectValues: () => ['role'] };
       await handlers.interaction(target, client);
       assert.equal((await service.getDraft(draft.id, host, server)).roleId, null);
       assert.match(target.edits[0].content, /Nenhum cargo/);
     });
 
-    await t.test('cargos apagados, @everyone e falta de permissão impedem publicação', async () => {
+    await t.test('cargos apagados e falta de permissão do bot impedem publicação', async () => {
       const before = sends;
-      for (const id of [server, '100000000000000099']) {
+      for (const id of ['100000000000000099']) {
         const draft = await service.createDraft({ guildId: server, ownerId: host, channelId });
         await service.updateDraft(draft.id, host, server, { prize: 'Cargo inválido', roleId: id });
         await assert.rejects(service.publishDraft(draft.id, host, server), { sorteioCode: 'ROLE' });
       }
       const draft = await service.createDraft({ guildId: server, ownerId: host, channelId });
       await service.updateDraft(draft.id, host, server, { prize: 'Cargo com permissão', roleId: lockedRoleId });
-      for (const [botPermission, hostPermission] of [[false, false], [true, false], [false, true]]) {
+      for (const [botPermission, hostPermission] of [[false, false], [false, true]]) {
         botCanMention = botPermission; hostCanMention = hostPermission;
         await assert.rejects(service.publishDraft(draft.id, host, server), { sorteioCode: 'ROLE_PERMISSIONS' });
       }
       assert.equal(sends, before);
-      botCanMention = true; hostCanMention = true;
+      botCanMention = true; hostCanMention = false;
       const record = await service.publishDraft(draft.id, host, server);
       assert.equal(published.get(record.messageId).payload.content, `<@&${lockedRoleId}>`);
       botCanMention = false; hostCanMention = false;
+    });
+
+    await t.test('@everyone aparece na prévia sem ping e só é permitido na publicação confirmada', async () => {
+      const draft = await service.createDraft({ guildId: server, ownerId: host, channelId });
+      await service.updateDraft(draft.id, host, server, { prize: 'Sorteio com aviso geral' });
+      const before = sends;
+      const target = event(host, `sorteio_channel:${draft.id}`);
+      target.fields = { getSelectedChannels: () => new Collection([[targetChannelId, targetChannel]]), getSelectedRoles: () => new Collection([[roleId, roles.get(roleId)]]), getStringSelectValues: () => ['everyone'] };
+      await handlers.interaction(target, client);
+      const selected = await service.getDraft(draft.id, host, server);
+      assert.equal(selected.roleId, server, '@everyone substitui o cargo selecionado');
+      assert.match(target.edits[0].content, /Cargo: @everyone/);
+      assert.deepEqual(target.edits[0].allowedMentions.parse, []);
+      assert.equal(target.edits[0].embeds[0].toJSON().fields.find(field => field.name === 'Cargo a marcar').value, '@everyone');
+      assert.equal(sends, before);
+      const modal = buildSorteioChannelForm(selected).toJSON();
+      assert.equal(modal.components[1].component.default_values, undefined, '@everyone não é passado como cargo comum ao seletor');
+      assert.equal(modal.components[2].component.options.find(option => option.default).value, 'everyone');
+      hostCanMention = true;
+      await assert.rejects(service.publishDraft(draft.id, host, server), { sorteioCode: 'ROLE_PERMISSIONS' });
+      botCanMention = true; hostCanMention = false;
+      const publish = event(host, `sorteio_publish:${draft.id}`);
+      await handlers.interaction(publish, client);
+      const record = await service.get(draft.id, server), message = published.get(record.messageId);
+      assert.equal(message.channelId, targetChannelId);
+      assert.equal(message.payload.content, '@everyone');
+      assert.deepEqual(message.payload.allowedMentions, { parse: ['everyone'], roles: [], users: [], repliedUser: false });
+      await service.sync(record);
+      assert.deepEqual(message.edits.at(-1).allowedMentions.parse, []);
+      assert.equal(sends, before + 1);
+      botCanMention = false;
+    });
+
+    await t.test('mudar de @everyone para um cargo ou nenhuma marcação atualiza a prévia', async () => {
+      const draft = await service.createDraft({ guildId: server, ownerId: host, channelId, roleId: server });
+      const target = event(host, `sorteio_channel:${draft.id}`);
+      target.fields = { getSelectedChannels: () => new Collection([[channelId, channel]]), getSelectedRoles: () => new Collection([[roleId, roles.get(roleId)]]), getStringSelectValues: () => ['role'] };
+      await handlers.interaction(target, client);
+      assert.equal((await service.getDraft(draft.id, host, server)).roleId, roleId);
+      target.fields.getSelectedRoles = () => null;
+      await handlers.interaction(target, client);
+      assert.equal((await service.getDraft(draft.id, host, server)).roleId, null);
+      assert.match(target.edits.at(-1).content, /Nenhum cargo/);
+    });
+
+    await t.test('@everyone também pode ser escolhido pelo slash e pelo prefixo', async () => {
+      const interaction = event();
+      interaction.options.getBoolean = name => name === 'todos';
+      interaction.options.getRole = () => roles.get(roleId);
+      await runAsSlash(handlers.command, interaction, client);
+      const id = interaction.modals[0].custom_id.split(':')[1];
+      assert.equal((await service.getDraft(id, host, server)).roleId, server);
+      const builder = adminCommands.find(command => command.name === 'sorteio').toJSON();
+      assert.equal(builder.options.find(option => option.name === 'todos').type, 5);
+      const message = event(); message.author = message.user;
+      await handlers.command(message, ['criar', '@everyone'], client);
+      assert.match(message.replies[0].content, /Cargo: @everyone/);
+      assert.deepEqual(message.replies[0].allowedMentions.parse, []);
     });
 
     await t.test('opções canal e cargo do slash são preservadas ao abrir o formulário', async () => {

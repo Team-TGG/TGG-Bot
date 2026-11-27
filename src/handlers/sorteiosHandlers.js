@@ -28,8 +28,8 @@ export function sorteioErrorEmbed(error, source) {
     WINNERS: t('Escolha de 1 a 20 vencedores.'), AUDIENCE: t('Escolha membros da TGG ou todos do servidor.'),
     COLOR: t('A cor deve estar no formato #RRGGBB, como #5865F2.'), IMAGE: t('Use uma URL de imagem HTTPS válida, sem usuário ou senha.'),
     CHANNEL: t('Escolha um canal de texto deste servidor.'),
-    ROLE: t('Escolha um cargo deste servidor, exceto @everyone, ou deixe sem marcação.'),
-    ROLE_PERMISSIONS: t('Esse cargo precisa permitir menções ou você e o bot precisam poder mencioná-lo no canal escolhido.'),
+    ROLE: t('Escolha um cargo deste servidor, @everyone ou deixe sem marcação.'),
+    ROLE_PERMISSIONS: t('O bot precisa da permissão de mencionar @everyone, @here e todos os cargos no canal escolhido.'),
     CHANNEL_PERMISSIONS: t('O organizador precisa ver o canal; o bot precisa ver, enviar mensagens, incorporar links e ler o histórico.'),
     NOT_FOUND: t('Sorteio não encontrado neste servidor. Use o ID ou o link da mensagem.'),
     DRAFT: t('Essa prévia expirou ou pertence a outra pessoa. Abra um novo formulário com /sorteio.'),
@@ -111,7 +111,8 @@ export function createSorteioHandlers({ getService = getSorteiosService, canMana
       }
       if (['criar', 'novo', 'new'].includes(action)) {
         const chosenChannel = message.interaction?.options.getChannel('canal')?.id || args.find(value => /^<#\d+>$/.test(value))?.replace(/[<#>]/g, '') || channelId(message);
-        const roleId = message.interaction?.options.getRole('cargo')?.id || args.find(value => /^<@&\d+>$/.test(value))?.slice(3, -1) || null;
+        const everyone = message.interaction?.options.getBoolean('todos') || args.includes('@everyone');
+        const roleId = everyone ? guildId(message) : message.interaction?.options.getRole('cargo')?.id || args.find(value => /^<@&\d+>$/.test(value))?.slice(3, -1) || null;
         const draft = await service.createDraft({ guildId: guildId(message), ownerId: actor(message), channelId: chosenChannel, roleId, locale: t.idioma });
         if (message.interaction) return message.interaction.showModal(buildSorteioForm(draft, t));
         return message.reply(buildSorteioPreview(draft));
@@ -185,7 +186,7 @@ export function createSorteioHandlers({ getService = getSorteiosService, canMana
           color: source.fields.getTextInputValue('color').trim(), image: source.fields.getTextInputValue('image') };
       }
       if (action === 'channel') patch = { channelId: source.fields.getSelectedChannels('channel', true).first().id,
-        roleId: source.fields.getSelectedRoles('mention_role', false)?.first()?.id || null };
+        roleId: source.fields.getStringSelectValues('mention_scope')[0] === 'everyone' ? server : source.fields.getSelectedRoles('mention_role', false)?.first()?.id || null };
       if (action === 'texts') patch = { title: source.fields.getTextInputValue('title'), description: source.fields.getTextInputValue('description'),
         footer: source.fields.getTextInputValue('footer'), joinLabel: source.fields.getTextInputValue('join_label'), leaveLabel: source.fields.getTextInputValue('leave_label') };
       if (action === 'media') patch = { color: source.fields.getTextInputValue('color'), image: source.fields.getTextInputValue('image'), thumbnail: source.fields.getTextInputValue('thumbnail') };

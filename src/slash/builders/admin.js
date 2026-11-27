@@ -17,6 +17,7 @@ export const adminCommands = [
     .addStringOption(o => o.setName('id').setDescription('ID do sorteio, ID da mensagem ou link da mensagem'))
     .addChannelOption(o => o.setName('canal').setDescription('Canal de publicação; também pode ser alterado na prévia').addChannelTypes(0, 5))
     .addRoleOption(o => o.setName('cargo').setDescription('Cargo a marcar na publicação; deixe vazio para não marcar'))
+    .addBooleanOption(o => o.setName('todos').setDescription('Marcar @everyone na publicação em vez do cargo escolhido'))
     .addIntegerOption(o => o.setName('pagina').setDescription('Página da lista de sorteios').setMinValue(1).setMaxValue(10000)),
   // ── Sincronização ──
   new SlashCommandBuilder()

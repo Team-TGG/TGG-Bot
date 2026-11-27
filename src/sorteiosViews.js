@@ -2,6 +2,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelSelectMenuBuilder,
 import { tradutor } from './i18n/index.js';
 
 export const sorteioLink = record => record.messageId ? `https://discord.com/channels/${record.guildId}/${record.channelId}/${record.messageId}` : null;
+export const sorteioMention = record => record.roleId ? record.roleId === record.guildId ? '@everyone' : `<@&${record.roleId}>` : '';
 const button = (id, label, style = ButtonStyle.Secondary) => new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style);
 const label = (title, component) => new LabelBuilder().setLabel(title).setTextInputComponent(component);
 const text = (id, value, max = 100, paragraph = false) => {
@@ -60,11 +61,17 @@ export function buildSorteioMediaForm(draft, t = tradutor(draft.locale)) {
 
 export function buildSorteioChannelForm(draft, t = tradutor(draft.locale)) {
   const roles = new RoleSelectMenuBuilder().setCustomId('mention_role').setMinValues(0).setMaxValues(1).setRequired(false);
-  if (draft.roleId) roles.setDefaultRoles(draft.roleId);
+  const everyone = draft.roleId === draft.guildId;
+  if (draft.roleId && !everyone) roles.setDefaultRoles(draft.roleId);
+  const scope = new StringSelectMenuBuilder().setCustomId('mention_scope').setMinValues(1).setMaxValues(1).addOptions(
+    { label: t('Usar cargo selecionado (ou sem marcação)'), value: 'role', default: !everyone },
+    { label: t('Marcar @everyone'), value: 'everyone', default: everyone },
+  );
   return new ModalBuilder().setCustomId(`sorteio_channel:${draft.id}`).setTitle(t('Canal e cargo')).addLabelComponents(
     new LabelBuilder().setLabel(t('Onde publicar o sorteio?')).setChannelSelectMenuComponent(
       new ChannelSelectMenuBuilder().setCustomId('channel').setChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement).setMinValues(1).setMaxValues(1).setDefaultChannels(draft.channelId)),
-    new LabelBuilder().setLabel(t('Cargo a marcar (opcional)')).setDescription(t('Limpe a seleção para publicar sem marcar cargo.')).setRoleSelectMenuComponent(roles),
+    new LabelBuilder().setLabel(t('Cargo a marcar (opcional)')).setDescription(t('Escolha um cargo ou use @everyone no campo abaixo.')).setRoleSelectMenuComponent(roles),
+    new LabelBuilder().setLabel(t('Marcação do anúncio')).setDescription(t('@everyone substitui o cargo escolhido acima.')).setStringSelectMenuComponent(scope),
   );
 }
 
@@ -96,7 +103,7 @@ export function buildSorteioEmbed(record, { preview = false, now = Date.now() } 
   if (record.status === 'ended') embed.addFields({ name: t('Resultado — rodada {n}', { n: record.rounds.length }),
     value: record.winners.length ? record.winners.map(id => `<@${id}>`).join('\n') : t('Sem participantes elegíveis para esta rodada.') });
   if (preview) embed.addFields({ name: t('Canal de publicação'), value: `<#${record.channelId}>` },
-    { name: t('Cargo a marcar'), value: record.roleId ? `<@&${record.roleId}>` : t('Nenhum cargo (sem marcação)') });
+    { name: t('Cargo a marcar'), value: sorteioMention(record) || t('Nenhum cargo (sem marcação)') });
   return embed.setFooter({ text: [record.footer, t('Sorteio {id}', { id: record.id })].filter(Boolean).join(' • ') });
 }
 
@@ -116,7 +123,7 @@ function participationRow(record, t, closed) {
 export function buildSorteioPreview(draft) {
   const t = tradutor(draft.locale);
   const content = [t('**PRÉVIA — ainda não publicado**'), t('Confira o embed, o canal e o cargo abaixo. Só Publicar sorteio envia o anúncio.'),
-    t('Canal: <#{canal}>', { canal: draft.channelId }), t('Cargo: {cargo}', { cargo: draft.roleId ? `<@&${draft.roleId}>` : t('Nenhum cargo (sem marcação)') })].join('\n');
+    t('Canal: <#{canal}>', { canal: draft.channelId }), t('Cargo: {cargo}', { cargo: sorteioMention(draft) || t('Nenhum cargo (sem marcação)') })].join('\n');
   return { content, embeds: [buildSorteioEmbed(draft, { preview: true })], allowedMentions: { parse: [], repliedUser: false }, components: [participationRow(draft, t, true), new ActionRowBuilder().addComponents(
     button(`sorteio_publish:${draft.id}`, t('Publicar sorteio'), ButtonStyle.Success).setDisabled(!draft.prize),
     button(`sorteio_edit:${draft.id}`, t('Preencher / editar dados'), ButtonStyle.Primary),

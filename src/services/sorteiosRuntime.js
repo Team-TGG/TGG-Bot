@@ -3,7 +3,7 @@ import { ChannelType, PermissionFlagsBits } from 'discord.js';
 import { createSorteiosStore } from '../sorteiosStore.js';
 import { createSorteiosService, sorteioError } from './sorteiosService.js';
 import { getUserByDiscordId, getSorteioMembrosAtivos } from '../db.js';
-import { buildSorteioMessage } from '../sorteiosViews.js';
+import { buildSorteioMessage, sorteioMention } from '../sorteiosViews.js';
 
 let service;
 let started = false;
@@ -26,8 +26,8 @@ export function getSorteiosService(client) {
       let role;
       try { role = await channel.guild.roles.fetch(record.roleId); }
       catch (error) { if (error.code === 10011) throw sorteioError('ROLE'); throw error; }
-      if (!role || role.id === channel.guildId || role.guild.id !== record.guildId) throw sorteioError('ROLE');
-      if (!role.mentionable && (!channel.permissionsFor(bot)?.has(PermissionFlagsBits.MentionEveryone) || !channel.permissionsFor(organizer)?.has(PermissionFlagsBits.MentionEveryone))) throw sorteioError('ROLE_PERMISSIONS');
+      if (!role || role.guild.id !== record.guildId) throw sorteioError('ROLE');
+      if ((role.id === record.guildId || !role.mentionable) && !channel.permissionsFor(bot)?.has(PermissionFlagsBits.MentionEveryone)) throw sorteioError('ROLE_PERMISSIONS');
     }
     return channel;
   };
@@ -35,8 +35,8 @@ export function getSorteiosService(client) {
     store: createSorteiosStore(resolve(process.cwd(), 'data', 'sorteios.json')),
     validateChannel,
     publish: async record => (await validateChannel(record)).send({ ...buildSorteioMessage(record),
-      ...(record.roleId ? { content: `<@&${record.roleId}>` } : {}),
-      allowedMentions: { parse: [], roles: record.roleId ? [record.roleId] : [], users: [], repliedUser: false },
+      ...(record.roleId ? { content: sorteioMention(record) } : {}),
+      allowedMentions: { parse: record.roleId === record.guildId ? ['everyone'] : [], roles: record.roleId && record.roleId !== record.guildId ? [record.roleId] : [], users: [], repliedUser: false },
       nonce: record.id.replaceAll('-', '').slice(0, 24), enforceNonce: true }),
     findPublished: async record => {
       const channel = await getChannel(record);

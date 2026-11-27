@@ -23,7 +23,9 @@ Na prévia, é possível:
 - Abrir **Duração e aparência** para informar dias, horas e minutos separados, cor hexadecimal e
   uma imagem por URL HTTPS.
 - Escolher outro canal de texto ou anúncios e um cargo opcional no seletor **Canal e cargo**.
-  Limpar a seleção de cargo permite publicar sem marcação.
+  Para avisar todos, escolha **Marcar @everyone** em **Marcação do anúncio**; isso substitui o
+  cargo escolhido. Para publicar sem marcação, selecione **Usar cargo selecionado (ou sem
+  marcação)** e limpe o seletor de cargo.
 - Descartar a prévia sem publicar nada.
 
 O Discord não envia eventos a cada tecla do formulário. Por isso a prévia é atualizada após
@@ -31,14 +33,18 @@ O Discord não envia eventos a cada tecla do formulário. Por isso a prévia é 
 Canal e cargo também podem ser escolhidos nas opções `canal` e `cargo` do slash ou em
 `.sorteio criar #canal @cargo`. É possível configurar a aparência e o destino mesmo antes de
 preencher o prêmio; a publicação exige o preenchimento dos dados obrigatórios.
+Para `@everyone`, use a opção `todos:True` no slash ou `.sorteio criar #canal @everyone`.
+Quando `todos` está ativado, ele tem prioridade sobre a opção `cargo`.
 
 Limites dos textos: prêmio de até 150 caracteres, título e rodapé de até 200 cada, descrição de
 até 4000 e cada botão de até 40. Deixar uma opção de estilo vazia restaura o texto padrão.
 
 O cargo é marcado somente no anúncio inicial. Prévias e atualizações do resultado não disparam
-novas marcações. A seleção não aceita `@everyone`: o cargo precisa permitir menções ou tanto o
-organizador quanto o bot precisam ter permissão para mencioná-lo no canal escolhido. A entrega
-de notificações segue as preferências de cada usuário no Discord.
+novas marcações. Qualquer cargo deste servidor pode ser escolhido, incluindo `@everyone`. Para
+marcar `@everyone` ou cargos que não permitem menções, o bot precisa da permissão **Mencionar
+@everyone, @here e todos os cargos** no canal escolhido. A permissão para criar e gerenciar o
+sorteio continua restrita à staff e administradores do bot. A entrega de notificações segue as
+preferências de cada usuário no Discord.
 
 ## Público e participação
 
@@ -106,3 +112,4 @@ segue o idioma do organizador; respostas privadas seguem os cargos de idioma de 
 
 Verificações: `node --test test/sorteios*.test.mjs` e `node .claude/skills/checar/check.mjs`.
 Referência do formulário nativo: [Discord — Modal Components](https://docs.discord.com/developers/components/using-modal-components).
+Regras de menções: [Discord — Allowed Mentions](https://docs.discord.com/developers/resources/message#allowed-mentions-object).
