@@ -89,7 +89,7 @@ export function createRankedQueueService({ store, fetchPage, now = Date.now, log
           if (result.status === 'fulfilled') next.modes[mode] = compareQueueSnapshot(state.modes[mode], result.value, observedAt);
           else {
             next.modes[mode] = { updatedAt: 0, compared: false, entries: {}, ...state.modes[mode], attemptedAt: observedAt, errorAt: observedAt };
-            logger.warn(`[QUEUE] Snapshot unavailable for ${mode}; previous data preserved.`);
+            logger.warn(`[QUEUE] Snapshot unavailable for ${mode} (${result.reason?.queueCode || result.reason?.status || 'network'}); previous data preserved.`);
           }
         }
         await store.write(next);

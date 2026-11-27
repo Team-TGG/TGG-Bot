@@ -1,9 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createApiFetch } from '../src/services/brawlhallaHttp.js';
+import { createApiFetch as createPacedApiFetch } from '../src/services/brawlhallaHttp.js';
+
+const createApiFetch = options => createPacedApiFetch({ v0MinIntervalMs: 0, ...options });
 
 const logger = { warn() {} };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+
+test('chamadas v0 são espaçadas para evitar a rejeição por rajada; v1 continua independente', async () => {
+  let time = 1000;
+  const starts = [], waits = [];
+  const request = createPacedApiFetch({ now: () => time, wait: async ms => { waits.push(ms); time += ms; }, logger, fetchImpl: async () => { starts.push(time); return json({ ok: true }); } });
+  for (let i = 0; i < 3; i++) await request(`https://api.brawlhalla.com/player/${i}/stats`);
+  await request('https://api.brawlhalla.com/v1/guild/stats?guild_id=3');
+  assert.deepEqual(starts, [1000, 1500, 2000, 2000]);
+  assert.deepEqual(waits, [500, 500]);
+});
+
+test('pedidos concorrentes não se acumulam em rajada mesmo quando o relógio avança além da espera', async () => {
+  let time = 1000;
+  const starts = [];
+  const request = createPacedApiFetch({ now: () => time, wait: async ms => { time += ms + 1000; }, logger, fetchImpl: async () => { starts.push(time); return json({ ok: true }); } });
+  await Promise.all([1, 2, 3, 4].map(id => request(`https://api.brawlhalla.com/player/${id}/stats`)));
+  assert.equal(starts.length, 4);
+  assert.ok(starts.slice(1).every((time, index) => time - starts[index] >= 500));
+});
 
 test('monitor em segundo plano preserva 60 consultas v0 para os comandos e não espera a janela de cota', async () => {
   let calls = 0, time = 1000;

@@ -9,6 +9,7 @@ export function createApiFetch({
   attempts = 2,
   cooldownMs = 30_000,
   maxConcurrent = 4,
+  v0MinIntervalMs = 500,
   logger = console,
 } = {}) {
   const limits = {
@@ -17,6 +18,8 @@ export function createApiFetch({
   };
   const pending = new Map();
   const retriesAfter = new Map();
+  let nextV0Slot = 0;
+  let v0StartTail = Promise.resolve();
 
   function unavailable(version, status = 503) {
     const err = new Error(`A API ${version} do Brawlhalla está indisponível no momento. Tente novamente em alguns instantes.`);
@@ -53,6 +56,15 @@ export function createApiFetch({
         await wait(delay);
       }
       limit.log.push(now());
+      if (version === 'v0' && v0MinIntervalMs > 0) {
+        const slot = v0StartTail.then(async () => {
+          const delay = Math.max(0, nextV0Slot - now());
+          if (delay) await wait(delay);
+          nextV0Slot = now() + v0MinIntervalMs;
+        });
+        v0StartTail = slot.catch(() => {});
+        await slot;
+      }
       const controller = new AbortController();
       timer = setTimeout(() => controller.abort(), timeoutMs);
       let res;

@@ -41,7 +41,8 @@ nem de permissões de Presence Intent no Discord. Referências:
   para detectar atividade pelo aumento de partidas. A implementação da TGG é independente.
 
 São até 20 consultas por ciclo, normalmente 60 em 15 minutos, compartilhando o cliente HTTP
-com os demais comandos. Consultas de segundo plano são adiadas quando restam 60 chamadas v0
+com os demais comandos. As chamadas v0 são espaçadas em pelo menos 500 ms para evitar rajadas
+que a API rejeita com HTTP 429. Consultas de segundo plano são adiadas quando restam 60 chamadas v0
 na janela, preservando esse saldo para comandos e outras rotinas. Falha em qualquer página
 preserva o retrato inteiro daquela modalidade e aparece como leitura atrasada/indisponível;
 não vira uma lista vazia confirmada. A outra modalidade pode continuar atualizando.
