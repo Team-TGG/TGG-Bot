@@ -11,8 +11,11 @@ e quantidade de jogadores únicos.
 O cabeçalho traz a identidade da TGG, status por cor, ELO médio e faixa de ELO dos jogadores
 ativos. Cada bloco tem numeração, ícone de patente, indicadores de posição e métricas em
 destaque. Última e próxima leitura aparecem em colunas separadas; os controles também têm ícones.
-A miniatura usa a imagem fornecida pela liderança em `assets/queue/ranked-mascot.png`, enviada
-como anexo do próprio Discord. O anexo é preservado durante a navegação e a troca de modalidade.
+A miniatura é sorteada entre sete imagens fornecidas pela liderança em `assets/queue/`, incluindo
+o personagem com a mão à esquerda e um GIF animado. Cada nova execução escolhe uma imagem,
+evitando a anterior no processo do bot; a escolha permanece durante a navegação, atualização e
+troca de modalidade daquela mensagem. Somente a imagem escolhida é anexada ao Discord. Os arquivos
+originais são preservados, incluindo os quadros e a animação do GIF.
 
 Os botões permitem navegar, alternar 1v1/2v2 e atualizar a lista. Os controles pertencem a quem
 abriu o comando e são desativados ao expirar. **Atualizar lista** lê o retrato mais recente do

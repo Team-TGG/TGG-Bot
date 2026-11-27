@@ -13,6 +13,7 @@ test('queue usa o adapter de slash, paginação e embeds válidos sem rede', asy
     const { runAsSlash } = await import('../utils/slashAdapter.js');
     const { createPagination } = await import('../utils/discordUtils.js');
     const { publicCommands } = await import('../src/slash/builders/public.js');
+    const { createQueueImagePicker, QUEUE_IMAGE_NAMES } = await import('../src/queueMedia.js');
     const entry = (patch = {}) => ({ id: '10:20', playerIds: ['10', '20'], name: 'Alpha + Beta', rank: 86, rankBefore: 90, rating: 2466, peak: 2504, games: 280, wins: 165, tier: 'Diamond', since: 600000, lastActivityAt: 900000, ...patch });
     const view = (mode = '2v2', entries = [entry()]) => ({ mode, region: 'BRZ', status: 'ready', entries, players: mode === '2v2' ? 2 : 1, observedAt: 1000000, updatedAt: 900000, nextCheckAt: 1200000, coverage: 500, windowMinutes: 10 });
     const message = () => ({ guild: { iconURL: () => 'https://cdn.discordapp.com/icons/1/icon.png' }, author: { id: '100000000000000001' }, replies: [], async reply(payload) { this.replies.push(payload); } });
@@ -25,7 +26,7 @@ test('queue usa o adapter de slash, paginação e embeds válidos sem rede', asy
 
     await t.test('slash passa pela deferReply e produz a mesma lista da versão por prefixo', async () => {
       let pagination, reads = 0;
-      const handler = createQueueHandler({ getService: () => ({ snapshot: async mode => { reads++; return view(mode); }, poll: () => assert.fail('comando não pode gastar cota da API') }), paginate: async (_source, options) => { pagination = options; return {}; } });
+      const handler = createQueueHandler({ getService: () => ({ snapshot: async mode => { reads++; return view(mode); }, poll: () => assert.fail('comando não pode gastar cota da API') }), pickImage: createQueueImagePicker(() => 0), paginate: async (_source, options) => { pagination = options; return {}; } });
       const interaction = { commandName: 'queue', guild: message().guild, user: message().author, member: null, channel: {}, options: { data: [], getString: () => '2v2' }, async deferReply() { this.deferred = true; } };
       await runAsSlash(handler, interaction, {});
       assert.equal(interaction.deferred, true); assert.equal(reads, 1);
@@ -40,6 +41,27 @@ test('queue usa o adapter de slash, paginação e embeds válidos sem rede', asy
       assert.equal(pagination.getEmbed(1).toJSON().thumbnail.url, 'attachment://ranked-mascot.png');
       await handler(message(), ['2v2']); assert.equal(pagination.getEmbed(1).toJSON().title, '🇧🇷 BRZ • Ranked 2v2');
       await handler(message()); assert.equal(pagination.getEmbed(1).toJSON().title, '🇧🇷 BRZ • Ranked 1v1');
+    });
+
+    await t.test('sorteio das sete imagens evita repetição imediata e mantém PNG/GIF na mensagem durante a navegação', async () => {
+      let pagination;
+      const limits = [], samples = [0, 0, 1, 2, 3, 4, 5, 0];
+      const picker = createQueueImagePicker(limit => { limits.push(limit); return samples.shift(); });
+      const handler = createQueueHandler({ getService: () => ({ snapshot: async mode => view(mode) }), pickImage: picker, paginate: async (_source, options) => { pagination = options; } });
+      const expected = [...QUEUE_IMAGE_NAMES, QUEUE_IMAGE_NAMES[0]];
+      for (const name of expected) {
+        await handler(message(), ['1v1']);
+        const file = pagination.files[0], bytes = await readFile(file.attachment);
+        assert.equal(file.name, name);
+        assert.equal(pagination.files.length, 1);
+        assert.equal(pagination.getEmbed(1).toJSON().thumbnail.url, `attachment://${name}`);
+        assert.equal(bytes.subarray(0, name.endsWith('.gif') ? 3 : 8).toString(name.endsWith('.gif') ? 'ascii' : 'hex'), name.endsWith('.gif') ? 'GIF' : '89504e470d0a1a0a');
+        await pagination.onExtra({ customId: 'queue_2v2' }, 1);
+        await pagination.onExtra({ customId: 'queue_refresh' }, 1);
+        assert.equal(pagination.getEmbed(2).toJSON().thumbnail.url, `attachment://${name}`);
+        assert.equal(pagination.files[0], file);
+      }
+      assert.deepEqual(limits, [7, 6, 6, 6, 6, 6, 6, 6]);
     });
 
     await t.test('argumento inválido, DM e falha do cache recebem resposta adequada', async () => {

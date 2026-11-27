@@ -1,12 +1,12 @@
 import { AttachmentBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { fileURLToPath } from 'node:url';
 import { createErrorEmbed, createPagination } from '../../utils/discordUtils.js';
 import { tradutor } from '../i18n/index.js';
 import { getRankedQueueService } from '../services/rankedQueueRuntime.js';
-import { buildQueueEmbed, queuePages, QUEUE_IMAGE_NAME } from '../queueViews.js';
+import { buildQueueEmbed, queuePages } from '../queueViews.js';
+import { pickQueueImage } from '../queueMedia.js';
 import { EMOJIS } from '../../config/emojis.js';
 
-export function createQueueHandler({ getService = getRankedQueueService, paginate = createPagination } = {}) {
+export function createQueueHandler({ getService = getRankedQueueService, paginate = createPagination, pickImage = pickQueueImage } = {}) {
   return async function handleQueue(message, args = []) {
     const t = tradutor(message);
     if (!message.guild) return message.reply({ embeds: [createErrorEmbed(t('Queue indisponível'), t('Use este comando dentro do servidor.'))] });
@@ -18,10 +18,11 @@ export function createQueueHandler({ getService = getRankedQueueService, paginat
       if (!error.queueCode) throw error;
       return message.reply({ embeds: [createErrorEmbed(t('Queue indisponível'), t('O monitor está indisponível. Tente novamente em alguns minutos.'))] });
     }
+    const image = pickImage();
     return paginate(message, {
-      getEmbed: page => buildQueueEmbed(view, page, t),
+      getEmbed: page => buildQueueEmbed(view, page, t, image.name),
       getTotalPages: () => queuePages(view),
-      files: [new AttachmentBuilder(fileURLToPath(new URL('../../assets/queue/ranked-mascot.png', import.meta.url)), { name: QUEUE_IMAGE_NAME, description: t('Imagem do monitor de ranqueada da TGG.') })],
+      files: [new AttachmentBuilder(image.path, { name: image.name, description: t('Imagem do monitor de ranqueada da TGG.') })],
       time: 15 * 60_000, idle: 6 * 60_000, disableOnEnd: true, prevId: 'queue_prev', nextId: 'queue_next',
       extraButtons: () => [
         new ButtonBuilder().setCustomId('queue_1v1').setLabel('1v1').setEmoji(EMOJIS.crossedSwords).setStyle(mode === '1v1' ? ButtonStyle.Primary : ButtonStyle.Secondary),
